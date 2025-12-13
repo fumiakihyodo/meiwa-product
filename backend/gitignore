@@ -1,0 +1,26 @@
+# --- System ---
+.DS_Store
+Thumbs.db
+
+# --- Environment Variables (機密情報) ---
+.env
+.env.local
+.env.*.local
+
+# --- Docker ---
+# DockerでマウントしているDBのデータフォルダがあれば除外
+# 例: postgres_data/
+db_data/
+mysql_data/
+
+# --- Python / Django (api) ---
+api/__pycache__/
+api/*.py[cod]
+api/venv/
+api/.venv/
+api/db.sqlite3
+api/media/
+
+# --- IDE settings (Optional) ---
+.vscode/
+.idea/
