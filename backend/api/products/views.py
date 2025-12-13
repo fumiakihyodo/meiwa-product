@@ -2,7 +2,13 @@
 
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.db.models import Count, Q
+from django.http import HttpResponse
+from django.db import transaction
+import csv
+import io
+import logging
 
 from api.products.models import Product
 from api.products.serializers import (
@@ -10,6 +16,9 @@ from api.products.serializers import (
     ProductDetailSerializer,
     ProductCreateUpdateSerializer
 )
+from api.customers.models import CustomerBranch
+
+logger = logging.getLogger(__name__)
 
 
 class IsAdminUser(permissions.BasePermission):
@@ -112,6 +121,147 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
                 {"error": "有効な部品が紐づいているため削除できません"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ==================== CSV Bulk Import/Export Views ====================
+
+class ProductBulkImportView(APIView):
+    """製品一括登録ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """CSVファイルから一括登録"""
+        if 'file' not in request.FILES:
+            return Response(
+                {"error": "CSVファイルがアップロードされていません"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        csv_file = request.FILES['file']
+
+        if not csv_file.name.endswith('.csv'):
+            return Response(
+                {"error": "CSVファイルのみアップロード可能です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            decoded_file = csv_file.read().decode('utf-8-sig')
+            io_string = io.StringIO(decoded_file)
+            reader = csv.DictReader(io_string)
+
+            errors = []
+            success_count = 0
+            created_items = []
+
+            with transaction.atomic():
+                for row_num, row in enumerate(reader, start=2):
+                    try:
+                        # 必須フィールドのチェック
+                        if not row.get('product_number'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '製品品番は必須です'
+                            })
+                            continue
+
+                        if not row.get('product_name'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '製品名は必須です'
+                            })
+                            continue
+
+                        # 顧客拠点の検索（オプショナル）
+                        customer_branch = None
+                        branch_code = row.get('customer_branch_code', '').strip()
+                        if branch_code:
+                            try:
+                                customer_branch = CustomerBranch.objects.get(
+                                    branch_code=branch_code
+                                )
+                            except CustomerBranch.DoesNotExist:
+                                errors.append({
+                                    'row': row_num,
+                                    'error': f"拠点コード '{branch_code}' が見つかりません"
+                                })
+                                continue
+
+                        # データの準備
+                        product_data = {
+                            'product_number': row.get('product_number', '').strip(),
+                            'product_name': row.get('product_name', '').strip(),
+                            'description': row.get('description', '').strip() or '',
+                            'status': row.get('status', 'ACTIVE').strip(),
+                            'customer_branch': customer_branch.id if customer_branch else None,
+                        }
+
+                        # シリアライザーでバリデーション
+                        serializer = ProductCreateUpdateSerializer(data=product_data)
+                        if serializer.is_valid():
+                            product = serializer.save(created_by=request.user)
+                            created_items.append({
+                                'row': row_num,
+                                'product_number': product.product_number,
+                                'product_name': product.product_name
+                            })
+                            success_count += 1
+                        else:
+                            errors.append({
+                                'row': row_num,
+                                'error': serializer.errors
+                            })
+
+                    except Exception as e:
+                        errors.append({
+                            'row': row_num,
+                            'error': str(e)
+                        })
+
+                # エラーがある場合はロールバック
+                if errors:
+                    transaction.set_rollback(True)
+                    return Response({
+                        'success': False,
+                        'message': f'{len(errors)}件のエラーがあります',
+                        'errors': errors,
+                        'success_count': 0
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({
+                'success': True,
+                'message': f'{success_count}件の製品を登録しました',
+                'success_count': success_count,
+                'created_items': created_items,
+                'errors': []
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"CSV一括登録エラー: {str(e)}")
+            return Response(
+                {"error": f"CSVファイルの処理中にエラーが発生しました: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ProductCSVTemplateView(APIView):
+    """製品CSVテンプレートダウンロードビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """CSVテンプレートをダウンロード"""
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = 'attachment; filename="product_template.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'product_number', 'product_name', 'description', 'status', 'customer_branch_code'
+        ])
+        writer.writerow([
+            'PROD001', 'サンプル製品', '製品の詳細説明', 'ACTIVE', 'HQ'
+        ])
+
+        return response
