@@ -405,17 +405,36 @@ export default function SupplierDetailPage() {
                 <Box sx={{ width: '100%' }}>
                     {/* ヘッダー */}
                     <Box sx={{ mb: 3 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                            <IconButton
-                                onClick={() => router.push('/suppliers')}
-                                sx={{ mr: 1 }}
-                                aria-label="仕入先一覧に戻る"
-                            >
-                                <ArrowBackIcon />
-                            </IconButton>
-                            <Typography variant="h4" component="h1">
-                                {supplier.company_name}
-                            </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <IconButton
+                                    onClick={() => router.push('/suppliers')}
+                                    sx={{ mr: 1 }}
+                                    aria-label="仕入先一覧に戻る"
+                                >
+                                    <ArrowBackIcon />
+                                </IconButton>
+                                <Typography variant="h4" component="h1">
+                                    {supplier.company_name}
+                                </Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<EditIcon />}
+                                    onClick={handleOpenSupplierEditModal}
+                                >
+                                    編集
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    color="error"
+                                    startIcon={<DeleteIcon />}
+                                    onClick={handleDeleteSupplier}
+                                >
+                                    削除
+                                </Button>
+                            </Box>
                         </Box>
 
                         {/* 仕入先情報カード */}

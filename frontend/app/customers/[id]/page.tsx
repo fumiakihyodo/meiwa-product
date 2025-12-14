@@ -41,6 +41,7 @@ import { productApi } from '@/services/apiProduct';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';
 import { CustomerBranchFormModal } from '@/components/CustomerBranchFormModal';
+import { CustomerFormModal } from '@/components/CustomerFormModal';
 import { getStatusColor, getBranchTypeColor } from '@/app/theme';
 import toast from 'react-hot-toast';
 
@@ -51,6 +52,7 @@ export default function CustomerDetailPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [branchModalOpen, setBranchModalOpen] = useState(false);
+    const [customerEditModalOpen, setCustomerEditModalOpen] = useState(false);
     const [tabValue, setTabValue] = useState(0);
 
     const fetchCustomerDetail = useCallback(async () => {
@@ -80,6 +82,14 @@ export default function CustomerDetailPage() {
             fetchProducts();
         }
     }, [params?.id, fetchCustomerDetail, fetchProducts]);
+
+    const handleEditCustomer = () => {
+        setCustomerEditModalOpen(true);
+    };
+
+    const handleCustomerEditSuccess = useCallback(() => {
+        fetchCustomerDetail();
+    }, [fetchCustomerDetail]);
 
     const handleDelete = async () => {
         if (!customer) return;
@@ -150,17 +160,36 @@ export default function CustomerDetailPage() {
                 <Box sx={{ width: '100%' }}>
                     {/* ヘッダー */}
                     <Box sx={{ mb: 3 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                            <IconButton
-                                onClick={() => router.push('/customers')}
-                                sx={{ mr: 1 }}
-                                aria-label="顧客一覧に戻る"
-                            >
-                                <ArrowBackIcon />
-                            </IconButton>
-                            <Typography variant="h4" component="h1">
-                                {customer.company_name}
-                            </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <IconButton
+                                    onClick={() => router.push('/customers')}
+                                    sx={{ mr: 1 }}
+                                    aria-label="顧客一覧に戻る"
+                                >
+                                    <ArrowBackIcon />
+                                </IconButton>
+                                <Typography variant="h4" component="h1">
+                                    {customer.company_name}
+                                </Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<EditIcon />}
+                                    onClick={handleEditCustomer}
+                                >
+                                    編集
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    color="error"
+                                    startIcon={<DeleteIcon />}
+                                    onClick={handleDelete}
+                                >
+                                    削除
+                                </Button>
+                            </Box>
                         </Box>
 
                         {/* 顧客情報カード */}
@@ -450,6 +479,13 @@ export default function CustomerDetailPage() {
                         onClose={() => setBranchModalOpen(false)}
                         onSuccess={handleBranchCreated}
                         customerId={customer.id}
+                    />
+
+                    <CustomerFormModal
+                        open={customerEditModalOpen}
+                        onClose={() => setCustomerEditModalOpen(false)}
+                        onSuccess={handleCustomerEditSuccess}
+                        editData={customer}
                     />
                 </Box>
             </Sidebar>

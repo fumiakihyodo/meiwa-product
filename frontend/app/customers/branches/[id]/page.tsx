@@ -135,7 +135,7 @@ export default function CustomerBranchDetailPage() {
                         <Box>
                             <Button
                                 variant="outlined"
-                                
+                                startIcon={<EditIcon />}
                                 onClick={() => router.push(`/customers/branches/${branch.id}/edit`)}
                                 sx={{ mr: 1 }}
                             >

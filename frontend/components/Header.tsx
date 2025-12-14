@@ -1,16 +1,13 @@
 // components/Header.tsx
 'use client'
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import {
     Box,
-    IconButton,
-    Menu,
-    MenuItem,
-    ListItemIcon,
+    Button,
     Avatar,
-    Tooltip,
+    Typography,
 } from '@mui/material';
 import {
     AccountCircle as AccountCircleIcon,
@@ -19,25 +16,14 @@ import {
 import { useAuth } from '@/context/AuthContext';
 
 export const Header: React.FC = () => {
-    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const { user, logout } = useAuth();
     const router = useRouter();
 
-    const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-        setAnchorEl(event.currentTarget);
-    };
-
-    const handleMenuClose = () => {
-        setAnchorEl(null);
-    };
-
     const handleProfile = () => {
-        handleMenuClose();
         router.push('/profile');
     };
 
     const handleLogout = async () => {
-        handleMenuClose();
         await logout();
     };
 
@@ -47,42 +33,37 @@ export const Header: React.FC = () => {
                 display: 'flex',
                 justifyContent: 'flex-end',
                 alignItems: 'center',
+                gap: 2,
                 mb: 2,
             }}
         >
-            <Tooltip title="アカウントメニュー">
-                <IconButton onClick={handleMenuOpen}>
-                    <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.main' }}>
-                        {user?.userid?.charAt(0).toUpperCase()}
-                    </Avatar>
-                </IconButton>
-            </Tooltip>
-            <Menu
-                anchorEl={anchorEl}
-                open={Boolean(anchorEl)}
-                onClose={handleMenuClose}
-                anchorOrigin={{
-                    vertical: 'bottom',
-                    horizontal: 'right',
-                }}
-                transformOrigin={{
-                    vertical: 'top',
-                    horizontal: 'right',
-                }}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                    {user?.userid?.charAt(0).toUpperCase()}
+                </Avatar>
+                <Typography variant="body2" color="text.secondary">
+                    {user?.userid}
+                </Typography>
+            </Box>
+            <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AccountCircleIcon />}
+                onClick={handleProfile}
+                sx={{ borderRadius: 1 }}
             >
-                <MenuItem onClick={handleProfile}>
-                    <ListItemIcon>
-                        <AccountCircleIcon fontSize="small" />
-                    </ListItemIcon>
-                    プロフィール
-                </MenuItem>
-                <MenuItem onClick={handleLogout}>
-                    <ListItemIcon>
-                        <ExitToAppIcon fontSize="small" />
-                    </ListItemIcon>
-                    ログアウト
-                </MenuItem>
-            </Menu>
+                プロフィール
+            </Button>
+            <Button
+                variant="outlined"
+                size="small"
+                color="error"
+                startIcon={<ExitToAppIcon />}
+                onClick={handleLogout}
+                sx={{ borderRadius: 1 }}
+            >
+                ログアウト
+            </Button>
         </Box>
     );
 };
