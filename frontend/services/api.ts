@@ -88,7 +88,7 @@ apiClient.interceptors.response.use(
 
         // リフレッシュエンドポイント自体が401を返した場合は、即座にログアウト
         if (
-            error.config?.url?.includes('/token/refresh/') && 
+            error.config?.url?.includes('token/refresh/') && 
             error.response?.status === 401
         ) {
             clearTokens();
@@ -170,7 +170,7 @@ apiClient.interceptors.response.use(
 export const authApi = {
     login: async (credentials: LoginCredentials):
         Promise<AuthResponse> => {
-        const response = await apiClient.post<AuthResponse>('/accounts/auth/login/', credentials);
+        const response = await apiClient.post<AuthResponse>('api/accounts/auth/login/', credentials);
         setTokens(response.data.access, response.data.refresh);
         return response.data;
     },
@@ -186,7 +186,7 @@ export const authApi = {
         }
 
         try {
-            await apiClient.post('/accounts/auth/logout/', {
+            await apiClient.post('api/accounts/auth/logout/', {
                 refresh: refreshToken  // または refresh_token: refreshToken
             });
         } catch (error) {
@@ -202,13 +202,13 @@ export const authApi = {
     },
 
     checkAuth: async (): Promise<{ is_authenticated: boolean; is_admin: boolean; user: User }> => {
-        const response = await apiClient.get('/accounts/auth/check/');
+        const response = await apiClient.get('accounts/auth/check/');
         return response.data
     },
 
     refreshToken: async (): Promise<{ access: string }> => {
         const refreshToken = getRefreshToken();
-        const response = await apiClient.post('/accounts/auth/token/refresh/', {
+        const response = await apiClient.post('accounts/auth/token/refresh/', {
             refresh: refreshToken,
         });
         const { access } = response.data;
@@ -221,43 +221,43 @@ export const authApi = {
 export const userApi = {
     // Get all users (admin only)
     getUsers: async (): Promise<User[]> => {
-        const response = await apiClient.get<PaginatedResponse<User>>('/accounts/users/');
+        const response = await apiClient.get<PaginatedResponse<User>>('accounts/users/');
         return response.data.results; // resultsプロパティを返す
     },
 
     // Create user (admin only)
     createUser: async (userData: UserCreateData):
         Promise<User> => {
-        const response = await apiClient.post<User>('/accounts/users/', userData);
+        const response = await apiClient.post<User>('accounts/users/', userData);
         return response.data;
     },
 
     // Get current user
     getCurrentUser: async (): Promise<User> => {
-        const response = await apiClient.get<User>('/accounts/users/me/');
+        const response = await apiClient.get<User>('accounts/users/me/');
         return response.data;
     },
 
     // Get user by ID
     getUser: async (id: string): Promise<User> => {
-        const response = await apiClient.get<User>(`/accounts/users/${id}/`);
+        const response = await apiClient.get<User>(`accounts/users/${id}/`);
         return response.data;
     },
 
     // Update user
     updateUser: async (id: string, userData: UserUpdateData): Promise<User> => {
-        const response = await apiClient.patch<User>(`/accounts/users/${id}/`, userData);
+        const response = await apiClient.patch<User>(`accounts/users/${id}/`, userData);
         return response.data;
     },
 
     // Delete user (admin only)
     deleteUser: async (id: string): Promise<void> => {
-        await apiClient.delete(`/accounts/users/${id}/`);
+        await apiClient.delete(`accounts/users/${id}/`);
     },
 
     // Change password
     changePassword: async (passwordData: ChangePasswordData): Promise<{ message: string }> => {
-        const response = await apiClient.put('/accounts/users/me/change-password/', passwordData);
+        const response = await apiClient.put('accounts/users/me/change-password/', passwordData);
         return response.data;
     },
 };
