@@ -112,6 +112,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         verbose_name="最終ログイン日時"
     )
+    last_login_ip = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        verbose_name="最終ログインIPアドレス"
+    )
 
     objects = UserManager()
 
@@ -142,6 +147,98 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_administrator(self):
         """管理者権限の確認"""
         return self.is_admin or self.is_superuser or self.is_staff
-    
+
+
+class LoginLog(models.Model):
+    """ログイン履歴モデル"""
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='login_logs',
+        verbose_name="ユーザー"
+    )
+    ip_address = models.GenericIPAddressField(verbose_name="IPアドレス")
+    user_agent = models.TextField(blank=True, null=True, verbose_name="ユーザーエージェント")
+    login_at = models.DateTimeField(auto_now_add=True, verbose_name="ログイン日時")
+    success = models.BooleanField(default=True, verbose_name="ログイン成功")
+    failure_reason = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="失敗理由"
+    )
+
+    class Meta:
+        verbose_name = "ログイン履歴"
+        verbose_name_plural = "ログイン履歴一覧"
+        ordering = ["-login_at"]
+        db_table = "login_logs"
+
+    def __str__(self):
+        status = "成功" if self.success else "失敗"
+        return f"{self.user.userid} - {self.ip_address} ({status}) - {self.login_at}"
+
+
+class AllowedIP(models.Model):
+    """許可IPアドレスモデル"""
+    ip_address = models.GenericIPAddressField(
+        unique=True,
+        verbose_name="IPアドレス"
+    )
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="説明"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="有効"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "許可IPアドレス"
+        verbose_name_plural = "許可IPアドレス一覧"
+        ordering = ["-created_at"]
+        db_table = "allowed_ips"
+
+    def __str__(self):
+        return f"{self.ip_address} - {self.description or '説明なし'}"
+
+
+class IPRestrictionSettings(models.Model):
+    """IPアドレス制限設定モデル（シングルトン）"""
+    enabled = models.BooleanField(
+        default=False,
+        verbose_name="IP制限を有効にする"
+    )
+    exclude_superusers = models.BooleanField(
+        default=True,
+        verbose_name="管理者権限ユーザーを除外",
+        help_text="管理者権限を持つユーザーはIP制限の対象外にする"
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "IP制限設定"
+        verbose_name_plural = "IP制限設定"
+        db_table = "ip_restriction_settings"
+
+    def __str__(self):
+        status = "有効" if self.enabled else "無効"
+        return f"IP制限設定 ({status})"
+
+    def save(self, *args, **kwargs):
+        """シングルトンパターンの実装"""
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_settings(cls):
+        """設定を取得（存在しない場合は作成）"""
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj
 
 

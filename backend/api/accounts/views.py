@@ -11,11 +11,45 @@ from django.contrib.auth import authenticate
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 
-from .models import User
+from .models import User, LoginLog, AllowedIP, IPRestrictionSettings
 from .serializers import (
-    UserSerializer, UserCreateSerializer, UserUpdateSerializer, 
+    UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     ChangePasswordSerializer, LoginSerializer
 )
+
+
+def get_client_ip(request):
+    """クライアントのIPアドレスを取得"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+
+
+def check_ip_restriction(request, user):
+    """IPアドレス制限のチェック"""
+    settings = IPRestrictionSettings.get_settings()
+
+    # IP制限が無効の場合はスキップ
+    if not settings.enabled:
+        return True
+
+    # 管理者権限ユーザーを除外する設定の場合
+    if settings.exclude_superusers and user.is_administrator:
+        return True
+
+    # クライアントIPを取得
+    client_ip = get_client_ip(request)
+
+    # 許可リストに存在するかチェック
+    allowed = AllowedIP.objects.filter(
+        ip_address=client_ip,
+        is_active=True
+    ).exists()
+
+    return allowed
 
 
 class LoginView(views.APIView):
@@ -24,26 +58,73 @@ class LoginView(views.APIView):
     serializer_class = LoginSerializer
 
     def post(self, request):
+        # クライアントIPとUser Agentを取得
+        client_ip = get_client_ip(request)
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+
         serializer = self.serializer_class(
             data=request.data,
             context={'request': request}
         )
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']
 
-        # 最終ログイン時刻を更新
-        user.last_login = timezone.now()
-        user.last_login_at = user.last_login
-        user.save(update_fields=['last_login', 'last_login_at'])
+        try:
+            serializer.is_valid(raise_exception=True)
+            user = serializer.validated_data['user']
 
-        # JWTトークンを生成
-        refresh = RefreshToken.for_user(user)
+            # IPアドレス制限のチェック
+            if not check_ip_restriction(request, user):
+                # ログイン失敗を記録
+                LoginLog.objects.create(
+                    user=user,
+                    ip_address=client_ip,
+                    user_agent=user_agent,
+                    success=False,
+                    failure_reason="IPアドレス制限"
+                )
+                return Response(
+                    {"detail": "このIPアドレスからのアクセスは許可されていません"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
-        return Response({
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-            'user': UserSerializer(user).data,
-        }, status=status.HTTP_200_OK)
+            # 最終ログイン時刻とIPアドレスを更新
+            user.last_login = timezone.now()
+            user.last_login_at = user.last_login
+            user.last_login_ip = client_ip
+            user.save(update_fields=['last_login', 'last_login_at', 'last_login_ip'])
+
+            # ログイン成功を記録
+            LoginLog.objects.create(
+                user=user,
+                ip_address=client_ip,
+                user_agent=user_agent,
+                success=True
+            )
+
+            # JWTトークンを生成
+            refresh = RefreshToken.for_user(user)
+
+            return Response({
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'user': UserSerializer(user).data,
+            }, status=status.HTTP_200_OK)
+
+        except ValidationError as e:
+            # ログイン失敗を記録（ユーザーが特定できる場合）
+            userid = request.data.get('userid')
+            if userid:
+                try:
+                    user = User.objects.get(userid=userid)
+                    LoginLog.objects.create(
+                        user=user,
+                        ip_address=client_ip,
+                        user_agent=user_agent,
+                        success=False,
+                        failure_reason="認証失敗"
+                    )
+                except User.DoesNotExist:
+                    pass
+            raise e
 
 
 class LogoutView(views.APIView):
