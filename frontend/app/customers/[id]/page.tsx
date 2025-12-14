@@ -3,7 +3,6 @@
 
 import React, { useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useTheme } from '@mui/material/styles';
 import {
     Box,
     Paper,
@@ -11,7 +10,6 @@ import {
     Button,
     Grid,
     Card,
-    CardContent,
     Chip,
     Table,
     TableBody,
@@ -23,8 +21,7 @@ import {
     CircularProgress,
     Tabs,
     Tab,
-    Stack,
-    Avatar,
+    Divider,
 } from '@mui/material';
 import {
     ArrowBack as ArrowBackIcon,
@@ -34,7 +31,6 @@ import {
     Business as BusinessIcon,
     Inventory as InventoryIcon,
     Add as AddIcon,
-    Language as LanguageIcon,
     LocationOn as LocationOnIcon,
     Phone as PhoneIcon,
 } from '@mui/icons-material';
@@ -45,13 +41,12 @@ import { productApi } from '@/services/apiProduct';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';
 import { CustomerBranchFormModal } from '@/components/CustomerBranchFormModal';
-import { gradients, getStatusColor, getBranchTypeColor } from '@/app/theme';
+import { getStatusColor, getBranchTypeColor } from '@/app/theme';
 import toast from 'react-hot-toast';
 
 export default function CustomerDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const theme = useTheme();
     const [customer, setCustomer] = useState<Customer | null>(null);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
@@ -154,200 +149,87 @@ export default function CustomerDetailPage() {
             <Sidebar>
                 <Box sx={{ width: '100%' }}>
                     {/* ヘッダー */}
-                    <Box sx={{ mb: 4 }}>
+                    <Box sx={{ mb: 3 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                            <IconButton 
+                            <IconButton
                                 onClick={() => router.push('/customers')}
                                 sx={{ mr: 1 }}
+                                aria-label="顧客一覧に戻る"
                             >
                                 <ArrowBackIcon />
                             </IconButton>
-                            <Typography variant="body2" color="text.secondary">
-                                カスタマー管理
+                            <Typography variant="h4" component="h1">
+                                {customer.company_name}
                             </Typography>
                         </Box>
 
-                        {/* カスタマー情報ヘッダーカード */}
-                        <Paper 
-                            elevation={2}
-                            sx={{ 
-                                p: 3, 
-                                background: gradients.primary,
-                                color: 'white',
-                            }}
-                        >
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <Box sx={{ display: 'flex', gap: 3, flex: 1 }}>
-                                    <Avatar
-                                        sx={{
-                                            width: 80,
-                                            height: 80,
-                                            bgcolor: 'rgba(255, 255, 255, 0.2)',
-                                            fontSize: '2rem',
-                                        }}
-                                    >
-                                        {customer.company_name.charAt(0)}
-                                    </Avatar>
-                                    <Box sx={{ flex: 1 }}>
-                                        <Typography variant="caption" sx={{ opacity: 0.9, mb: 0.5, display: 'block' }}>
-                                            {customer.customer_code}
-                                        </Typography>
-                                        <Typography variant="h4" sx={{ mb: 1 }}>
-                                            {customer.company_name}
-                                        </Typography>
-                                        <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
-                                            {customer.website && (
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                    <LanguageIcon sx={{ fontSize: 18, opacity: 0.9 }} />
-                                                    <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                                                        <a 
-                                                            href={customer.website} 
-                                                            target="_blank" 
-                                                            rel="noopener noreferrer"
-                                                            style={{ color: 'white', textDecoration: 'none' }}
-                                                        >
-                                                            ウェブサイト
-                                                        </a>
-                                                    </Typography>
-                                                </Box>
-                                            )}
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                <BusinessIcon sx={{ fontSize: 18, opacity: 0.9 }} />
-                                                <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                                                    拠点 {customer.active_branches_count || 0}件
-                                                </Typography>
-                                            </Box>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                <InventoryIcon sx={{ fontSize: 18, opacity: 0.9 }} />
-                                                <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                                                    製品 {products.length}件
-                                                </Typography>
-                                            </Box>
-                                        </Stack>
-                                    </Box>
+                        {/* 顧客情報カード */}
+                        <Paper sx={{ p: 3 }}>
+                            <Box sx={{
+                                display: 'grid',
+                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+                                gap: 3
+                            }}>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        顧客コード
+                                    </Typography>
+                                    <Typography variant="body1" fontWeight="medium">
+                                        {customer.customer_code}
+                                    </Typography>
                                 </Box>
-                                <Stack direction="row" spacing={1}>
-                                    <Chip 
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        ウェブサイト
+                                    </Typography>
+                                    {customer.website ? (
+                                        <a
+                                            href={customer.website}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ color: '#1976d2', textDecoration: 'none' }}
+                                        >
+                                            {customer.website}
+                                        </a>
+                                    ) : (
+                                        <Typography variant="body1" fontWeight="medium">-</Typography>
+                                    )}
+                                </Box>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        ステータス
+                                    </Typography>
+                                    <Chip
                                         label={customer.is_active ? '有効' : '無効'}
                                         size="small"
                                         color={customer.is_active ? 'success' : 'default'}
-                                        sx={{ 
-                                            bgcolor: customer.is_active ? theme.palette.success.main : theme.palette.grey[500],
-                                            color: 'white',
-                                        }}
                                     />
-                                    <Button
-                                        variant="contained"
-                                        size="small"
-                                        startIcon={<EditIcon />}
-                                        onClick={() => router.push(`/customers/${customer.id}/edit`)}
-                                        sx={{ 
-                                            bgcolor: 'rgba(255, 255, 255, 0.2)',
-                                            '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.3)' }
-                                        }}
-                                    >
-                                        編集
-                                    </Button>
-                                    <Button
-                                        variant="contained"
-                                        size="small"
-                                        color="error"
-                                        startIcon={<DeleteIcon />}
-                                        onClick={handleDelete}
-                                    >
-                                        削除
-                                    </Button>
-                                </Stack>
+                                </Box>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        拠点数
+                                    </Typography>
+                                    <Typography variant="body1" fontWeight="medium">
+                                        {customer.active_branches_count || 0}件
+                                    </Typography>
+                                </Box>
                             </Box>
+
+                            {customer.notes && (
+                                <>
+                                    <Divider sx={{ my: 2 }} />
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                            備考
+                                        </Typography>
+                                        <Typography variant="body2">
+                                            {customer.notes}
+                                        </Typography>
+                                    </Box>
+                                </>
+                            )}
                         </Paper>
                     </Box>
-
-                    {/* 詳細情報セクション */}
-                    <Grid container spacing={3} sx={{ mb: 3 }}>
-                        {/* 基本情報 */}
-                        <Grid item xs={12} md={6}>
-                            <Card>
-                                <CardContent sx={{ p: 3 }}>
-                                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
-                                        基本情報
-                                    </Typography>
-                                    <Stack spacing={2}>
-                                        {customer.notes && (
-                                            <Box>
-                                                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                                                    備考
-                                                </Typography>
-                                                <Typography variant="body2">
-                                                    {customer.notes}
-                                                </Typography>
-                                            </Box>
-                                        )}
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                                                作成日時
-                                            </Typography>
-                                            <Typography variant="body2">
-                                                {new Date(customer.created_at).toLocaleString('ja-JP', {
-                                                    year: 'numeric',
-                                                    month: 'long',
-                                                    day: 'numeric',
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                })}
-                                            </Typography>
-                                        </Box>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                                                最終更新
-                                            </Typography>
-                                            <Typography variant="body2">
-                                                {new Date(customer.updated_at).toLocaleString('ja-JP', {
-                                                    year: 'numeric',
-                                                    month: 'long',
-                                                    day: 'numeric',
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                })}
-                                            </Typography>
-                                        </Box>
-                                    </Stack>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-
-                        {/* 統計情報 */}
-                        <Grid item xs={12} md={6}>
-                            <Card sx={{ height: '100%' }}>
-                                <CardContent sx={{ p: 3 }}>
-                                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
-                                        統計情報
-                                    </Typography>
-                                    <Grid container spacing={2}>
-                                        <Grid item xs={6}>
-                                            <Card elevation={0} sx={{ bgcolor: 'background.default', p: 2, textAlign: 'center' }}>
-                                                <Typography variant="h3" color="primary">
-                                                    {customer.active_branches_count || 0}
-                                                </Typography>
-                                                <Typography variant="caption" color="text.secondary">
-                                                    有効拠点数
-                                                </Typography>
-                                            </Card>
-                                        </Grid>
-                                        <Grid item xs={6}>
-                                            <Card elevation={0} sx={{ bgcolor: 'background.default', p: 2, textAlign: 'center' }}>
-                                                <Typography variant="h3" color="secondary">
-                                                    {products.length}
-                                                </Typography>
-                                                <Typography variant="caption" color="text.secondary">
-                                                    関連製品数
-                                                </Typography>
-                                            </Card>
-                                        </Grid>
-                                    </Grid>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-                    </Grid>
 
                     {/* タブセクション */}
                     <Paper>
@@ -389,12 +271,11 @@ export default function CustomerDetailPage() {
                                     <Grid container spacing={2}>
                                         {customer.branches.map((branch: CustomerBranch) => (
                                             <Grid item xs={12} md={6} key={branch.id}>
-                                                <Card 
-                                                    sx={{ 
+                                                <Card
+                                                    sx={{
                                                         p: 2.5,
                                                         cursor: 'pointer',
-                                                        transition: theme.transitions.create(['transform', 'box-shadow']),
-                                                        '&:hover': { 
+                                                        '&:hover': {
                                                             transform: 'translateY(-2px)',
                                                             boxShadow: 2,
                                                         }

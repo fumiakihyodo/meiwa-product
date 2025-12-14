@@ -25,6 +25,8 @@ import {
     Download as DownloadIcon,
 } from '@mui/icons-material';
 import apiClient from '@/services/api';
+import { AuthGuard } from '@/components/AuthGuard';
+import { Sidebar } from '@/components/Sidebar';
 
 interface ImportError {
     row: number;
@@ -174,12 +176,14 @@ export default function BulkImportPage() {
     };
 
     return (
-        <Box>
-            <Typography variant="h4" gutterBottom>
-                一括登録
-            </Typography>
+        <AuthGuard>
+            <Sidebar>
+                <Box sx={{ width: '100%' }}>
+                    <Typography variant="h4" gutterBottom>
+                        一括登録
+                    </Typography>
 
-            <Paper sx={{ mt: 3 }}>
+                    <Paper sx={{ mt: 3 }}>
                 <Tabs
                     value={selectedTab}
                     onChange={(_, newValue) => {
@@ -323,6 +327,8 @@ export default function BulkImportPage() {
                     )}
                 </Box>
             </Paper>
-        </Box>
+                </Box>
+            </Sidebar>
+        </AuthGuard>
     );
 }

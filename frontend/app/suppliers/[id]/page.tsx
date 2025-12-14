@@ -8,9 +8,6 @@ import {
     Paper,
     Typography,
     Button,
-    Grid,
-    Card,
-    CardContent,
     Chip,
     Divider,
     Table,
@@ -407,143 +404,87 @@ export default function SupplierDetailPage() {
             <Sidebar>
                 <Box sx={{ width: '100%' }}>
                     {/* ヘッダー */}
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <IconButton onClick={() => router.push('/suppliers')}>
+                    <Box sx={{ mb: 3 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            <IconButton
+                                onClick={() => router.push('/suppliers')}
+                                sx={{ mr: 1 }}
+                                aria-label="仕入先一覧に戻る"
+                            >
                                 <ArrowBackIcon />
                             </IconButton>
                             <Typography variant="h4" component="h1">
-                                仕入先詳細
+                                {supplier.company_name}
                             </Typography>
                         </Box>
-                        <Box>
-                            <Button
-                                variant="outlined"
-                                startIcon={<EditIcon />}
-                                onClick={handleOpenSupplierEditModal}
-                                sx={{ mr: 1 }}
-                            >
-                                編集
-                            </Button>
-                            <Button
-                                variant="outlined"
-                                color="error"
-                                startIcon={<DeleteIcon />}
-                                onClick={handleDeleteSupplier}
-                            >
-                                削除
-                            </Button>
-                        </Box>
+
+                        {/* 仕入先情報カード */}
+                        <Paper sx={{ p: 3 }}>
+                            <Box sx={{
+                                display: 'grid',
+                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+                                gap: 3
+                            }}>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        仕入先コード
+                                    </Typography>
+                                    <Typography variant="body1" fontWeight="medium">
+                                        {supplier.supplier_code}
+                                    </Typography>
+                                </Box>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        ウェブサイト
+                                    </Typography>
+                                    {supplier.website ? (
+                                        <a
+                                            href={supplier.website}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ color: '#1976d2', textDecoration: 'none' }}
+                                        >
+                                            {supplier.website}
+                                        </a>
+                                    ) : (
+                                        <Typography variant="body1" fontWeight="medium">-</Typography>
+                                    )}
+                                </Box>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        ステータス
+                                    </Typography>
+                                    <Chip
+                                        label={supplier.is_active ? '有効' : '無効'}
+                                        size="small"
+                                        color={supplier.is_active ? 'success' : 'default'}
+                                    />
+                                </Box>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        拠点数
+                                    </Typography>
+                                    <Typography variant="body1" fontWeight="medium">
+                                        {branches.length}件 ({supplier.active_branches_count || 0}件有効)
+                                    </Typography>
+                                </Box>
+                            </Box>
+
+                            {supplier.notes && (
+                                <>
+                                    <Divider sx={{ my: 2 }} />
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                            備考
+                                        </Typography>
+                                        <Typography variant="body2">
+                                            {supplier.notes}
+                                        </Typography>
+                                    </Box>
+                                </>
+                            )}
+                        </Paper>
                     </Box>
-
-                    {/* 基本情報 */}
-                    <Grid container spacing={3} sx={{ mb: 3 }}>
-                        <Grid item xs={12} md={6}>
-                            <Card>
-                                <CardContent>
-                                    <Typography variant="h6" gutterBottom>
-                                        基本情報
-                                    </Typography>
-                                    <Divider sx={{ mb: 2 }} />
-                                    <Grid container spacing={2}>
-                                        <Grid item xs={12}>
-                                            <Typography variant="body2" color="text.secondary">
-                                                仕入先コード
-                                            </Typography>
-                                            <Typography variant="body1" fontWeight="bold">
-                                                {supplier.supplier_code}
-                                            </Typography>
-                                        </Grid>
-                                        <Grid item xs={12}>
-                                            <Typography variant="body2" color="text.secondary">
-                                                企業名
-                                            </Typography>
-                                            <Typography variant="h6" fontWeight="bold">
-                                                {supplier.company_name}
-                                            </Typography>
-                                        </Grid>
-                                        <Grid item xs={12}>
-                                            <Typography variant="body2" color="text.secondary">
-                                                ウェブサイト
-                                            </Typography>
-                                            {supplier.website ? (
-                                                <a
-                                                    href={supplier.website}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    style={{ color: '#1976d2', textDecoration: 'none' }}
-                                                >
-                                                    {supplier.website}
-                                                </a>
-                                            ) : (
-                                                <Typography variant="body1">-</Typography>
-                                            )}
-                                        </Grid>
-                                        <Grid item xs={6}>
-                                            <Typography variant="body2" color="text.secondary">
-                                                ステータス
-                                            </Typography>
-                                            <Box sx={{ mt: 0.5 }}>
-                                                <Chip
-                                                    label={supplier.is_active ? '有効' : '無効'}
-                                                    color={supplier.is_active ? 'success' : 'default'}
-                                                    size="small"
-                                                />
-                                            </Box>
-                                        </Grid>
-                                        <Grid item xs={6}>
-                                            <Typography variant="body2" color="text.secondary">
-                                                拠点数
-                                            </Typography>
-                                            <Typography variant="body1" fontWeight="bold">
-                                                {branches.length} ({supplier.active_branches_count || 0}件有効)
-                                            </Typography>
-                                        </Grid>
-                                    </Grid>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-
-                        <Grid item xs={12} md={6}>
-                            <Card>
-                                <CardContent>
-                                    <Typography variant="h6" gutterBottom>
-                                        統計情報
-                                    </Typography>
-                                    <Divider sx={{ mb: 2 }} />
-                                    <Grid container spacing={2}>
-                                        <Grid item xs={6}>
-                                            <Typography variant="body2" color="text.secondary">
-                                                取扱部品数
-                                            </Typography>
-                                            <Typography variant="h5" fontWeight="bold" color="primary">
-                                                {parts.length}
-                                            </Typography>
-                                        </Grid>
-                                        <Grid item xs={6}>
-                                            <Typography variant="body2" color="text.secondary">
-                                                有効部品数
-                                            </Typography>
-                                            <Typography variant="h5" fontWeight="bold" color="success.main">
-                                                {parts.filter(p => p.is_active).length}
-                                            </Typography>
-                                        </Grid>
-                                        <Grid item xs={12}>
-                                            <Divider sx={{ my: 1 }} />
-                                        </Grid>
-                                        <Grid item xs={12}>
-                                            <Typography variant="body2" color="text.secondary" gutterBottom>
-                                                備考
-                                            </Typography>
-                                            <Typography variant="body1">
-                                                {supplier.notes || '備考なし'}
-                                            </Typography>
-                                        </Grid>
-                                    </Grid>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-                    </Grid>
 
                     {/* タブ */}
                     <Paper>

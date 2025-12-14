@@ -15,16 +15,11 @@ import {
     IconButton,
     Typography,
     Box,
-    Avatar,
-    Menu,
-    MenuItem,
     Collapse,
 } from '@mui/material';
 import {
     Dashboard as DashboardIcon,
     People as PeopleIcon,
-    AccountCircle as AccountCircleIcon,
-    ExitToApp as ExitToAppIcon,
     Menu as MenuIcon,
     ChevronLeft as ChevronLeftIcon,
     Inventory as InventoryIcon,
@@ -38,6 +33,7 @@ import {
     CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
+import { Header } from '@/components/Header';
 
 const drawerWidth = 240;
 
@@ -47,7 +43,6 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
     const [mobileOpen, setMobileOpen] = useState(false);
-    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
     // localStorageから初期状態を読み込む
     const [supplierOpen, setSupplierOpen] = useState(() => {
@@ -74,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
         return true;
     });
 
-    const { user, logout, isAdmin } = useAuth();
+    const { isAdmin } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
 
@@ -101,22 +96,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
         setMobileOpen(!mobileOpen);
     };
 
-    const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-        setAnchorEl(event.currentTarget);
-    };
-
-    const handleProfileMenuClose = () => {
-        setAnchorEl(null);
-    };
-
     const handleNavigation = (path: string) => {
         router.push(path);
         setMobileOpen(false);
-    };
-
-    const handleLogout = async () => {
-        handleProfileMenuClose();
-        await logout();
     };
 
     const handleSupplierToggle = () => {
@@ -142,12 +124,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
             text: '一括登録',
             icon: <CloudUploadIcon />,
             path: '/bulk-import',
-            show: true,
-        },
-        {
-            text: 'プロフィール',
-            icon: <AccountCircleIcon />,
-            path: '/profile',
             show: true,
         },
         {
@@ -315,24 +291,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                     </List>
                 </Collapse>
             </List>
-            <Divider />
-
-            {/* ユーザー情報 */}
-            <Box sx={{ p: 2, mt: 'auto' }}>
-                <Box display='flex' alignItems='center' gap={1}>
-                    <Avatar sx={{ width: 32, height: 32 }}>
-                        {user?.userid?.charAt(0).toUpperCase()}
-                    </Avatar>
-                    <Box>
-                        <Typography variant='body2' fontWeight='bold'>
-                            {user?.userid}
-                        </Typography>
-                        <Typography variant='caption' color='text.secondary'>
-                            {user?.email}
-                        </Typography>
-                    </Box>
-                </Box>
-            </Box>
         </>
     );
 
@@ -421,40 +379,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                     mt: { xs: 8, sm: 0 },
                 }}
             >
-                {/* User Menu */}
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-                    <IconButton onClick={handleProfileMenuOpen}>
-                        <Avatar sx={{ width: 36, height: 36 }}>
-                            {user?.userid?.charAt(0).toUpperCase()}
-                        </Avatar>
-                    </IconButton>
-                    <Menu
-                        anchorEl={anchorEl}
-                        open={Boolean(anchorEl)}
-                        onClose={handleProfileMenuClose}
-                        anchorOrigin={{
-                            vertical: 'bottom',
-                            horizontal: 'right',
-                        }}
-                        transformOrigin={{
-                            vertical: 'top',
-                            horizontal: 'right',
-                        }}
-                    >
-                        <MenuItem onClick={() => { handleProfileMenuClose(); router.push('/profile'); }}>
-                            <ListItemIcon>
-                                <AccountCircleIcon fontSize="small" />
-                            </ListItemIcon>
-                            プロフィール
-                        </MenuItem>
-                        <MenuItem onClick={handleLogout}>
-                            <ListItemIcon>
-                                <ExitToAppIcon fontSize="small" />
-                            </ListItemIcon>
-                            ログアウト
-                        </MenuItem>
-                    </Menu>
-                </Box>
+                {/* Header */}
+                <Header />
 
                 {/* Page Content */}
                 {children}
