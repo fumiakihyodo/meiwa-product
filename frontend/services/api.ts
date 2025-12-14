@@ -88,7 +88,7 @@ apiClient.interceptors.response.use(
 
         // リフレッシュエンドポイント自体が401を返した場合は、即座にログアウト
         if (
-            error.config?.url?.includes('token/refresh/') && 
+            error.config?.url?.includes('/token/refresh/') && 
             error.response?.status === 401
         ) {
             clearTokens();
@@ -170,7 +170,7 @@ apiClient.interceptors.response.use(
 export const authApi = {
     login: async (credentials: LoginCredentials):
         Promise<AuthResponse> => {
-        const response = await apiClient.post<AuthResponse>('api/accounts/auth/login/', credentials);
+        const response = await apiClient.post<AuthResponse>('/accounts/auth/login/', credentials);
         setTokens(response.data.access, response.data.refresh);
         return response.data;
     },
