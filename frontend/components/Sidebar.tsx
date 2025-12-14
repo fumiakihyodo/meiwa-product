@@ -181,9 +181,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
     const drawer = (
         <>
             <Toolbar>
-                <Typography variant='h6' noWrap component='div'>
-                    アカウント管理
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'center', py: 1 }}>
+                    {/* TODO: 企業ロゴ画像のパスを設定してください */}
+                    {/* 例: <Box component="img" src="/logo.png" alt="企業ロゴ" sx={{ height: 40, objectFit: 'contain' }} /> */}
+                    <Typography variant='h6' noWrap component='div' sx={{ fontWeight: 'bold' }}>
+                        Meiwa Product
+                    </Typography>
+                </Box>
             </Toolbar>
             <Divider />
 
