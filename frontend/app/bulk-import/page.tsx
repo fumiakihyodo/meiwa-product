@@ -36,7 +36,7 @@ interface ImportResult {
     message: string;
     success_count: number;
     errors: ImportError[];
-    created_items?: any[];
+    created_items?: Record<string, unknown>[];
 }
 
 type ImportType = 'customers' | 'customer_branches' | 'customer_contacts' |

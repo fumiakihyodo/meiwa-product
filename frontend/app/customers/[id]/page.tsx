@@ -70,7 +70,7 @@ export default function CustomerDetailPage() {
 
     const fetchProducts = useCallback(async () => {
         try {
-            const data = await productApi.getProducts({ search: `customer_id:${params.id}` });
+            const data = await productApi.getProducts({ customer: params.id.toString() });
             setProducts(data);
         } catch (error) {
             console.error(error);

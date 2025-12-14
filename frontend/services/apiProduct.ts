@@ -14,7 +14,7 @@ import {
 
 // Product API
 export const productApi = {
-    getProducts: async (params?: { status?: string; search?: string }): Promise<Product[]> => {
+    getProducts: async (params?: { status?: string; search?: string; customer?: string; customer_branch?: string }): Promise<Product[]> => {
         const response = await apiClient.get<PaginatedResponse<Product>>('/products/', { params });
         return response.data.results;
     },

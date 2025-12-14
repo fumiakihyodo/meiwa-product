@@ -205,9 +205,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
     const drawer = (
         <>
             <Toolbar>
-                <Typography variant='h6' noWrap component='div'>
-                    アカウント管理
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'center', py: 1 }}>
+                    {/* TODO: 企業ロゴ画像のパスを設定してください */}
+                    {/* 例: <Box component="img" src="/logo.png" alt="企業ロゴ" sx={{ height: 40, objectFit: 'contain' }} /> */}
+                    <Typography variant='h6' noWrap component='div' sx={{ fontWeight: 'bold' }}>
+                        Meiwa Product
+                    </Typography>
+                </Box>
             </Toolbar>
             <Divider />
 
@@ -421,39 +425,74 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                     mt: { xs: 8, sm: 0 },
                 }}
             >
-                {/* User Menu */}
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-                    <IconButton onClick={handleProfileMenuOpen}>
-                        <Avatar sx={{ width: 36, height: 36 }}>
+                {/* Header Menu */}
+                <Box
+                    sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        mb: 2,
+                        px: 2,
+                        py: 1,
+                        bgcolor: 'primary.main',
+                        borderRadius: 1,
+                        boxShadow: 1,
+                    }}
+                >
+                    {/* Left side: Navigation Menu */}
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        <IconButton
+                            size="small"
+                            onClick={() => handleNavigation('/dashboard')}
+                            sx={{ color: 'white' }}
+                        >
+                            <DashboardIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                            size="small"
+                            onClick={() => handleNavigation('/products')}
+                            sx={{ color: 'white' }}
+                        >
+                            <InventoryIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                            size="small"
+                            onClick={() => handleNavigation('/customers')}
+                            sx={{ color: 'white' }}
+                        >
+                            <PersonOutlineIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                            size="small"
+                            onClick={() => handleNavigation('/suppliers')}
+                            sx={{ color: 'white' }}
+                        >
+                            <BusinessIcon fontSize="small" />
+                        </IconButton>
+                    </Box>
+
+                    {/* Right side: User Menu */}
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        <IconButton
+                            size="small"
+                            onClick={() => handleNavigation('/profile')}
+                            sx={{ color: 'white' }}
+                            title="プロフィール"
+                        >
+                            <AccountCircleIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                            size="small"
+                            onClick={handleLogout}
+                            sx={{ color: 'white' }}
+                            title="ログアウト"
+                        >
+                            <ExitToAppIcon fontSize="small" />
+                        </IconButton>
+                        <Avatar sx={{ width: 32, height: 32, ml: 1, bgcolor: 'white', color: 'primary.main' }}>
                             {user?.userid?.charAt(0).toUpperCase()}
                         </Avatar>
-                    </IconButton>
-                    <Menu
-                        anchorEl={anchorEl}
-                        open={Boolean(anchorEl)}
-                        onClose={handleProfileMenuClose}
-                        anchorOrigin={{
-                            vertical: 'bottom',
-                            horizontal: 'right',
-                        }}
-                        transformOrigin={{
-                            vertical: 'top',
-                            horizontal: 'right',
-                        }}
-                    >
-                        <MenuItem onClick={() => { handleProfileMenuClose(); router.push('/profile'); }}>
-                            <ListItemIcon>
-                                <AccountCircleIcon fontSize="small" />
-                            </ListItemIcon>
-                            プロフィール
-                        </MenuItem>
-                        <MenuItem onClick={handleLogout}>
-                            <ListItemIcon>
-                                <ExitToAppIcon fontSize="small" />
-                            </ListItemIcon>
-                            ログアウト
-                        </MenuItem>
-                    </Menu>
+                    </Box>
                 </Box>
 
                 {/* Page Content */}
