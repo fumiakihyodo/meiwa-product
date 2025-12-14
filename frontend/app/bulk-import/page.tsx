@@ -24,6 +24,7 @@ import {
     CloudUpload as UploadIcon,
     Download as DownloadIcon,
 } from '@mui/icons-material';
+import apiClient from '@/services/api';
 
 interface ImportError {
     row: number;
@@ -45,48 +46,48 @@ type ImportType = 'customers' | 'customer_branches' | 'customer_contacts' |
 const IMPORT_CONFIGS: Record<ImportType, { label: string; templateUrl: string; importUrl: string }> = {
     customers: {
         label: '顧客',
-        templateUrl: '/api/customers/csv-template/',
-        importUrl: '/api/customers/bulk-import/'
+        templateUrl: 'customers/csv-template/',
+        importUrl: 'customers/bulk-import/'
     },
     customer_branches: {
         label: '顧客拠点',
-        templateUrl: '/api/customers/branches/csv-template/',
-        importUrl: '/api/customers/branches/bulk-import/'
+        templateUrl: 'customers/branches/csv-template/',
+        importUrl: 'customers/branches/bulk-import/'
     },
     customer_contacts: {
         label: '顧客担当者',
-        templateUrl: '/api/customers/contacts/csv-template/',
-        importUrl: '/api/customers/contacts/bulk-import/'
+        templateUrl: 'customers/contacts/csv-template/',
+        importUrl: 'customers/contacts/bulk-import/'
     },
     suppliers: {
         label: '仕入先',
-        templateUrl: '/api/supplier/suppliers/csv-template/',
-        importUrl: '/api/supplier/suppliers/bulk-import/'
+        templateUrl: 'supplier/suppliers/csv-template/',
+        importUrl: 'supplier/suppliers/bulk-import/'
     },
     supplier_branches: {
         label: '仕入先拠点',
-        templateUrl: '/api/supplier/branches/csv-template/',
-        importUrl: '/api/supplier/branches/bulk-import/'
+        templateUrl: 'supplier/branches/csv-template/',
+        importUrl: 'supplier/branches/bulk-import/'
     },
     supplier_contacts: {
         label: '仕入先担当者',
-        templateUrl: '/api/supplier/contacts/csv-template/',
-        importUrl: '/api/supplier/contacts/bulk-import/'
+        templateUrl: 'supplier/contacts/csv-template/',
+        importUrl: 'supplier/contacts/bulk-import/'
     },
     products: {
         label: '製品',
-        templateUrl: '/api/products/csv-template/',
-        importUrl: '/api/products/bulk-import/'
+        templateUrl: 'products/csv-template/',
+        importUrl: 'products/bulk-import/'
     },
     parts: {
         label: '部品',
-        templateUrl: '/api/purchases/parts/csv-template/',
-        importUrl: '/api/purchases/parts/bulk-import/'
+        templateUrl: 'purchases/parts/csv-template/',
+        importUrl: 'purchases/parts/bulk-import/'
     },
     price_histories: {
         label: '価格履歴',
-        templateUrl: '/api/purchases/price-histories/csv-template/',
-        importUrl: '/api/purchases/price-histories/bulk-import/'
+        templateUrl: 'purchases/price-histories/csv-template/',
+        importUrl: 'purchases/price-histories/bulk-import/'
     }
 };
 
@@ -106,25 +107,20 @@ export default function BulkImportPage() {
     const handleDownloadTemplate = async () => {
         try {
             const config = IMPORT_CONFIGS[selectedTab];
-            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-            const response = await fetch(`${baseUrl}${config.templateUrl}`, {
-                credentials: 'include',
+            const response = await apiClient.get(config.templateUrl, {
+                responseType: 'blob',
             });
 
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${selectedTab}_template.csv`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            } else {
-                alert('テンプレートのダウンロードに失敗しました');
-            }
+            const blob = new Blob([response.data], { type: 'text/csv; charset=utf-8-sig' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${selectedTab}_template.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
         } catch (error) {
             console.error('Download error:', error);
             alert('テンプレートのダウンロード中にエラーが発生しました');
@@ -142,21 +138,19 @@ export default function BulkImportPage() {
 
         try {
             const config = IMPORT_CONFIGS[selectedTab];
-            const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await fetch(`${baseUrl}${config.importUrl}`, {
-                method: 'POST',
-                credentials: 'include',
-                body: formData,
+            const response = await apiClient.post(config.importUrl, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
             });
 
-            const data = await response.json();
-            setResult(data);
+            setResult(response.data);
 
-            if (data.success) {
+            if (response.data.success) {
                 setFile(null);
             }
         } catch (error) {
