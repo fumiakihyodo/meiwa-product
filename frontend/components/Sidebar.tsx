@@ -35,6 +35,7 @@ import {
     PersonOutline as PersonOutlineIcon,
     ExpandLess,
     ExpandMore,
+    CloudUpload as CloudUploadIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
 
@@ -135,6 +136,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
             text: 'ダッシュボード',
             icon: <DashboardIcon />,
             path: '/dashboard',
+            show: true,
+        },
+        {
+            text: '一括登録',
+            icon: <CloudUploadIcon />,
+            path: '/bulk-import',
             show: true,
         },
         {

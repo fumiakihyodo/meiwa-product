@@ -2,11 +2,17 @@
 
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.db.models import Count, Q, Prefetch
+from django.db import transaction
+from decimal import Decimal, InvalidOperation
+from datetime import datetime
 import logging
 import os
+import csv
+import io
 
 from api.purchases.models import Part, PriceHistory
 from api.purchases.serializers import (
@@ -17,6 +23,8 @@ from api.purchases.serializers import (
     PriceHistoryDetailSerializer,
     PriceHistoryCreateUpdateSerializer,
 )
+from api.products.models import Product
+from api.supplier.models import SupplierBranch
 
 logger = logging.getLogger(__name__)
 
@@ -386,3 +394,372 @@ def download_quote_file(request, pk):
         logger.error(
             f"[Quote File Download] Traceback: {traceback.format_exc()}")
         raise Http404("ファイルのダウンロードに失敗しました")
+
+
+# ==================== CSV Bulk Import/Export Views ====================
+
+class PartBulkImportView(APIView):
+    """部品一括登録ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """CSVファイルから一括登録"""
+        if 'file' not in request.FILES:
+            return Response(
+                {"error": "CSVファイルがアップロードされていません"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        csv_file = request.FILES['file']
+
+        if not csv_file.name.endswith('.csv'):
+            return Response(
+                {"error": "CSVファイルのみアップロード可能です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            decoded_file = csv_file.read().decode('utf-8-sig')
+            io_string = io.StringIO(decoded_file)
+            reader = csv.DictReader(io_string)
+
+            errors = []
+            success_count = 0
+            created_items = []
+
+            with transaction.atomic():
+                for row_num, row in enumerate(reader, start=2):
+                    try:
+                        # 必須フィールドのチェック
+                        if not row.get('product_number'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '製品品番は必須です'
+                            })
+                            continue
+
+                        if not row.get('supplier_branch_code'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '仕入先支店コードは必須です'
+                            })
+                            continue
+
+                        if not row.get('part_number'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '部品品番は必須です'
+                            })
+                            continue
+
+                        if not row.get('part_name'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '部品名は必須です'
+                            })
+                            continue
+
+                        # 製品の検索
+                        try:
+                            product = Product.objects.get(
+                                product_number=row.get('product_number', '').strip()
+                            )
+                        except Product.DoesNotExist:
+                            errors.append({
+                                'row': row_num,
+                                'error': f"製品品番 '{row.get('product_number')}' が見つかりません"
+                            })
+                            continue
+
+                        # サプライヤー支店の検索
+                        try:
+                            supplier_branch = SupplierBranch.objects.get(
+                                branch_code=row.get('supplier_branch_code', '').strip()
+                            )
+                        except SupplierBranch.DoesNotExist:
+                            errors.append({
+                                'row': row_num,
+                                'error': f"仕入先支店コード '{row.get('supplier_branch_code')}' が見つかりません"
+                            })
+                            continue
+
+                        # 最小発注数量のパース
+                        try:
+                            min_order_qty = int(row.get('minimum_order_quantity', 1))
+                        except (ValueError, TypeError):
+                            min_order_qty = 1
+
+                        # リードタイムのパース
+                        lead_time_str = row.get('lead_time_days', '').strip()
+                        lead_time = None
+                        if lead_time_str:
+                            try:
+                                lead_time = int(lead_time_str)
+                            except (ValueError, TypeError):
+                                pass
+
+                        # データの準備
+                        part_data = {
+                            'product': product.id,
+                            'supplier_branch': supplier_branch.id,
+                            'part_number': row.get('part_number', '').strip(),
+                            'part_name': row.get('part_name', '').strip(),
+                            'supplier_part_name': row.get('supplier_part_name', '').strip() or None,
+                            'specification': row.get('specification', '').strip() or '',
+                            'unit': row.get('unit', '個').strip(),
+                            'order_type': row.get('order_type', 'MOQ').strip(),
+                            'minimum_order_quantity': min_order_qty,
+                            'lead_time_days': lead_time,
+                            'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい'],
+                            'notes': row.get('notes', '').strip() or '',
+                        }
+
+                        # シリアライザーでバリデーション
+                        serializer = PartCreateUpdateSerializer(data=part_data)
+                        if serializer.is_valid():
+                            part = serializer.save(created_by=request.user)
+                            created_items.append({
+                                'row': row_num,
+                                'part_number': part.part_number,
+                                'part_name': part.part_name
+                            })
+                            success_count += 1
+                        else:
+                            errors.append({
+                                'row': row_num,
+                                'error': serializer.errors
+                            })
+
+                    except Exception as e:
+                        errors.append({
+                            'row': row_num,
+                            'error': str(e)
+                        })
+
+                # エラーがある場合はロールバック
+                if errors:
+                    transaction.set_rollback(True)
+                    return Response({
+                        'success': False,
+                        'message': f'{len(errors)}件のエラーがあります',
+                        'errors': errors,
+                        'success_count': 0
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({
+                'success': True,
+                'message': f'{success_count}件の部品を登録しました',
+                'success_count': success_count,
+                'created_items': created_items,
+                'errors': []
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"CSV一括登録エラー: {str(e)}")
+            return Response(
+                {"error": f"CSVファイルの処理中にエラーが発生しました: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PartCSVTemplateView(APIView):
+    """部品CSVテンプレートダウンロードビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """CSVテンプレートをダウンロード"""
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = 'attachment; filename="part_template.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'product_number', 'supplier_branch_code', 'part_number', 'part_name',
+            'supplier_part_name', 'specification', 'unit', 'order_type',
+            'minimum_order_quantity', 'lead_time_days', 'is_active', 'notes'
+        ])
+        writer.writerow([
+            'PROD001', 'HQ', 'PART001', 'サンプル部品', 'Sample Part',
+            '仕様説明', '個', 'MOQ', '100', '30', 'true', '備考欄'
+        ])
+
+        return response
+
+
+class PriceHistoryBulkImportView(APIView):
+    """価格履歴一括登録ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """CSVファイルから一括登録"""
+        if 'file' not in request.FILES:
+            return Response(
+                {"error": "CSVファイルがアップロードされていません"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        csv_file = request.FILES['file']
+
+        if not csv_file.name.endswith('.csv'):
+            return Response(
+                {"error": "CSVファイルのみアップロード可能です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            decoded_file = csv_file.read().decode('utf-8-sig')
+            io_string = io.StringIO(decoded_file)
+            reader = csv.DictReader(io_string)
+
+            errors = []
+            success_count = 0
+            created_items = []
+
+            with transaction.atomic():
+                for row_num, row in enumerate(reader, start=2):
+                    try:
+                        # 必須フィールドのチェック
+                        if not row.get('part_number'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '部品品番は必須です'
+                            })
+                            continue
+
+                        if not row.get('price'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '単価は必須です'
+                            })
+                            continue
+
+                        if not row.get('start_date'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '開始日は必須です'
+                            })
+                            continue
+
+                        # 部品の検索
+                        try:
+                            part = Part.objects.get(
+                                part_number=row.get('part_number', '').strip()
+                            )
+                        except Part.DoesNotExist:
+                            errors.append({
+                                'row': row_num,
+                                'error': f"部品品番 '{row.get('part_number')}' が見つかりません"
+                            })
+                            continue
+
+                        # 価格のパース
+                        try:
+                            price = Decimal(row.get('price', '0').strip())
+                        except (InvalidOperation, ValueError):
+                            errors.append({
+                                'row': row_num,
+                                'error': '単価の形式が不正です'
+                            })
+                            continue
+
+                        # 日付のパース
+                        try:
+                            start_date = datetime.strptime(row.get('start_date', '').strip(), '%Y-%m-%d').date()
+                        except ValueError:
+                            errors.append({
+                                'row': row_num,
+                                'error': '開始日の形式が不正です（YYYY-MM-DD形式で入力してください）'
+                            })
+                            continue
+
+                        end_date = None
+                        end_date_str = row.get('end_date', '').strip()
+                        if end_date_str:
+                            try:
+                                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                            except ValueError:
+                                errors.append({
+                                    'row': row_num,
+                                    'error': '終了日の形式が不正です（YYYY-MM-DD形式で入力してください）'
+                                })
+                                continue
+
+                        # データの準備
+                        price_history_data = {
+                            'part': part.id,
+                            'price': price,
+                            'start_date': start_date,
+                            'end_date': end_date,
+                            'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい'],
+                            'change_reason': row.get('change_reason', '').strip() or '',
+                            'notes': row.get('notes', '').strip() or '',
+                        }
+
+                        # シリアライザーでバリデーション
+                        serializer = PriceHistoryCreateUpdateSerializer(data=price_history_data)
+                        if serializer.is_valid():
+                            price_history = serializer.save(created_by=request.user)
+                            created_items.append({
+                                'row': row_num,
+                                'part_number': part.part_number,
+                                'price': str(price_history.price),
+                                'start_date': str(price_history.start_date)
+                            })
+                            success_count += 1
+                        else:
+                            errors.append({
+                                'row': row_num,
+                                'error': serializer.errors
+                            })
+
+                    except Exception as e:
+                        errors.append({
+                            'row': row_num,
+                            'error': str(e)
+                        })
+
+                # エラーがある場合はロールバック
+                if errors:
+                    transaction.set_rollback(True)
+                    return Response({
+                        'success': False,
+                        'message': f'{len(errors)}件のエラーがあります',
+                        'errors': errors,
+                        'success_count': 0
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({
+                'success': True,
+                'message': f'{success_count}件の価格履歴を登録しました',
+                'success_count': success_count,
+                'created_items': created_items,
+                'errors': []
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"CSV一括登録エラー: {str(e)}")
+            return Response(
+                {"error": f"CSVファイルの処理中にエラーが発生しました: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PriceHistoryCSVTemplateView(APIView):
+    """価格履歴CSVテンプレートダウンロードビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """CSVテンプレートをダウンロード"""
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = 'attachment; filename="price_history_template.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'part_number', 'price', 'start_date', 'end_date',
+            'is_active', 'change_reason', 'notes'
+        ])
+        writer.writerow([
+            'PART001', '1500.00', '2024-01-01', '2024-12-31',
+            'true', '価格改定', '備考欄'
+        ])
+
+        return response

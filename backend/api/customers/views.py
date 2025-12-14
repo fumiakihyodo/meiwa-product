@@ -2,7 +2,12 @@
 
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.db.models import Count, Q
+from django.http import HttpResponse
+from django.db import transaction
+import csv
+import io
 
 from api.customers.models import Customer, CustomerBranch, CustomerContact
 from api.customers.serializers import (
@@ -240,3 +245,423 @@ class CustomerContactDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         self.perform_destroy(self.get_object())
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ==================== CSV Bulk Import/Export Views ====================
+
+class CustomerBulkImportView(APIView):
+    """カスタマー一括登録ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """CSVファイルから一括登録"""
+        if 'file' not in request.FILES:
+            return Response(
+                {"error": "CSVファイルがアップロードされていません"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        csv_file = request.FILES['file']
+
+        if not csv_file.name.endswith('.csv'):
+            return Response(
+                {"error": "CSVファイルのみアップロード可能です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            decoded_file = csv_file.read().decode('utf-8-sig')
+            io_string = io.StringIO(decoded_file)
+            reader = csv.DictReader(io_string)
+
+            errors = []
+            success_count = 0
+            created_items = []
+
+            with transaction.atomic():
+                for row_num, row in enumerate(reader, start=2):
+                    try:
+                        # 必須フィールドのチェック
+                        if not row.get('customer_code'):
+                            errors.append({
+                                'row': row_num,
+                                'error': 'カスタマーコードは必須です'
+                            })
+                            continue
+
+                        if not row.get('company_name'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '企業名は必須です'
+                            })
+                            continue
+
+                        # データの準備
+                        customer_data = {
+                            'customer_code': row.get('customer_code', '').strip(),
+                            'company_name': row.get('company_name', '').strip(),
+                            'website': row.get('website', '').strip() or None,
+                            'notes': row.get('notes', '').strip() or None,
+                            'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい']
+                        }
+
+                        # シリアライザーでバリデーション
+                        serializer = CustomerCreateUpdateSerializer(data=customer_data)
+                        if serializer.is_valid():
+                            customer = serializer.save()
+                            created_items.append({
+                                'row': row_num,
+                                'customer_code': customer.customer_code,
+                                'company_name': customer.company_name
+                            })
+                            success_count += 1
+                        else:
+                            errors.append({
+                                'row': row_num,
+                                'error': serializer.errors
+                            })
+
+                    except Exception as e:
+                        errors.append({
+                            'row': row_num,
+                            'error': str(e)
+                        })
+
+                # エラーがある場合はロールバック
+                if errors:
+                    transaction.set_rollback(True)
+                    return Response({
+                        'success': False,
+                        'message': f'{len(errors)}件のエラーがあります',
+                        'errors': errors,
+                        'success_count': 0
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({
+                'success': True,
+                'message': f'{success_count}件のカスタマーを登録しました',
+                'success_count': success_count,
+                'created_items': created_items,
+                'errors': []
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"CSV一括登録エラー: {str(e)}")
+            return Response(
+                {"error": f"CSVファイルの処理中にエラーが発生しました: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CustomerCSVTemplateView(APIView):
+    """カスタマーCSVテンプレートダウンロードビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """CSVテンプレートをダウンロード"""
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = 'attachment; filename="customer_template.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'customer_code', 'company_name', 'website', 'notes', 'is_active'
+        ])
+        writer.writerow([
+            'CS001', '株式会社サンプル', 'https://example.com', '備考欄', 'true'
+        ])
+
+        return response
+
+
+class CustomerBranchBulkImportView(APIView):
+    """カスタマー拠点一括登録ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """CSVファイルから一括登録"""
+        if 'file' not in request.FILES:
+            return Response(
+                {"error": "CSVファイルがアップロードされていません"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        csv_file = request.FILES['file']
+
+        if not csv_file.name.endswith('.csv'):
+            return Response(
+                {"error": "CSVファイルのみアップロード可能です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            decoded_file = csv_file.read().decode('utf-8-sig')
+            io_string = io.StringIO(decoded_file)
+            reader = csv.DictReader(io_string)
+
+            errors = []
+            success_count = 0
+            created_items = []
+
+            with transaction.atomic():
+                for row_num, row in enumerate(reader, start=2):
+                    try:
+                        # 必須フィールドのチェック
+                        if not row.get('customer_code'):
+                            errors.append({
+                                'row': row_num,
+                                'error': 'カスタマーコードは必須です'
+                            })
+                            continue
+
+                        if not row.get('branch_code'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '拠点コードは必須です'
+                            })
+                            continue
+
+                        if not row.get('branch_name'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '拠点名は必須です'
+                            })
+                            continue
+
+                        # カスタマーの検索
+                        try:
+                            customer = Customer.objects.get(
+                                customer_code=row.get('customer_code', '').strip()
+                            )
+                        except Customer.DoesNotExist:
+                            errors.append({
+                                'row': row_num,
+                                'error': f"カスタマーコード '{row.get('customer_code')}' が見つかりません"
+                            })
+                            continue
+
+                        # データの準備
+                        branch_data = {
+                            'customer': customer.id,
+                            'branch_code': row.get('branch_code', '').strip(),
+                            'branch_name': row.get('branch_name', '').strip(),
+                            'branch_type': row.get('branch_type', 'BRANCH').strip(),
+                            'postal_code': row.get('postal_code', '').strip() or None,
+                            'address': row.get('address', '').strip() or None,
+                            'phone_number': row.get('phone_number', '').strip() or None,
+                            'fax_number': row.get('fax_number', '').strip() or None,
+                            'email': row.get('email', '').strip() or None,
+                            'notes': row.get('notes', '').strip() or None,
+                            'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい']
+                        }
+
+                        # シリアライザーでバリデーション
+                        serializer = CustomerBranchCreateUpdateSerializer(data=branch_data)
+                        if serializer.is_valid():
+                            branch = serializer.save()
+                            created_items.append({
+                                'row': row_num,
+                                'branch_code': branch.branch_code,
+                                'branch_name': branch.branch_name
+                            })
+                            success_count += 1
+                        else:
+                            errors.append({
+                                'row': row_num,
+                                'error': serializer.errors
+                            })
+
+                    except Exception as e:
+                        errors.append({
+                            'row': row_num,
+                            'error': str(e)
+                        })
+
+                # エラーがある場合はロールバック
+                if errors:
+                    transaction.set_rollback(True)
+                    return Response({
+                        'success': False,
+                        'message': f'{len(errors)}件のエラーがあります',
+                        'errors': errors,
+                        'success_count': 0
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({
+                'success': True,
+                'message': f'{success_count}件の拠点を登録しました',
+                'success_count': success_count,
+                'created_items': created_items,
+                'errors': []
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"CSV一括登録エラー: {str(e)}")
+            return Response(
+                {"error": f"CSVファイルの処理中にエラーが発生しました: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CustomerBranchCSVTemplateView(APIView):
+    """カスタマー拠点CSVテンプレートダウンロードビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """CSVテンプレートをダウンロード"""
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = 'attachment; filename="customer_branch_template.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'customer_code', 'branch_code', 'branch_name', 'branch_type',
+            'postal_code', 'address', 'phone_number', 'fax_number', 'email', 'notes', 'is_active'
+        ])
+        writer.writerow([
+            'CS001', 'HQ', '本社', 'HEAD_OFFICE', '100-0001',
+            '東京都千代田区千代田1-1', '03-1234-5678', '03-1234-5679',
+            'info@example.com', '備考欄', 'true'
+        ])
+
+        return response
+
+
+class CustomerContactBulkImportView(APIView):
+    """カスタマー担当者一括登録ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """CSVファイルから一括登録"""
+        if 'file' not in request.FILES:
+            return Response(
+                {"error": "CSVファイルがアップロードされていません"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        csv_file = request.FILES['file']
+
+        if not csv_file.name.endswith('.csv'):
+            return Response(
+                {"error": "CSVファイルのみアップロード可能です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            decoded_file = csv_file.read().decode('utf-8-sig')
+            io_string = io.StringIO(decoded_file)
+            reader = csv.DictReader(io_string)
+
+            errors = []
+            success_count = 0
+            created_items = []
+
+            with transaction.atomic():
+                for row_num, row in enumerate(reader, start=2):
+                    try:
+                        # 必須フィールドのチェック
+                        if not row.get('branch_code'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '拠点コードは必須です'
+                            })
+                            continue
+
+                        if not row.get('name'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '担当者名は必須です'
+                            })
+                            continue
+
+                        # 拠点の検索
+                        try:
+                            branch = CustomerBranch.objects.get(
+                                branch_code=row.get('branch_code', '').strip()
+                            )
+                        except CustomerBranch.DoesNotExist:
+                            errors.append({
+                                'row': row_num,
+                                'error': f"拠点コード '{row.get('branch_code')}' が見つかりません"
+                            })
+                            continue
+
+                        # データの準備
+                        contact_data = {
+                            'branch': branch.id,
+                            'name': row.get('name', '').strip(),
+                            'name_kana': row.get('name_kana', '').strip() or None,
+                            'department': row.get('department', '').strip() or None,
+                            'position': row.get('position', '').strip() or None,
+                            'email': row.get('email', '').strip() or None,
+                            'phone_number': row.get('phone_number', '').strip() or None,
+                            'mobile_number': row.get('mobile_number', '').strip() or None,
+                            'extension_number': row.get('extension_number', '').strip() or None,
+                        }
+
+                        # シリアライザーでバリデーション
+                        serializer = CustomerContactCreateUpdateSerializer(data=contact_data)
+                        if serializer.is_valid():
+                            contact = serializer.save()
+                            created_items.append({
+                                'row': row_num,
+                                'name': contact.name,
+                                'branch': branch.branch_name
+                            })
+                            success_count += 1
+                        else:
+                            errors.append({
+                                'row': row_num,
+                                'error': serializer.errors
+                            })
+
+                    except Exception as e:
+                        errors.append({
+                            'row': row_num,
+                            'error': str(e)
+                        })
+
+                # エラーがある場合はロールバック
+                if errors:
+                    transaction.set_rollback(True)
+                    return Response({
+                        'success': False,
+                        'message': f'{len(errors)}件のエラーがあります',
+                        'errors': errors,
+                        'success_count': 0
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({
+                'success': True,
+                'message': f'{success_count}件の担当者を登録しました',
+                'success_count': success_count,
+                'created_items': created_items,
+                'errors': []
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"CSV一括登録エラー: {str(e)}")
+            return Response(
+                {"error": f"CSVファイルの処理中にエラーが発生しました: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CustomerContactCSVTemplateView(APIView):
+    """カスタマー担当者CSVテンプレートダウンロードビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """CSVテンプレートをダウンロード"""
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = 'attachment; filename="customer_contact_template.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'branch_code', 'name', 'name_kana', 'department', 'position',
+            'email', 'phone_number', 'mobile_number', 'extension_number'
+        ])
+        writer.writerow([
+            'HQ', '山田太郎', 'ヤマダタロウ', '営業部', '部長',
+            'yamada@example.com', '03-1234-5678', '090-1234-5678', '101'
+        ])
+
+        return response
