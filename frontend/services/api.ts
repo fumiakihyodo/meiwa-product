@@ -15,7 +15,7 @@ import {
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api', // デフォルト値を追加
+    baseURL:  'http://localhost:8000/api', // デフォルト値を追加
     headers: {
         'Content-Type': 'application/json',
     },
