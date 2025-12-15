@@ -1,7 +1,7 @@
 # api/purchases/serializers.py
 
 from rest_framework import serializers
-from api.purchases.models import Part, PriceHistory
+from api.purchases.models import Part, PriceHistory, SuppliedItem
 from decimal import Decimal
 
 
@@ -140,7 +140,7 @@ class PartListSerializer(serializers.ModelSerializer):
             'id', 'part_number', 'part_name','supplier_part_name', 'order_type','product', 'product_number',
             'product_name', 'supplier_branch', 'supplier_name', 'branch_name',
             'specification', 'unit', 'minimum_order_quantity',
-            'lead_time_days', 'current_price', 'price_history_count',
+            'lead_time_days', 'quantity_per_product', 'current_price', 'price_history_count',
             'is_active', 'created_at'
         ]
 
@@ -188,11 +188,11 @@ class PartDetailSerializer(serializers.ModelSerializer):
         model = Part
         fields = [
             'id', 'product', 'product_number', 'product_name',
-            'customer_name', 'customer_branch_name', 
+            'customer_name', 'customer_branch_name',
             'supplier_branch', 'supplier_name', 'branch_name',
             'branch_display_name', 'part_number', 'part_name','supplier_part_name',
             'order_type', 'specification', 'unit', 'minimum_order_quantity',
-            'lead_time_days', 'current_price', 'has_multiple_active_prices',
+            'lead_time_days', 'quantity_per_product', 'current_price', 'has_multiple_active_prices',
             'price_history_count', 'price_histories', 'is_active',
             'notes', 'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
@@ -230,7 +230,7 @@ class PartCreateUpdateSerializer(serializers.ModelSerializer):
             'id',
             'product', 'supplier_branch', 'part_number', 'part_name','order_type', 'supplier_part_name',
             'specification', 'unit', 'minimum_order_quantity',
-            'lead_time_days', 'is_active', 'notes',
+            'lead_time_days', 'quantity_per_product', 'is_active', 'notes',
             'created_by'
         ]
         read_only_fields = ['id']
@@ -271,5 +271,119 @@ class PartCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "この製品と仕入先の組み合わせで、同じ品番が既に登録されています"
             )
-        
+
+        return attrs
+
+
+# ==================== SuppliedItem Serializers ====================
+
+class SuppliedItemListSerializer(serializers.ModelSerializer):
+    """支給品一覧用のシリアライザー"""
+    product_number = serializers.CharField(source='product.product_number', read_only=True)
+    product_name = serializers.CharField(source='product.product_name', read_only=True)
+
+    class Meta:
+        model = SuppliedItem
+        fields = [
+            'id', 'item_number', 'item_name', 'product', 'product_number',
+            'product_name', 'specification', 'unit', 'quantity_per_product',
+            'is_active', 'created_at'
+        ]
+
+
+class SuppliedItemDetailSerializer(serializers.ModelSerializer):
+    """支給品詳細用のシリアライザー"""
+    product_number = serializers.CharField(source='product.product_number', read_only=True)
+    product_name = serializers.CharField(source='product.product_name', read_only=True)
+
+    # 顧客情報を追加
+    customer_name = serializers.SerializerMethodField()
+    customer_branch_name = serializers.SerializerMethodField()
+
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = SuppliedItem
+        fields = [
+            'id', 'product', 'product_number', 'product_name',
+            'customer_name', 'customer_branch_name',
+            'item_number', 'item_name', 'specification', 'unit',
+            'quantity_per_product', 'is_active', 'notes',
+            'created_at', 'updated_at', 'created_by', 'created_by_name'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
+
+    def get_customer_name(self, obj):
+        """顧客名を取得"""
+        try:
+            if obj.product and obj.product.customer_branch:
+                return obj.product.customer_branch.customer.company_name
+        except AttributeError:
+            pass
+        return None
+
+    def get_customer_branch_name(self, obj):
+        """顧客拠点名を取得"""
+        try:
+            if obj.product and obj.product.customer_branch:
+                return obj.product.customer_branch.branch_name
+        except AttributeError:
+            pass
+        return None
+
+
+class SuppliedItemCreateUpdateSerializer(serializers.ModelSerializer):
+    """支給品作成・更新用のシリアライザー"""
+
+    created_by = serializers.HiddenField(
+        default=serializers.CurrentUserDefault()
+    )
+
+    class Meta:
+        model = SuppliedItem
+        fields = [
+            'id', 'product', 'item_number', 'item_name',
+            'specification', 'unit', 'quantity_per_product',
+            'is_active', 'notes', 'created_by'
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'product': {'required': True},
+            'item_number': {'required': True},
+            'item_name': {'required': True},
+            'quantity_per_product': {'required': True},
+        }
+
+    def validate_quantity_per_product(self, value):
+        """使用数の検証"""
+        if value <= 0:
+            raise serializers.ValidationError("使用数は0より大きい値である必要があります")
+        return value
+
+    def validate(self, attrs):
+        """重複チェック"""
+        product = attrs.get('product')
+        item_number = attrs.get('item_number')
+
+        instance = self.instance
+        if instance:
+            existing = SuppliedItem.objects.filter(
+                product=product,
+                item_number=item_number
+            ).exclude(pk=instance.pk)
+        else:
+            existing = SuppliedItem.objects.filter(
+                product=product,
+                item_number=item_number
+            )
+
+        if existing.exists():
+            raise serializers.ValidationError(
+                "この製品で同じ品番が既に登録されています"
+            )
+
         return attrs

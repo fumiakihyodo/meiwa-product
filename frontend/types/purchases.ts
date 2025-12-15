@@ -18,6 +18,7 @@ export interface Part {
     order_type: string;
     minimum_order_quantity: number;
     lead_time_days?: number;
+    quantity_per_product?: number;
     current_price?: number;
     has_multiple_active_prices?: boolean;
     price_history_count?: number;
@@ -64,6 +65,7 @@ export interface PartCreateData {
     order_type: string;
     minimum_order_quantity?: number;
     lead_time_days?: number;
+    quantity_per_product?: number;
     is_active?: boolean;
     notes?: string;
 }
@@ -95,4 +97,49 @@ export interface PriceHistoryCreateData {
 }
 
 export type PriceHistoryUpdateData = Partial<PriceHistoryCreateData>;
+
+// SuppliedItem types
+export interface SuppliedItem {
+    id: number;
+    product: number;
+    product_number?: string;
+    product_name?: string;
+    customer_name?: string;
+    customer_branch_name?: string;
+    item_number: string;
+    item_name: string;
+    specification?: string;
+    unit: string;
+    quantity_per_product: number;
+    is_active: boolean;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+    created_by?: number;
+    created_by_name?: string;
+}
+
+export interface SuppliedItemCreateData {
+    product: number;
+    item_number: string;
+    item_name: string;
+    specification?: string;
+    unit?: string;
+    quantity_per_product: number;
+    is_active?: boolean;
+    notes?: string;
+}
+
+export type SuppliedItemUpdateData = Partial<SuppliedItemCreateData>;
+
+export interface SuppliedItemFormData {
+    product: number;
+    item_number: string;
+    item_name: string;
+    specification?: string;
+    unit: string;
+    quantity_per_product: number;
+    is_active: boolean;
+    notes?: string;
+}
 

@@ -96,13 +96,24 @@ class Part(models.Model):
         verbose_name="有効",
         help_text="この部品が現在使用可能かどうか"
     )
-    
+
+    # 使用数
+    quantity_per_product = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        verbose_name="製品あたりの使用数",
+        help_text="製品1個を製造する際に必要な部品の数量"
+    )
+
     # 備考
     notes = models.TextField(
         blank=True,
         verbose_name="備考"
     )
-    
+
     # タイムスタンプ
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -187,6 +198,119 @@ class Part(models.Model):
     
     # NOTE: price_history_count property has been removed to avoid conflicts with annotate()
     # The field is now added dynamically in views using annotate()
+
+
+class SuppliedItem(models.Model):
+    """支給品モデル（顧客から支給される部品）"""
+
+    # 関連
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.CASCADE,
+        related_name='supplied_items',
+        verbose_name="製品",
+        help_text="この支給品が使用される製品"
+    )
+
+    # 基本情報
+    item_number = models.CharField(
+        max_length=100,
+        verbose_name="品番",
+        help_text="支給品を識別する品番"
+    )
+    item_name = models.CharField(
+        max_length=200,
+        verbose_name="品名"
+    )
+
+    # 仕様情報
+    specification = models.TextField(
+        blank=True,
+        verbose_name="仕様",
+        help_text="支給品の詳細仕様"
+    )
+    unit = models.CharField(
+        max_length=20,
+        default="個",
+        verbose_name="単位",
+        help_text="使用単位（個、kg、m等）"
+    )
+
+    # 使用数（支給品は必須）
+    quantity_per_product = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        verbose_name="製品あたりの使用数",
+        help_text="製品1個を製造する際に必要な支給品の数量"
+    )
+
+    # ステータス
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="有効",
+        help_text="この支給品が現在使用可能かどうか"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_supplied_items',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "支給品"
+        verbose_name_plural = "支給品一覧"
+        ordering = ['item_number']
+        db_table = "supplied_items"
+        unique_together = [['product', 'item_number']]
+        indexes = [
+            models.Index(fields=['item_number']),
+            models.Index(fields=['product', 'is_active']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.item_number} - {self.item_name}"
+
+    def clean(self):
+        """バリデーション"""
+        super().clean()
+
+        # 同じ製品で同じ品番が存在しないかチェック
+        if self.pk:
+            existing = SuppliedItem.objects.filter(
+                product=self.product,
+                item_number=self.item_number
+            ).exclude(pk=self.pk)
+        else:
+            existing = SuppliedItem.objects.filter(
+                product=self.product,
+                item_number=self.item_number
+            )
+
+        if existing.exists():
+            raise ValidationError(
+                "この製品で同じ品番が既に登録されています。"
+            )
 
 
 def quote_file_upload_path(instance, filename):
