@@ -8,6 +8,12 @@ import {
     PartUpdateData,
     PriceHistoryCreateData,
     PriceHistoryUpdateData,
+    SuppliedItem,
+    SuppliedItemPriceHistory,
+    SuppliedItemCreateData,
+    SuppliedItemUpdateData,
+    SuppliedItemPriceHistoryCreateData,
+    SuppliedItemPriceHistoryUpdateData,
 } from '@/types/purchases';
 
 import {
@@ -197,6 +203,172 @@ export const purchasesApi = {
     downloadQuoteFile: async (priceHistoryId: number): Promise<Blob> => {
         const response = await apiClient.get(
             `/purchases/price-histories/${priceHistoryId}/quote-file/`,
+            {
+                responseType: 'blob',
+            }
+        );
+        return response.data;
+    },
+
+    // ===== Supplied Items =====
+    getSuppliedItems: async (params?: {
+        product?: number;
+        is_active?: string;
+        search?: string;
+    }): Promise<SuppliedItem[]> => {
+        const response = await apiClient.get<PaginatedResponse<SuppliedItem>>('/purchases/supplied-items/', { params });
+        return response.data.results;
+    },
+
+    getSuppliedItem: async (id: number): Promise<SuppliedItem> => {
+        const response = await apiClient.get<SuppliedItem>(`/purchases/supplied-items/${id}/`);
+        return response.data;
+    },
+
+    createSuppliedItem: async (data: SuppliedItemCreateData): Promise<SuppliedItem> => {
+        const response = await apiClient.post<SuppliedItem>('/purchases/supplied-items/', data);
+        return response.data;
+    },
+
+    updateSuppliedItem: async (id: number, data: SuppliedItemUpdateData): Promise<SuppliedItem> => {
+        const response = await apiClient.patch<SuppliedItem>(`/purchases/supplied-items/${id}/`, data);
+        return response.data;
+    },
+
+    deleteSuppliedItem: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/supplied-items/${id}/`);
+    },
+
+    // ===== Supplied Item Price Histories =====
+    getSuppliedItemPriceHistories: async (params?: {
+        supplied_item?: number;
+        product?: number;
+        is_active?: string;
+        status?: 'current' | 'future' | 'expired';
+    }): Promise<SuppliedItemPriceHistory[]> => {
+        const response = await apiClient.get<PaginatedResponse<SuppliedItemPriceHistory>>('/purchases/supplied-item-price-histories/', { params });
+        return response.data.results;
+    },
+
+    getSuppliedItemPriceHistory: async (id: number): Promise<SuppliedItemPriceHistory> => {
+        const response = await apiClient.get<SuppliedItemPriceHistory>(`/purchases/supplied-item-price-histories/${id}/`);
+        return response.data;
+    },
+
+    createSuppliedItemPriceHistory: async (data: SuppliedItemPriceHistoryCreateData): Promise<SuppliedItemPriceHistory> => {
+        console.log('[apiPurchases] createSuppliedItemPriceHistory called with:', {
+            ...data,
+            quote_file: data.quote_file ? `File: ${data.quote_file.name}` : 'No file',
+        });
+
+        const formData = new FormData();
+
+        // 必須フィールド
+        formData.append('supplied_item', String(data.supplied_item));
+        formData.append('price', String(data.price));
+        formData.append('start_date', data.start_date);
+
+        // オプショナルフィールド
+        if (data.end_date) {
+            formData.append('end_date', data.end_date);
+        }
+
+        // booleanは文字列として送信
+        formData.append('is_active', data.is_active !== undefined ? String(data.is_active) : 'true');
+
+        if (data.change_reason) {
+            formData.append('change_reason', data.change_reason);
+        }
+
+        if (data.notes) {
+            formData.append('notes', data.notes);
+        }
+
+        // ファイルの添付
+        if (data.quote_file instanceof File) {
+            console.log('[apiPurchases] Appending file to FormData:', {
+                name: data.quote_file.name,
+                size: data.quote_file.size,
+                type: data.quote_file.type,
+            });
+            formData.append('quote_file', data.quote_file, data.quote_file.name);
+        }
+
+        const response = await apiClient.post<SuppliedItemPriceHistory>('/purchases/supplied-item-price-histories/', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+
+        console.log('[apiPurchases] createSuppliedItemPriceHistory response:', response.data);
+        return response.data;
+    },
+
+    updateSuppliedItemPriceHistory: async (id: number, data: SuppliedItemPriceHistoryUpdateData): Promise<SuppliedItemPriceHistory> => {
+        console.log('[apiPurchases] updateSuppliedItemPriceHistory called with:', {
+            id,
+            ...data,
+            quote_file: data.quote_file ? `File: ${data.quote_file.name}` : 'No file',
+        });
+
+        const formData = new FormData();
+
+        // 更新時は送信されたフィールドのみ追加
+        if (data.supplied_item !== undefined) {
+            formData.append('supplied_item', String(data.supplied_item));
+        }
+
+        if (data.price !== undefined && data.price !== null) {
+            formData.append('price', String(data.price));
+        }
+
+        if (data.start_date) {
+            formData.append('start_date', data.start_date);
+        }
+
+        if (data.end_date) {
+            formData.append('end_date', data.end_date);
+        }
+
+        if (data.is_active !== undefined && data.is_active !== null) {
+            formData.append('is_active', String(data.is_active));
+        }
+
+        if (data.change_reason) {
+            formData.append('change_reason', data.change_reason);
+        }
+
+        if (data.notes) {
+            formData.append('notes', data.notes);
+        }
+
+        if (data.quote_file instanceof File) {
+            console.log('[apiPurchases] Appending file to FormData:', {
+                name: data.quote_file.name,
+                size: data.quote_file.size,
+                type: data.quote_file.type,
+            });
+            formData.append('quote_file', data.quote_file, data.quote_file.name);
+        }
+
+        const response = await apiClient.patch<SuppliedItemPriceHistory>(`/purchases/supplied-item-price-histories/${id}/`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+
+        console.log('[apiPurchases] updateSuppliedItemPriceHistory response:', response.data);
+        return response.data;
+    },
+
+    deleteSuppliedItemPriceHistory: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/supplied-item-price-histories/${id}/`);
+    },
+
+    // 支給品見積書ファイルをダウンロード
+    downloadSuppliedItemQuoteFile: async (priceHistoryId: number): Promise<Blob> => {
+        const response = await apiClient.get(
+            `/purchases/supplied-item-price-histories/${priceHistoryId}/quote-file/`,
             {
                 responseType: 'blob',
             }
