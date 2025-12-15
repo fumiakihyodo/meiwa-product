@@ -9,6 +9,8 @@ from .views import (
     CurrentUserView,
     ChangePasswordView,
     CheckAuthView,
+    UserAllowedIPViewSet,
+    UserIPRestrictionView,
 )
 
 app_name = 'accounts'
@@ -25,4 +27,9 @@ urlpatterns = [
     path('users/me/', CurrentUserView.as_view(), name='current_user'),
     path('users/me/change-password/', ChangePasswordView.as_view(), name='change_password'),
     path('users/<str:pk>/', UserDetailView.as_view(), name='user_detail'),
+
+    # IP制限関連
+    path('ip-restriction/', UserIPRestrictionView.as_view(), name='ip_restriction'),
+    path('allowed-ips/', UserAllowedIPViewSet.as_view({'get': 'list', 'post': 'create'}), name='allowed_ips'),
+    path('allowed-ips/<int:pk>/', UserAllowedIPViewSet.as_view({'put': 'update', 'delete': 'destroy'}), name='allowed_ip_detail'),
 ]

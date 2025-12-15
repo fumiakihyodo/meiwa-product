@@ -27,9 +27,11 @@ import {
     Edit as EditIcon,
     Delete as DeleteIcon,
     Refresh as RefreshIcon,
+    Security as SecurityIcon,
 } from '@mui/icons-material';
 import { ErrorResponse, User } from '@/types';
-import { userApi } from '@/services/api';
+import { userApi, ipRestrictionApi } from '@/services/api';
+import { useRouter } from 'next/navigation';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';
 import toast from 'react-hot-toast';
@@ -37,6 +39,7 @@ import { CreateUserDialog } from '@/components/CreateUserDialog';
 import { EditUserDialog } from '@/components/EditUserDialog';
 
 export default function UsersPage() {
+    const router = useRouter();
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -121,6 +124,21 @@ export default function UsersPage() {
         }
     };
 
+    const handleToggleIPRestriction = async (user: User) => {
+        try {
+            const currentSettings = await ipRestrictionApi.getIPRestrictionSettings(user.id);
+            await ipRestrictionApi.updateIPRestrictionSettings(
+                user.id,
+                !currentSettings.ip_restriction_enabled
+            );
+            toast.success('IP制限設定を更新しました');
+            fetchUsers();
+        } catch (error) {
+            console.error('IP restriction update error:', error);
+            toast.error('IP制限設定の更新に失敗しました');
+        }
+    };
+
     const columns: GridColDef[] = [
         {
             field: 'userid',
@@ -191,12 +209,34 @@ export default function UsersPage() {
             ),
         },
         {
+            field: 'ip_restriction_enabled',
+            headerName: 'IP制限',
+            width: 100,
+            renderCell: (params: GridRenderCellParams) => {
+                const user = params.row as User;
+                // 管理者にはIP制限を適用しない
+                if (user.is_administrator) {
+                    return <Chip label="除外" size="small" color="default" />;
+                }
+                return (
+                    <Switch
+                        checked={(params.value as boolean) || false}
+                        onChange={() => handleToggleIPRestriction(params.row as User)}
+                        size="small"
+                        color="warning"
+                        disabled={isCurrentUser(params.row as User)}
+                    />
+                );
+            },
+        },
+        {
             field: 'actions',
             type: 'actions',
             headerName: '操作',
-            width: 100,
+            width: 150,
             getActions: (params) => {
                 const isSelf = isCurrentUser(params.row as User);
+                const user = params.row as User;
                 return [
                     <GridActionsCellItem
                         key="edit"
@@ -207,6 +247,16 @@ export default function UsersPage() {
                             setEditDialogOpen(true);
                         }}
                         disabled={isSelf}
+                    />,
+                    <GridActionsCellItem
+                        key="ip-manage"
+                        icon={<SecurityIcon />}
+                        label="IP管理"
+                        onClick={() => {
+                            router.push(`/users/${user.id}/ip-restrictions`);
+                        }}
+                        disabled={user.is_administrator}
+                        showInMenu
                     />,
                     <GridActionsCellItem
                         key="delete"

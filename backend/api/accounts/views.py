@@ -11,7 +11,7 @@ from django.contrib.auth import authenticate
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 
-from .models import User, LoginLog, AllowedIP, IPRestrictionSettings
+from .models import User, LoginLog, AllowedIP, UserAllowedIP, IPRestrictionSettings
 from .serializers import (
     UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     ChangePasswordSerializer, LoginSerializer
@@ -30,26 +30,29 @@ def get_client_ip(request):
 
 def check_ip_restriction(request, user):
     """IPアドレス制限のチェック"""
-    settings = IPRestrictionSettings.get_settings()
-
-    # IP制限が無効の場合はスキップ
-    if not settings.enabled:
+    # 管理者権限ユーザーは常に許可
+    if user.is_administrator:
         return True
 
-    # 管理者権限ユーザーを除外する設定の場合
-    if settings.exclude_superusers and user.is_administrator:
+    # ユーザーのIP制限が有効かチェック
+    if not user.ip_restriction_enabled:
         return True
 
     # クライアントIPを取得
     client_ip = get_client_ip(request)
 
-    # 許可リストに存在するかチェック
-    allowed = AllowedIP.objects.filter(
+    # グローバル許可IPリストをチェック
+    if AllowedIP.objects.filter(ip_address=client_ip, is_active=True).exists():
+        return True
+
+    # ユーザー固有の許可IPリストをチェック
+    user_allowed = UserAllowedIP.objects.filter(
+        user=user,
         ip_address=client_ip,
         is_active=True
     ).exists()
 
-    return allowed
+    return user_allowed
 
 
 class LoginView(views.APIView):
@@ -99,6 +102,21 @@ class LoginView(views.APIView):
                 user_agent=user_agent,
                 success=True
             )
+
+            # IPアドレスを自動的に記録（ユーザーの許可IPリストに追加）
+            is_first_login = not LoginLog.objects.filter(user=user, success=True).exclude(
+                ip_address=client_ip
+            ).exists() and not UserAllowedIP.objects.filter(user=user).exists()
+
+            # 既存のIPアドレスでない場合は追加
+            if not UserAllowedIP.objects.filter(user=user, ip_address=client_ip).exists():
+                UserAllowedIP.objects.create(
+                    user=user,
+                    ip_address=client_ip,
+                    description="自動記録（ログイン時）",
+                    is_first_login_ip=is_first_login,
+                    is_active=True
+                )
 
             # JWTトークンを生成
             refresh = RefreshToken.for_user(user)
@@ -262,135 +280,196 @@ class CheckAuthView(views.APIView):
             'is_admin': request.user.is_administrator,
             "user": UserSerializer(request.user).data
         }, status=status.HTTP_200_OK)
-    
-class UserPreferenceViewSet(viewsets.ViewSet):
-    """
-    ユーザー設定のViewSet
-    
-    ViewSetを使用する理由:
-    - 複数のアクション(list, retrieve, create, update, destroy)を1つのクラスで管理
-    - カスタムアクション(bulk_update)を簡単に追加可能
-    - URLルーティングがRouterで自動生成される
-    """
+
+
+# IP制限管理用のビュー
+class UserAllowedIPViewSet(viewsets.ViewSet):
+    """ユーザーの許可IPアドレス管理ViewSet"""
     permission_classes = [IsAuthenticated]
-    
+
     def list(self, request):
-        """
-        ユーザーの全設定を取得
-        GET /api/user/preferences/
-        """
-        preferences = UserPreference.objects.filter(user=request.user)
-        serializer = UserPreferenceSerializer(preferences, many=True)
-        return Response(serializer.data)
-    
-    def retrieve(self, request, pk=None):
-        """
-        特定の設定タイプの設定を取得
-        GET /api/user/preferences/{preference_type}/
-        """
-        try:
-            preference = UserPreference.objects.get(
-                user=request.user,
-                preference_type=pk
-            )
-            serializer = UserPreferenceSerializer(preference)
-            return Response(serializer.data)
-        except UserPreference.DoesNotExist:
-            return Response(
-                {'detail': '設定が見つかりません'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-    
+        """現在のユーザーまたは指定ユーザーの許可IPリストを取得"""
+        user_id = request.query_params.get('user_id')
+
+        # 管理者の場合は他のユーザーのIPリストも取得可能
+        if user_id and request.user.is_administrator:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return Response(
+                    {'detail': 'ユーザーが見つかりません'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            user = request.user
+
+        allowed_ips = UserAllowedIP.objects.filter(user=user)
+        data = [{
+            'id': ip.id,
+            'ip_address': ip.ip_address,
+            'description': ip.description,
+            'is_active': ip.is_active,
+            'is_first_login_ip': ip.is_first_login_ip,
+            'created_at': ip.created_at,
+        } for ip in allowed_ips]
+
+        return Response(data)
+
     def create(self, request):
-        """
-        新しい設定を作成(既存の場合は更新)
-        POST /api/accounts/preferences/
-        """
-        serializer = UserPreferenceCreateUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        preference, created = UserPreference.objects.update_or_create(
-            user=request.user,
-            preference_type=serializer.validated_data['preference_type'],
-            defaults={'value': serializer.validated_data['value']}
-        )
-        
-        response_serializer = UserPreferenceSerializer(preference)
-        return Response(
-            response_serializer.data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
-        )
-    
-    def update(self, request, pk=None):
-        """
-        既存の設定を更新
-        PUT /api/accounts/preferences/{preference_type}/
-        """
-        serializer = UserPreferenceCreateUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        preference, created = UserPreference.objects.update_or_create(
-            user=request.user,
-            preference_type=pk,
-            defaults={'value': serializer.validated_data['value']}
-        )
-        
-        response_serializer = UserPreferenceSerializer(preference)
-        return Response(response_serializer.data)
-    
-    def partial_update(self, request, pk=None):
-        """
-        既存の設定を部分更新
-        PATCH /api/accounts/preferences/{preference_type}/
-        """
-        return self.update(request, pk)
-    
-    def destroy(self, request, pk=None):
-        """
-        設定を削除
-        DELETE /api/accounts/preferences/{preference_type}/
-        """
-        try:
-            preference = UserPreference.objects.get(
-                user=request.user,
-                preference_type=pk
-            )
-            preference.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except UserPreference.DoesNotExist:
+        """新しい許可IPアドレスを追加"""
+        user_id = request.data.get('user_id')
+
+        # 管理者の場合は他のユーザーのIPリストも編集可能
+        if user_id and request.user.is_administrator:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return Response(
+                    {'detail': 'ユーザーが見つかりません'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            user = request.user
+
+        ip_address = request.data.get('ip_address')
+        description = request.data.get('description', '')
+
+        if not ip_address:
             return Response(
-                {'detail': '設定が見つかりません'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-    
-    @action(detail=False, methods=['post'])
-    def bulk_update(self, request):
-        """
-        複数の設定を一括更新
-        POST /api/accounts/preferences/bulk_update/
-        """
-        preferences_data = request.data.get('preferences', [])
-        
-        if not isinstance(preferences_data, list):
-            return Response(
-                {'detail': 'preferences は配列である必要があります'},
+                {'detail': 'IPアドレスは必須です'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        updated_preferences = []
-        for pref_data in preferences_data:
-            serializer = UserPreferenceCreateUpdateSerializer(data=pref_data)
-            serializer.is_valid(raise_exception=True)
-            
-            preference, _ = UserPreference.objects.update_or_create(
-                user=request.user,
-                preference_type=serializer.validated_data['preference_type'],
-                defaults={'value': serializer.validated_data['value']}
+
+        # 既存チェック
+        if UserAllowedIP.objects.filter(user=user, ip_address=ip_address).exists():
+            return Response(
+                {'detail': 'このIPアドレスは既に登録されています'},
+                status=status.HTTP_400_BAD_REQUEST
             )
-            updated_preferences.append(preference)
-        
-        response_serializer = UserPreferenceSerializer(updated_preferences, many=True)
-        return Response(response_serializer.data)
+
+        allowed_ip = UserAllowedIP.objects.create(
+            user=user,
+            ip_address=ip_address,
+            description=description,
+            is_active=True
+        )
+
+        return Response({
+            'id': allowed_ip.id,
+            'ip_address': allowed_ip.ip_address,
+            'description': allowed_ip.description,
+            'is_active': allowed_ip.is_active,
+            'is_first_login_ip': allowed_ip.is_first_login_ip,
+            'created_at': allowed_ip.created_at,
+        }, status=status.HTTP_201_CREATED)
+
+    def update(self, request, pk=None):
+        """許可IPアドレスを更新"""
+        try:
+            allowed_ip = UserAllowedIP.objects.get(pk=pk)
+
+            # 権限チェック
+            if allowed_ip.user != request.user and not request.user.is_administrator:
+                return Response(
+                    {'detail': '権限がありません'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            allowed_ip.description = request.data.get('description', allowed_ip.description)
+            allowed_ip.is_active = request.data.get('is_active', allowed_ip.is_active)
+            allowed_ip.save()
+
+            return Response({
+                'id': allowed_ip.id,
+                'ip_address': allowed_ip.ip_address,
+                'description': allowed_ip.description,
+                'is_active': allowed_ip.is_active,
+                'is_first_login_ip': allowed_ip.is_first_login_ip,
+                'created_at': allowed_ip.created_at,
+            })
+        except UserAllowedIP.DoesNotExist:
+            return Response(
+                {'detail': '許可IPアドレスが見つかりません'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    def destroy(self, request, pk=None):
+        """許可IPアドレスを削除"""
+        try:
+            allowed_ip = UserAllowedIP.objects.get(pk=pk)
+
+            # 権限チェック
+            if allowed_ip.user != request.user and not request.user.is_administrator:
+                return Response(
+                    {'detail': '権限がありません'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            allowed_ip.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except UserAllowedIP.objects.DoesNotExist:
+            return Response(
+                {'detail': '許可IPアドレスが見つかりません'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class UserIPRestrictionView(views.APIView):
+    """ユーザーのIP制限設定ビュー"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """IP制限設定を取得"""
+        user_id = request.query_params.get('user_id')
+
+        # 管理者の場合は他のユーザーの設定も取得可能
+        if user_id and request.user.is_administrator:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return Response(
+                    {'detail': 'ユーザーが見つかりません'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            user = request.user
+
+        return Response({
+            'user_id': user.id,
+            'ip_restriction_enabled': user.ip_restriction_enabled,
+        })
+
+    def post(self, request):
+        """IP制限設定を更新（管理者のみ）"""
+        if not request.user.is_administrator:
+            return Response(
+                {'detail': '管理者権限が必要です'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        user_id = request.data.get('user_id')
+        ip_restriction_enabled = request.data.get('ip_restriction_enabled')
+
+        if user_id is None or ip_restriction_enabled is None:
+            return Response(
+                {'detail': 'user_idとip_restriction_enabledは必須です'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user = User.objects.get(id=user_id)
+            user.ip_restriction_enabled = ip_restriction_enabled
+            user.save(update_fields=['ip_restriction_enabled'])
+
+            return Response({
+                'user_id': user.id,
+                'ip_restriction_enabled': user.ip_restriction_enabled,
+            })
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'ユーザーが見つかりません'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 
 

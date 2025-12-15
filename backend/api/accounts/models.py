@@ -1,4 +1,3 @@
-from turtle import Turtle
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
@@ -103,6 +102,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name="管理者権限",
         help_text="ユーザー登録画面へのアクセス権限"
     )
+    ip_restriction_enabled = models.BooleanField(
+        default=False,
+        verbose_name="IP制限を有効にする",
+        help_text="このユーザーに対してIPアドレス制限を適用する"
+    )
 
     # タイムスタンプ
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
@@ -179,8 +183,46 @@ class LoginLog(models.Model):
         return f"{self.user.userid} - {self.ip_address} ({status}) - {self.login_at}"
 
 
+class UserAllowedIP(models.Model):
+    """ユーザーごとの許可IPアドレスモデル"""
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='allowed_ips',
+        verbose_name="ユーザー"
+    )
+    ip_address = models.GenericIPAddressField(verbose_name="IPアドレス")
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="説明"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="有効"
+    )
+    is_first_login_ip = models.BooleanField(
+        default=False,
+        verbose_name="初回ログインIP",
+        help_text="初回ログイン時のIPアドレス"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "ユーザー許可IPアドレス"
+        verbose_name_plural = "ユーザー許可IPアドレス一覧"
+        ordering = ["-created_at"]
+        db_table = "user_allowed_ips"
+        unique_together = ['user', 'ip_address']
+
+    def __str__(self):
+        return f"{self.user.userid} - {self.ip_address} - {self.description or '説明なし'}"
+
+
 class AllowedIP(models.Model):
-    """許可IPアドレスモデル"""
+    """グローバル許可IPアドレスモデル（全ユーザー共通）"""
     ip_address = models.GenericIPAddressField(
         unique=True,
         verbose_name="IPアドレス"
@@ -199,8 +241,8 @@ class AllowedIP(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
 
     class Meta:
-        verbose_name = "許可IPアドレス"
-        verbose_name_plural = "許可IPアドレス一覧"
+        verbose_name = "グローバル許可IPアドレス"
+        verbose_name_plural = "グローバル許可IPアドレス一覧"
         ordering = ["-created_at"]
         db_table = "allowed_ips"
 
