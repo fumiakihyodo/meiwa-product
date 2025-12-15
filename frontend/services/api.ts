@@ -186,8 +186,8 @@ export const authApi = {
         }
 
         try {
-            await apiClient.post('api/accounts/auth/logout/', {
-                refresh: refreshToken  // または refresh_token: refreshToken
+            await apiClient.post('/accounts/auth/logout/', {
+                refresh: refreshToken
             });
         } catch (error) {
             // ログアウトAPIが失敗してもローカルのトークンは削除
@@ -259,6 +259,60 @@ export const userApi = {
     changePassword: async (passwordData: ChangePasswordData): Promise<{ message: string }> => {
         const response = await apiClient.put('accounts/users/me/change-password/', passwordData);
         return response.data;
+    },
+};
+
+// IP Restriction API
+export const ipRestrictionApi = {
+    // Get user's IP restriction settings
+    getIPRestrictionSettings: async (userId?: number): Promise<{ user_id: number; ip_restriction_enabled: boolean }> => {
+        const params = userId ? `?user_id=${userId}` : '';
+        const response = await apiClient.get(`accounts/ip-restriction/${params}`);
+        return response.data;
+    },
+
+    // Update user's IP restriction settings (admin only)
+    updateIPRestrictionSettings: async (userId: number, enabled: boolean): Promise<{ user_id: number; ip_restriction_enabled: boolean }> => {
+        const response = await apiClient.post('accounts/ip-restriction/', {
+            user_id: userId,
+            ip_restriction_enabled: enabled,
+        });
+        return response.data;
+    },
+
+    // Get user's allowed IPs
+    getAllowedIPs: async (userId?: number): Promise<Array<{
+        id: number;
+        ip_address: string;
+        description: string;
+        is_active: boolean;
+        is_first_login_ip: boolean;
+        created_at: string;
+    }>> => {
+        const params = userId ? `?user_id=${userId}` : '';
+        const response = await apiClient.get(`accounts/allowed-ips/${params}`);
+        return response.data;
+    },
+
+    // Add new allowed IP
+    addAllowedIP: async (ipAddress: string, description?: string, userId?: number): Promise<any> => {
+        const response = await apiClient.post('accounts/allowed-ips/', {
+            ip_address: ipAddress,
+            description: description || '',
+            user_id: userId,
+        });
+        return response.data;
+    },
+
+    // Update allowed IP
+    updateAllowedIP: async (id: number, data: { description?: string; is_active?: boolean }): Promise<any> => {
+        const response = await apiClient.put(`accounts/allowed-ips/${id}/`, data);
+        return response.data;
+    },
+
+    // Delete allowed IP
+    deleteAllowedIP: async (id: number): Promise<void> => {
+        await apiClient.delete(`accounts/allowed-ips/${id}/`);
     },
 };
 

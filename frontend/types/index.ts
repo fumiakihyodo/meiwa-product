@@ -14,6 +14,7 @@ export interface User {
     is_staff: boolean;
     is_admin: boolean;
     is_administrator: boolean;
+    ip_restriction_enabled?: boolean;
     created_at: string;
     updated_at: string;
     last_login_at?: string;
