@@ -14,7 +14,7 @@ import os
 import csv
 import io
 
-from api.purchases.models import Part, PriceHistory
+from api.purchases.models import Part, PriceHistory, SuppliedItem
 from api.purchases.serializers import (
     PartListSerializer,
     PartDetailSerializer,
@@ -22,6 +22,9 @@ from api.purchases.serializers import (
     PriceHistoryListSerializer,
     PriceHistoryDetailSerializer,
     PriceHistoryCreateUpdateSerializer,
+    SuppliedItemListSerializer,
+    SuppliedItemDetailSerializer,
+    SuppliedItemCreateUpdateSerializer,
 )
 from api.products.models import Product
 from api.supplier.models import SupplierBranch
@@ -760,6 +763,313 @@ class PriceHistoryCSVTemplateView(APIView):
         writer.writerow([
             'PART001', '1500.00', '2024-01-01', '2024-12-31',
             'true', '価格改定', '備考欄'
+        ])
+
+        return response
+
+
+# ==================== SuppliedItem Views ====================
+
+class SuppliedItemListCreateView(generics.ListCreateAPIView):
+    """支給品一覧取得・作成ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = SuppliedItem.objects.select_related(
+            'product',
+            'created_by'
+        )
+
+        # フィルタリング
+        product_id = self.request.query_params.get('product', None)
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+
+        is_active = self.request.query_params.get('is_active', None)
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(item_number__icontains=search) |
+                Q(item_name__icontains=search) |
+                Q(product__product_number__icontains=search) |
+                Q(product__product_name__icontains=search)
+            )
+
+        return queryset.order_by('item_number')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return SuppliedItemCreateUpdateSerializer
+        return SuppliedItemListSerializer
+
+    def create(self, request, *args, **kwargs):
+        """支給品作成"""
+        logger.info(f"[SuppliedItem Create] User: {request.user}")
+        logger.info(f"[SuppliedItem Create] Data: {request.data}")
+
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+        except Exception as e:
+            logger.error(f"[SuppliedItem Create] Error: {str(e)}")
+            raise
+
+    def perform_create(self, serializer):
+        """支給品作成時に作成者を設定"""
+        serializer.save(created_by=self.request.user)
+
+
+class SuppliedItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """支給品詳細取得・更新・削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        return SuppliedItem.objects.select_related(
+            'product',
+            'created_by'
+        )
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return SuppliedItemCreateUpdateSerializer
+        return SuppliedItemDetailSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        """支給品の削除（管理者のみ）"""
+        if not request.user.is_administrator:
+            return Response(
+                {"error": "削除権限がありません"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SuppliedItemBulkImportView(APIView):
+    """支給品一括登録ビュー（CSV登録時に未登録の品番を確認して登録する機能付き）"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """CSVファイルから一括登録
+
+        confirm_new_items=trueの場合、未登録の品番も登録する
+        confirm_new_items=falseの場合、未登録の品番を返して確認を求める
+        """
+        if 'file' not in request.FILES:
+            return Response(
+                {"error": "CSVファイルがアップロードされていません"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        csv_file = request.FILES['file']
+
+        if not csv_file.name.endswith('.csv'):
+            return Response(
+                {"error": "CSVファイルのみアップロード可能です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 確認フラグ
+        confirm_new_items = request.data.get('confirm_new_items', 'false').lower() == 'true'
+
+        try:
+            decoded_file = csv_file.read().decode('utf-8-sig')
+            io_string = io.StringIO(decoded_file)
+            reader = csv.DictReader(io_string)
+
+            errors = []
+            success_count = 0
+            created_items = []
+            new_items = []  # 未登録の品番リスト
+
+            with transaction.atomic():
+                for row_num, row in enumerate(reader, start=2):
+                    try:
+                        # 必須フィールドのチェック
+                        if not row.get('product_number'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '製品品番は必須です'
+                            })
+                            continue
+
+                        if not row.get('item_number'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '品番は必須です'
+                            })
+                            continue
+
+                        if not row.get('item_name'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '品名は必須です'
+                            })
+                            continue
+
+                        if not row.get('quantity_per_product'):
+                            errors.append({
+                                'row': row_num,
+                                'error': '使用数は必須です'
+                            })
+                            continue
+
+                        # 製品の検索
+                        try:
+                            product = Product.objects.get(
+                                product_number=row.get('product_number', '').strip()
+                            )
+                        except Product.DoesNotExist:
+                            errors.append({
+                                'row': row_num,
+                                'error': f"製品品番 '{row.get('product_number')}' が見つかりません"
+                            })
+                            continue
+
+                        item_number = row.get('item_number', '').strip()
+
+                        # 既存の支給品をチェック
+                        existing_item = SuppliedItem.objects.filter(
+                            product=product,
+                            item_number=item_number
+                        ).first()
+
+                        # 使用数のパース
+                        try:
+                            quantity = Decimal(row.get('quantity_per_product', '0').strip())
+                        except (InvalidOperation, ValueError):
+                            errors.append({
+                                'row': row_num,
+                                'error': '使用数の形式が不正です'
+                            })
+                            continue
+
+                        # 既存の支給品がない場合
+                        if not existing_item:
+                            # confirm_new_items=falseの場合は確認が必要
+                            if not confirm_new_items:
+                                new_items.append({
+                                    'row': row_num,
+                                    'item_number': item_number,
+                                    'item_name': row.get('item_name', '').strip(),
+                                    'product_number': product.product_number,
+                                    'product_name': product.product_name,
+                                    'quantity_per_product': str(quantity)
+                                })
+                                continue
+
+                        # データの準備
+                        item_data = {
+                            'product': product.id,
+                            'item_number': item_number,
+                            'item_name': row.get('item_name', '').strip(),
+                            'specification': row.get('specification', '').strip() or '',
+                            'unit': row.get('unit', '個').strip(),
+                            'quantity_per_product': quantity,
+                            'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい'],
+                            'notes': row.get('notes', '').strip() or '',
+                        }
+
+                        # シリアライザーでバリデーション
+                        if existing_item:
+                            # 既存の支給品を更新
+                            serializer = SuppliedItemCreateUpdateSerializer(
+                                existing_item, data=item_data
+                            )
+                        else:
+                            # 新規作成
+                            serializer = SuppliedItemCreateUpdateSerializer(data=item_data)
+
+                        if serializer.is_valid():
+                            supplied_item = serializer.save(created_by=request.user)
+                            created_items.append({
+                                'row': row_num,
+                                'item_number': supplied_item.item_number,
+                                'item_name': supplied_item.item_name,
+                                'is_new': not existing_item
+                            })
+                            success_count += 1
+                        else:
+                            errors.append({
+                                'row': row_num,
+                                'error': serializer.errors
+                            })
+
+                    except Exception as e:
+                        errors.append({
+                            'row': row_num,
+                            'error': str(e)
+                        })
+
+                # 未登録の品番がある場合は確認を求める
+                if new_items and not confirm_new_items:
+                    transaction.set_rollback(True)
+                    return Response({
+                        'success': False,
+                        'requires_confirmation': True,
+                        'message': f'{len(new_items)}件の未登録の品番があります。登録しますか？',
+                        'new_items': new_items,
+                        'errors': errors
+                    }, status=status.HTTP_200_OK)
+
+                # エラーがある場合はロールバック
+                if errors:
+                    transaction.set_rollback(True)
+                    return Response({
+                        'success': False,
+                        'message': f'{len(errors)}件のエラーがあります',
+                        'errors': errors,
+                        'success_count': 0
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({
+                'success': True,
+                'message': f'{success_count}件の支給品を登録しました',
+                'success_count': success_count,
+                'created_items': created_items,
+                'errors': []
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"CSV一括登録エラー: {str(e)}")
+            return Response(
+                {"error": f"CSVファイルの処理中にエラーが発生しました: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class SuppliedItemCSVTemplateView(APIView):
+    """支給品CSVテンプレートダウンロードビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """CSVテンプレートをダウンロード"""
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = 'attachment; filename="supplied_item_template.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'product_number', 'item_number', 'item_name', 'specification',
+            'unit', 'quantity_per_product', 'is_active', 'notes'
+        ])
+        writer.writerow([
+            'PROD001', 'ITEM001', 'サンプル支給品', '仕様説明',
+            '個', '5', 'true', '備考欄'
         ])
 
         return response

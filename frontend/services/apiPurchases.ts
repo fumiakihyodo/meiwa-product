@@ -8,6 +8,9 @@ import {
     PartUpdateData,
     PriceHistoryCreateData,
     PriceHistoryUpdateData,
+    SuppliedItem,
+    SuppliedItemCreateData,
+    SuppliedItemUpdateData,
 } from '@/types/purchases';
 
 import {
@@ -201,6 +204,57 @@ export const purchasesApi = {
                 responseType: 'blob',
             }
         );
+        return response.data;
+    },
+
+    // SuppliedItems
+    getSuppliedItems: async (params?: {
+        product?: number;
+        is_active?: string;
+        search?: string;
+    }): Promise<SuppliedItem[]> => {
+        const response = await apiClient.get<PaginatedResponse<SuppliedItem>>('/purchases/supplied-items/', { params });
+        return response.data.results;
+    },
+
+    getSuppliedItem: async (id: number): Promise<SuppliedItem> => {
+        const response = await apiClient.get<SuppliedItem>(`/purchases/supplied-items/${id}/`);
+        return response.data;
+    },
+
+    createSuppliedItem: async (data: SuppliedItemCreateData): Promise<SuppliedItem> => {
+        const response = await apiClient.post<SuppliedItem>('/purchases/supplied-items/', data);
+        return response.data;
+    },
+
+    updateSuppliedItem: async (id: number, data: SuppliedItemUpdateData): Promise<SuppliedItem> => {
+        const response = await apiClient.patch<SuppliedItem>(`/purchases/supplied-items/${id}/`, data);
+        return response.data;
+    },
+
+    deleteSuppliedItem: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/supplied-items/${id}/`);
+    },
+
+    // CSV Bulk Import for SuppliedItems
+    bulkImportSuppliedItems: async (file: File, confirmNewItems: boolean = false): Promise<any> => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('confirm_new_items', String(confirmNewItems));
+
+        const response = await apiClient.post('/purchases/supplied-items/bulk-import/', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+        return response.data;
+    },
+
+    // Download CSV Template for SuppliedItems
+    downloadSuppliedItemCsvTemplate: async (): Promise<Blob> => {
+        const response = await apiClient.get('/purchases/supplied-items/csv-template/', {
+            responseType: 'blob',
+        });
         return response.data;
     },
 };

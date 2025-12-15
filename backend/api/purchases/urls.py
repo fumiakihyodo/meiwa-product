@@ -10,6 +10,10 @@ from api.purchases.views import (
     PartCSVTemplateView,
     PriceHistoryBulkImportView,
     PriceHistoryCSVTemplateView,
+    SuppliedItemListCreateView,
+    SuppliedItemDetailView,
+    SuppliedItemBulkImportView,
+    SuppliedItemCSVTemplateView,
 )
 from api.purchases import views
 
@@ -30,4 +34,10 @@ urlpatterns = [
 
     # Quote file download
     path('price-histories/<int:pk>/quote-file/', views.download_quote_file, name='price-history-quote-file'),
+
+    # 支給品関連
+    path('supplied-items/', SuppliedItemListCreateView.as_view(), name='supplied_item_list_create'),
+    path('supplied-items/<int:pk>/', SuppliedItemDetailView.as_view(), name='supplied_item_detail'),
+    path('supplied-items/bulk-import/', SuppliedItemBulkImportView.as_view(), name='supplied_item_bulk_import'),
+    path('supplied-items/csv-template/', SuppliedItemCSVTemplateView.as_view(), name='supplied_item_csv_template'),
 ]
