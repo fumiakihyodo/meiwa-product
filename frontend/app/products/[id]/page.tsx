@@ -56,6 +56,7 @@ export default function ProductDetailPage() {
     const [loading, setLoading] = useState(true);
     const [partsLoading, setPartsLoading] = useState(false);
     const [suppliedItemsLoading, setSuppliedItemsLoading] = useState(false);
+    const [currentTab, setCurrentTab] = useState(0);
 
     // モーダル制御用の状態（部品）
     const [partModalOpen, setPartModalOpen] = useState(false);
@@ -261,7 +262,7 @@ export default function ProductDetailPage() {
         }
     }, [fetchSuppliedItems]);
 
-    const columns: GridColDef[] = [
+    const partColumns: GridColDef[] = [
         {
             field: 'part_number',
             headerName: '品番',
@@ -281,7 +282,7 @@ export default function ProductDetailPage() {
             flex: 1,
         },
         {
-            field: 'quantity_per_product',
+            field: 'usage_quantity',
             headerName: '使用数',
             width: 100,
             renderCell: (params) => {
@@ -656,6 +657,13 @@ export default function ProductDetailPage() {
                                     >
                                         <RefreshIcon />
                                     </IconButton>
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<AddIcon />}
+                                        onClick={handleAddNewSuppliedItem}
+                                    >
+                                        支給品追加
+                                    </Button>
                                 </Box>
                             </Box>
 
@@ -692,62 +700,6 @@ export default function ProductDetailPage() {
                             </Paper>
                         </>
                     )}
-
-                    {/* 関連支給品一覧 */}
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, mt: 4 }}>
-                        <Typography variant="h6">
-                            関連支給品
-                        </Typography>
-                        <Box>
-                            <IconButton
-                                onClick={fetchSuppliedItems}
-                                sx={{ mr: 1 }}
-                                disabled={suppliedItemsLoading}
-                                aria-label="更新"
-                            >
-                                <RefreshIcon />
-                            </IconButton>
-                            <Button
-                                variant="contained"
-                                startIcon={<AddIcon />}
-                                onClick={handleAddNewSuppliedItem}
-                            >
-                                支給品追加
-                            </Button>
-                        </Box>
-                    </Box>
-
-                    <Paper sx={{ width: '100%' }}>
-                        <DataGrid
-                            rows={suppliedItems}
-                            columns={suppliedItemColumns}
-                            loading={suppliedItemsLoading}
-                            pageSizeOptions={[10, 25, 50]}
-                            initialState={{
-                                pagination: {
-                                    paginationModel: { pageSize: 10, page: 0 },
-                                },
-                            }}
-                            disableRowSelectionOnClick
-                            autoHeight
-                            sx={{
-                                '& .MuiDataGrid-cell:focus': {
-                                    outline: 'none',
-                                },
-                                '& .MuiDataGrid-cell:focus-within': {
-                                    outline: 'none',
-                                },
-                            }}
-                            localeText={{
-                                noRowsLabel: '支給品がありません',
-                                MuiTablePagination: {
-                                    labelDisplayedRows: ({ from, to, count }) =>
-                                        `${count}件中 ${from}～${to}件`,
-                                    labelRowsPerPage: '表示件数:',
-                                },
-                            }}
-                        />
-                    </Paper>
 
                     {/* 部品詳細・価格履歴モーダル（統合） */}
                     <PartModalManager
