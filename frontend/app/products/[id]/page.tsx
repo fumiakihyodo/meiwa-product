@@ -31,13 +31,15 @@ import {
 } from '@mui/icons-material';
 import { PartModalType } from '@/types/business';
 import { Product } from '@/types/procuct'
-import { Part } from '@/types/purchases'
+import { Part, SuppliedItem } from '@/types/purchases'
 import { productApi } from '@/services/apiProduct';
 import { purchasesApi } from '@/services/apiPurchases';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';
 import { PartModalManager } from '@/components/PartModal/PartModalManager';
 import { PartFormModal } from '@/components/PartModal/PartFormModal';
+import { SuppliedItemModalManager } from '@/components/SuppliedItemModal/SuppliedItemModalManager';
+import { SuppliedItemFormModal } from '@/components/SuppliedItemModal/SuppliedItemFormModal';
 import toast from 'react-hot-toast';
 
 
@@ -48,14 +50,23 @@ export default function ProductDetailPage() {
 
     const [product, setProduct] = useState<Product | null>(null);
     const [parts, setParts] = useState<Part[]>([]);
+    const [suppliedItems, setSuppliedItems] = useState<SuppliedItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [partsLoading, setPartsLoading] = useState(false);
+    const [suppliedItemsLoading, setSuppliedItemsLoading] = useState(false);
 
-    // モーダル制御用の状態
+    // モーダル制御用の状態（部品）
     const [partModalOpen, setPartModalOpen] = useState(false);
     const [initialModalType, setInitialModalType] = useState<PartModalType>('detail');
     const [newPartModalOpen, setNewPartModalOpen] = useState(false);
     const [selectedPartId, setSelectedPartId] = useState<number | null>(null);
+
+    // モーダル制御用の状態（支給品）
+    type SuppliedItemModalType = 'detail' | 'priceList';
+    const [suppliedItemModalOpen, setSuppliedItemModalOpen] = useState(false);
+    const [initialSuppliedItemModalType, setInitialSuppliedItemModalType] = useState<SuppliedItemModalType>('detail');
+    const [newSuppliedItemModalOpen, setNewSuppliedItemModalOpen] = useState(false);
+    const [selectedSuppliedItemId, setSelectedSuppliedItemId] = useState<number | null>(null);
 
     const fetchProduct = useCallback(async () => {
         if (!productId || isNaN(productId)) {
@@ -94,13 +105,31 @@ export default function ProductDetailPage() {
         }
     }, [productId]);
 
+    const fetchSuppliedItems = useCallback(async () => {
+        if (!productId || isNaN(productId)) {
+            return;
+        }
+
+        setSuppliedItemsLoading(true);
+        try {
+            const data = await purchasesApi.getSuppliedItems({ product: productId });
+            setSuppliedItems(data);
+        } catch (error) {
+            console.error('支給品取得エラー:', error);
+            toast.error('支給品一覧の取得に失敗しました');
+        } finally {
+            setSuppliedItemsLoading(false);
+        }
+    }, [productId]);
+
     // useEffectで初期データ取得
     useEffect(() => {
         if (productId && !isNaN(productId)) {
             fetchProduct();
             fetchParts();
+            fetchSuppliedItems();
         }
-    }, [productId, fetchProduct, fetchParts]);
+    }, [productId, fetchProduct, fetchParts, fetchSuppliedItems]);
 
     // 詳細表示
     const handleViewDetail = useCallback((partId: number) => {
@@ -165,6 +194,70 @@ export default function ProductDetailPage() {
             toast.error('部品の削除に失敗しました');
         }
     }, [fetchParts]);
+
+    // 支給品詳細表示
+    const handleViewSuppliedItemDetail = useCallback((suppliedItemId: number) => {
+        setSelectedSuppliedItemId(suppliedItemId);
+        setInitialSuppliedItemModalType('detail');
+        setSuppliedItemModalOpen(true);
+    }, []);
+
+    // 支給品編集
+    const handleEditSuppliedItem = useCallback((suppliedItemId: number) => {
+        setSelectedSuppliedItemId(suppliedItemId);
+        setInitialSuppliedItemModalType('detail');
+        setSuppliedItemModalOpen(true);
+    }, []);
+
+    // 支給品価格履歴
+    const handleSuppliedItemPriceHistory = useCallback((suppliedItem: SuppliedItem) => {
+        setSelectedSuppliedItemId(suppliedItem.id);
+        setInitialSuppliedItemModalType('priceList');
+        setSuppliedItemModalOpen(true);
+    }, []);
+
+    // 新規支給品追加
+    const handleAddNewSuppliedItem = useCallback(() => {
+        setNewSuppliedItemModalOpen(true);
+    }, []);
+
+    // 支給品モーダルを閉じる
+    const handleCloseSuppliedItemModal = useCallback(() => {
+        setSuppliedItemModalOpen(false);
+        setSelectedSuppliedItemId(null);
+        setInitialSuppliedItemModalType('detail');
+    }, []);
+
+    const handleCloseNewSuppliedItemModal = useCallback(() => {
+        setNewSuppliedItemModalOpen(false);
+    }, []);
+
+    // 支給品モーダル操作成功時の処理
+    const handleSuppliedItemModalSuccess = useCallback(() => {
+        fetchSuppliedItems(); // 一覧を更新
+    }, [fetchSuppliedItems]);
+
+    // 支給品新規作成成功時の処理
+    const handleNewSuppliedItemSuccess = useCallback(() => {
+        setNewSuppliedItemModalOpen(false);
+        fetchSuppliedItems(); // 一覧を更新
+    }, [fetchSuppliedItems]);
+
+    // 支給品削除
+    const handleDeleteSuppliedItem = useCallback(async (suppliedItemId: number, itemName: string) => {
+        if (!confirm(`${itemName}を削除してもよろしいですか？この操作は取り消せません。`)) {
+            return;
+        }
+
+        try {
+            await purchasesApi.deleteSuppliedItem(suppliedItemId);
+            toast.success('支給品を削除しました');
+            fetchSuppliedItems();
+        } catch (error) {
+            console.error('支給品削除エラー:', error);
+            toast.error('支給品の削除に失敗しました');
+        }
+    }, [fetchSuppliedItems]);
 
     const columns: GridColDef[] = [
         {
@@ -262,6 +355,93 @@ export default function ProductDetailPage() {
         },
     ];
 
+    const suppliedItemColumns: GridColDef[] = [
+        {
+            field: 'item_number',
+            headerName: '支給品品番',
+            width: 150,
+            flex: 1,
+        },
+        {
+            field: 'item_name',
+            headerName: '支給品名',
+            width: 200,
+            flex: 1,
+        },
+        {
+            field: 'specification',
+            headerName: '仕様',
+            width: 180,
+            flex: 1,
+        },
+        {
+            field: 'current_price',
+            headerName: '現在単価',
+            width: 130,
+            renderCell: (params) => {
+                if (!params.value) return '-';
+                return `¥${Number(params.value).toLocaleString()}`;
+            },
+        },
+        {
+            field: 'standard_quantity',
+            headerName: '標準数量',
+            width: 110,
+            type: 'number',
+        },
+        {
+            field: 'unit',
+            headerName: '単位',
+            width: 80,
+        },
+        {
+            field: 'is_active',
+            headerName: 'ステータス',
+            width: 100,
+            renderCell: (params: GridRenderCellParams) => (
+                <Chip
+                    label={params.value ? '有効' : '無効'}
+                    color={params.value ? 'success' : 'default'}
+                    size="small"
+                />
+            ),
+        },
+        {
+            field: 'actions',
+            type: 'actions',
+            headerName: '操作',
+            width: 150,
+            getActions: (params) => [
+                <GridActionsCellItem
+                    key="view"
+                    icon={<VisibilityIcon />}
+                    label="詳細"
+                    onClick={() => handleViewSuppliedItemDetail(params.row.id)}
+                />,
+                <GridActionsCellItem
+                    key="price"
+                    icon={<MoneyIcon />}
+                    label="価格履歴"
+                    onClick={() => handleSuppliedItemPriceHistory(params.row as SuppliedItem)}
+                />,
+                <GridActionsCellItem
+                    key="edit"
+                    icon={<EditIcon />}
+                    label="編集"
+                    onClick={() => handleEditSuppliedItem(params.row.id)}
+                    showInMenu
+                />,
+                <GridActionsCellItem
+                    key="delete"
+                    icon={<DeleteIcon />}
+                    label="削除"
+                    onClick={() => handleDeleteSuppliedItem(params.row.id, params.row.item_name)}
+                    showInMenu
+                />,
+            ],
+        },
+    ];
+
     if (loading) {
         return (
             <AuthGuard>
@@ -318,7 +498,7 @@ export default function ProductDetailPage() {
                         <Paper sx={{ p: 3 }}>
                             <Box sx={{
                                 display: 'grid',
-                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(5, 1fr)' },
                                 gap: 3
                             }}>
                                 <Box>
@@ -353,6 +533,14 @@ export default function ProductDetailPage() {
                                     </Typography>
                                     <Typography variant="body1" fontWeight="medium">
                                         {parts.length}件
+                                    </Typography>
+                                </Box>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        支給品数
+                                    </Typography>
+                                    <Typography variant="body1" fontWeight="medium">
+                                        {suppliedItems.length}件
                                     </Typography>
                                 </Box>
                             </Box>
@@ -429,6 +617,62 @@ export default function ProductDetailPage() {
                         />
                     </Paper>
 
+                    {/* 関連支給品一覧 */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, mt: 4 }}>
+                        <Typography variant="h6">
+                            関連支給品
+                        </Typography>
+                        <Box>
+                            <IconButton
+                                onClick={fetchSuppliedItems}
+                                sx={{ mr: 1 }}
+                                disabled={suppliedItemsLoading}
+                                aria-label="更新"
+                            >
+                                <RefreshIcon />
+                            </IconButton>
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={handleAddNewSuppliedItem}
+                            >
+                                支給品追加
+                            </Button>
+                        </Box>
+                    </Box>
+
+                    <Paper sx={{ width: '100%' }}>
+                        <DataGrid
+                            rows={suppliedItems}
+                            columns={suppliedItemColumns}
+                            loading={suppliedItemsLoading}
+                            pageSizeOptions={[10, 25, 50]}
+                            initialState={{
+                                pagination: {
+                                    paginationModel: { pageSize: 10, page: 0 },
+                                },
+                            }}
+                            disableRowSelectionOnClick
+                            autoHeight
+                            sx={{
+                                '& .MuiDataGrid-cell:focus': {
+                                    outline: 'none',
+                                },
+                                '& .MuiDataGrid-cell:focus-within': {
+                                    outline: 'none',
+                                },
+                            }}
+                            localeText={{
+                                noRowsLabel: '支給品がありません',
+                                MuiTablePagination: {
+                                    labelDisplayedRows: ({ from, to, count }) =>
+                                        `${count}件中 ${from}～${to}件`,
+                                    labelRowsPerPage: '表示件数:',
+                                },
+                            }}
+                        />
+                    </Paper>
+
                     {/* 部品詳細・価格履歴モーダル（統合） */}
                     <PartModalManager
                         open={partModalOpen}
@@ -443,6 +687,23 @@ export default function ProductDetailPage() {
                         open={newPartModalOpen}
                         onClose={handleCloseNewPartModal}
                         onSuccess={handleNewPartSuccess}
+                        productId={productId}
+                    />
+
+                    {/* 支給品詳細・価格履歴モーダル（統合） */}
+                    <SuppliedItemModalManager
+                        open={suppliedItemModalOpen}
+                        onClose={handleCloseSuppliedItemModal}
+                        suppliedItemId={selectedSuppliedItemId}
+                        onSuccess={handleSuppliedItemModalSuccess}
+                        initialModal={initialSuppliedItemModalType}
+                    />
+
+                    {/* 新規支給品追加モーダル */}
+                    <SuppliedItemFormModal
+                        open={newSuppliedItemModalOpen}
+                        onClose={handleCloseNewSuppliedItemModal}
+                        onSuccess={handleNewSuppliedItemSuccess}
                         productId={productId}
                     />
                 </Box>
