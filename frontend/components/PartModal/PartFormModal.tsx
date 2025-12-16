@@ -47,6 +47,8 @@ interface PartFormData {
     supplier_part_name?: string;
     unit: string;
     order_type: string;
+    standard_quantity: number;
+    usage_quantity: number;
     minimum_order_quantity: number;
     lead_time_days?: number;
     is_active: boolean;
@@ -89,6 +91,8 @@ const PartFormModalComponent: React.FC<PartFormModalProps> = ({
             supplier_part_name: '',
             unit: '個',
             order_type: 'MOQ',
+            standard_quantity: 1,
+            usage_quantity: 1,
             minimum_order_quantity: 1,
             lead_time_days: undefined,
             is_active: true,
@@ -153,6 +157,8 @@ const PartFormModalComponent: React.FC<PartFormModalProps> = ({
                 supplier_part_name: duplicateFrom.supplier_part_name || '',
                 unit: duplicateFrom.unit,
                 order_type: duplicateFrom.order_type || 'MOQ',
+                standard_quantity: duplicateFrom.standard_quantity,
+                usage_quantity: duplicateFrom.usage_quantity,
                 minimum_order_quantity: duplicateFrom.minimum_order_quantity,
                 lead_time_days: duplicateFrom.lead_time_days,
                 is_active: true,
@@ -173,6 +179,8 @@ const PartFormModalComponent: React.FC<PartFormModalProps> = ({
                 supplier_part_name: '',
                 unit: '個',
                 order_type: 'MOQ',
+                standard_quantity: 1,
+                usage_quantity: 1,
                 minimum_order_quantity: 1,
                 lead_time_days: undefined,
                 is_active: true,
@@ -198,6 +206,8 @@ const PartFormModalComponent: React.FC<PartFormModalProps> = ({
                 supplier_part_name: data.supplier_part_name || '',
                 unit: data.unit,
                 order_type: data.order_type,
+                standard_quantity: data.standard_quantity,
+                usage_quantity: data.usage_quantity,
                 minimum_order_quantity: data.minimum_order_quantity,
                 lead_time_days: data.lead_time_days,
                 is_active: data.is_active,
@@ -460,6 +470,38 @@ const PartFormModalComponent: React.FC<PartFormModalProps> = ({
                                 multiline
                                 rows={2}
                                 {...register('specification')}
+                            />
+                        </Grid>
+
+                        {/* 標準数量 */}
+                        <Grid item xs={12} sm={2}>
+                            <TextField
+                                fullWidth
+                                label="標準数量 *"
+                                type="number"
+                                error={!!errors.standard_quantity}
+                                helperText={errors.standard_quantity?.message}
+                                {...register('standard_quantity', {
+                                    required: '標準数量は必須です',
+                                    min: { value: 1, message: '1以上を入力してください' },
+                                    valueAsNumber: true,
+                                })}
+                            />
+                        </Grid>
+
+                        {/* 使用数 */}
+                        <Grid item xs={12} sm={2}>
+                            <TextField
+                                fullWidth
+                                label="使用数 *"
+                                type="number"
+                                error={!!errors.usage_quantity}
+                                helperText={errors.usage_quantity?.message || '製品1個あたりの使用数量'}
+                                {...register('usage_quantity', {
+                                    required: '使用数は必須です',
+                                    min: { value: 1, message: '1以上を入力してください' },
+                                    valueAsNumber: true,
+                                })}
                             />
                         </Grid>
 

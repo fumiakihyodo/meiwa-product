@@ -40,6 +40,8 @@ import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';
 import { PartModalManager } from '@/components/PartModal/PartModalManager';
 import { PartFormModal } from '@/components/PartModal/PartFormModal';
+import { SuppliedItemModalManager } from '@/components/SuppliedItemModal/SuppliedItemModalManager';
+import { SuppliedItemFormModal } from '@/components/SuppliedItemModal/SuppliedItemFormModal';
 import toast from 'react-hot-toast';
 
 
@@ -54,13 +56,19 @@ export default function ProductDetailPage() {
     const [loading, setLoading] = useState(true);
     const [partsLoading, setPartsLoading] = useState(false);
     const [suppliedItemsLoading, setSuppliedItemsLoading] = useState(false);
-    const [currentTab, setCurrentTab] = useState(0);
 
-    // モーダル制御用の状態
+    // モーダル制御用の状態（部品）
     const [partModalOpen, setPartModalOpen] = useState(false);
     const [initialModalType, setInitialModalType] = useState<PartModalType>('detail');
     const [newPartModalOpen, setNewPartModalOpen] = useState(false);
     const [selectedPartId, setSelectedPartId] = useState<number | null>(null);
+
+    // モーダル制御用の状態（支給品）
+    type SuppliedItemModalType = 'detail' | 'priceList';
+    const [suppliedItemModalOpen, setSuppliedItemModalOpen] = useState(false);
+    const [initialSuppliedItemModalType, setInitialSuppliedItemModalType] = useState<SuppliedItemModalType>('detail');
+    const [newSuppliedItemModalOpen, setNewSuppliedItemModalOpen] = useState(false);
+    const [selectedSuppliedItemId, setSelectedSuppliedItemId] = useState<number | null>(null);
 
     const fetchProduct = useCallback(async () => {
         if (!productId || isNaN(productId)) {
@@ -189,14 +197,62 @@ export default function ProductDetailPage() {
         }
     }, [fetchParts]);
 
+    // 支給品詳細表示
+    const handleViewSuppliedItemDetail = useCallback((suppliedItemId: number) => {
+        setSelectedSuppliedItemId(suppliedItemId);
+        setInitialSuppliedItemModalType('detail');
+        setSuppliedItemModalOpen(true);
+    }, []);
+
+    // 支給品編集
+    const handleEditSuppliedItem = useCallback((suppliedItemId: number) => {
+        setSelectedSuppliedItemId(suppliedItemId);
+        setInitialSuppliedItemModalType('detail');
+        setSuppliedItemModalOpen(true);
+    }, []);
+
+    // 支給品価格履歴
+    const handleSuppliedItemPriceHistory = useCallback((suppliedItem: SuppliedItem) => {
+        setSelectedSuppliedItemId(suppliedItem.id);
+        setInitialSuppliedItemModalType('priceList');
+        setSuppliedItemModalOpen(true);
+    }, []);
+
+    // 新規支給品追加
+    const handleAddNewSuppliedItem = useCallback(() => {
+        setNewSuppliedItemModalOpen(true);
+    }, []);
+
+    // 支給品モーダルを閉じる
+    const handleCloseSuppliedItemModal = useCallback(() => {
+        setSuppliedItemModalOpen(false);
+        setSelectedSuppliedItemId(null);
+        setInitialSuppliedItemModalType('detail');
+    }, []);
+
+    const handleCloseNewSuppliedItemModal = useCallback(() => {
+        setNewSuppliedItemModalOpen(false);
+    }, []);
+
+    // 支給品モーダル操作成功時の処理
+    const handleSuppliedItemModalSuccess = useCallback(() => {
+        fetchSuppliedItems(); // 一覧を更新
+    }, [fetchSuppliedItems]);
+
+    // 支給品新規作成成功時の処理
+    const handleNewSuppliedItemSuccess = useCallback(() => {
+        setNewSuppliedItemModalOpen(false);
+        fetchSuppliedItems(); // 一覧を更新
+    }, [fetchSuppliedItems]);
+
     // 支給品削除
-    const handleDeleteSuppliedItem = useCallback(async (itemId: number, itemName: string) => {
+    const handleDeleteSuppliedItem = useCallback(async (suppliedItemId: number, itemName: string) => {
         if (!confirm(`${itemName}を削除してもよろしいですか？この操作は取り消せません。`)) {
             return;
         }
 
         try {
-            await purchasesApi.deleteSuppliedItem(itemId);
+            await purchasesApi.deleteSuppliedItem(suppliedItemId);
             toast.success('支給品を削除しました');
             fetchSuppliedItems();
         } catch (error) {
@@ -205,7 +261,7 @@ export default function ProductDetailPage() {
         }
     }, [fetchSuppliedItems]);
 
-    const partColumns: GridColDef[] = [
+    const columns: GridColDef[] = [
         {
             field: 'part_number',
             headerName: '品番',
@@ -313,34 +369,41 @@ export default function ProductDetailPage() {
     const suppliedItemColumns: GridColDef[] = [
         {
             field: 'item_number',
-            headerName: '品番',
+            headerName: '支給品品番',
             width: 150,
             flex: 1,
         },
         {
             field: 'item_name',
-            headerName: '品名',
+            headerName: '支給品名',
             width: 200,
             flex: 1,
         },
         {
-            field: 'quantity_per_product',
-            headerName: '使用数',
-            width: 120,
+            field: 'specification',
+            headerName: '仕様',
+            width: 180,
+            flex: 1,
+        },
+        {
+            field: 'current_price',
+            headerName: '現在単価',
+            width: 130,
             renderCell: (params) => {
-                return Number(params.value).toLocaleString();
+                if (!params.value) return '-';
+                return `¥${Number(params.value).toLocaleString()}`;
             },
+        },
+        {
+            field: 'standard_quantity',
+            headerName: '標準数量',
+            width: 110,
+            type: 'number',
         },
         {
             field: 'unit',
             headerName: '単位',
             width: 80,
-        },
-        {
-            field: 'specification',
-            headerName: '仕様',
-            width: 200,
-            flex: 1,
         },
         {
             field: 'is_active',
@@ -358,13 +421,33 @@ export default function ProductDetailPage() {
             field: 'actions',
             type: 'actions',
             headerName: '操作',
-            width: 100,
+            width: 150,
             getActions: (params) => [
+                <GridActionsCellItem
+                    key="view"
+                    icon={<VisibilityIcon />}
+                    label="詳細"
+                    onClick={() => handleViewSuppliedItemDetail(params.row.id)}
+                />,
+                <GridActionsCellItem
+                    key="price"
+                    icon={<MoneyIcon />}
+                    label="価格履歴"
+                    onClick={() => handleSuppliedItemPriceHistory(params.row as SuppliedItem)}
+                />,
+                <GridActionsCellItem
+                    key="edit"
+                    icon={<EditIcon />}
+                    label="編集"
+                    onClick={() => handleEditSuppliedItem(params.row.id)}
+                    showInMenu
+                />,
                 <GridActionsCellItem
                     key="delete"
                     icon={<DeleteIcon />}
                     label="削除"
                     onClick={() => handleDeleteSuppliedItem(params.row.id, params.row.item_name)}
+                    showInMenu
                 />,
             ],
         },
@@ -426,7 +509,7 @@ export default function ProductDetailPage() {
                         <Paper sx={{ p: 3 }}>
                             <Box sx={{
                                 display: 'grid',
-                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(5, 1fr)' },
                                 gap: 3
                             }}>
                                 <Box>
@@ -461,6 +544,14 @@ export default function ProductDetailPage() {
                                     </Typography>
                                     <Typography variant="body1" fontWeight="medium">
                                         {parts.length}件 / {suppliedItems.length}件
+                                    </Typography>
+                                </Box>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        支給品数
+                                    </Typography>
+                                    <Typography variant="body1" fontWeight="medium">
+                                        {suppliedItems.length}件
                                     </Typography>
                                 </Box>
                             </Box>
@@ -602,6 +693,62 @@ export default function ProductDetailPage() {
                         </>
                     )}
 
+                    {/* 関連支給品一覧 */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, mt: 4 }}>
+                        <Typography variant="h6">
+                            関連支給品
+                        </Typography>
+                        <Box>
+                            <IconButton
+                                onClick={fetchSuppliedItems}
+                                sx={{ mr: 1 }}
+                                disabled={suppliedItemsLoading}
+                                aria-label="更新"
+                            >
+                                <RefreshIcon />
+                            </IconButton>
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={handleAddNewSuppliedItem}
+                            >
+                                支給品追加
+                            </Button>
+                        </Box>
+                    </Box>
+
+                    <Paper sx={{ width: '100%' }}>
+                        <DataGrid
+                            rows={suppliedItems}
+                            columns={suppliedItemColumns}
+                            loading={suppliedItemsLoading}
+                            pageSizeOptions={[10, 25, 50]}
+                            initialState={{
+                                pagination: {
+                                    paginationModel: { pageSize: 10, page: 0 },
+                                },
+                            }}
+                            disableRowSelectionOnClick
+                            autoHeight
+                            sx={{
+                                '& .MuiDataGrid-cell:focus': {
+                                    outline: 'none',
+                                },
+                                '& .MuiDataGrid-cell:focus-within': {
+                                    outline: 'none',
+                                },
+                            }}
+                            localeText={{
+                                noRowsLabel: '支給品がありません',
+                                MuiTablePagination: {
+                                    labelDisplayedRows: ({ from, to, count }) =>
+                                        `${count}件中 ${from}～${to}件`,
+                                    labelRowsPerPage: '表示件数:',
+                                },
+                            }}
+                        />
+                    </Paper>
+
                     {/* 部品詳細・価格履歴モーダル（統合） */}
                     <PartModalManager
                         open={partModalOpen}
@@ -616,6 +763,23 @@ export default function ProductDetailPage() {
                         open={newPartModalOpen}
                         onClose={handleCloseNewPartModal}
                         onSuccess={handleNewPartSuccess}
+                        productId={productId}
+                    />
+
+                    {/* 支給品詳細・価格履歴モーダル（統合） */}
+                    <SuppliedItemModalManager
+                        open={suppliedItemModalOpen}
+                        onClose={handleCloseSuppliedItemModal}
+                        suppliedItemId={selectedSuppliedItemId}
+                        onSuccess={handleSuppliedItemModalSuccess}
+                        initialModal={initialSuppliedItemModalType}
+                    />
+
+                    {/* 新規支給品追加モーダル */}
+                    <SuppliedItemFormModal
+                        open={newSuppliedItemModalOpen}
+                        onClose={handleCloseNewSuppliedItemModal}
+                        onSuccess={handleNewSuppliedItemSuccess}
                         productId={productId}
                     />
                 </Box>

@@ -34,6 +34,7 @@ import {
     Visibility as VisibilityIcon,
     Search as SearchIcon,
     AttachMoney as MoneyIcon,
+    Inventory2 as Inventory2Icon,
 } from '@mui/icons-material';
 import { PartModalType } from '@/types/business';
 import { Part } from '@/types/purchases';
@@ -49,6 +50,7 @@ import { PartModalManager } from '@/components/PartModal/PartModalManager';
 import { PartFormModal } from '@/components/PartModal/PartFormModal';
 import { PartPriceListModal } from '@/components/PartModal/PartPriceListModal'; // 追加
 import toast from 'react-hot-toast';
+import Link from 'next/link';
 
 // 部品検索のパラメータ型を定義
 type PartSearchParams = {
@@ -232,6 +234,18 @@ export default function PartsPage() {
             width: 180,
         },
         {
+            field: 'standard_quantity',
+            headerName: '標準数量',
+            width: 100,
+            type: 'number',
+        },
+        {
+            field: 'usage_quantity',
+            headerName: '使用数',
+            width: 90,
+            type: 'number',
+        },
+        {
             field: 'current_price',
             headerName: '現在単価',
             width: 120,
@@ -317,6 +331,15 @@ export default function PartsPage() {
                             部品管理
                         </Typography>
                         <Box>
+                            <Link href="/supplied-items" passHref legacyBehavior>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<Inventory2Icon />}
+                                    sx={{ mr: 1 }}
+                                >
+                                    支給品管理
+                                </Button>
+                            </Link>
                             <IconButton onClick={() => fetchParts()} sx={{ mr: 1 }}>
                                 <RefreshIcon />
                             </IconButton>

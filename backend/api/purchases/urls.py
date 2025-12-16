@@ -12,8 +12,8 @@ from api.purchases.views import (
     PriceHistoryCSVTemplateView,
     SuppliedItemListCreateView,
     SuppliedItemDetailView,
-    SuppliedItemBulkImportView,
-    SuppliedItemCSVTemplateView,
+    SuppliedItemPriceHistoryListCreateView,
+    SuppliedItemPriceHistoryDetailView,
 )
 from api.purchases import views
 
@@ -38,6 +38,11 @@ urlpatterns = [
     # 支給品関連
     path('supplied-items/', SuppliedItemListCreateView.as_view(), name='supplied_item_list_create'),
     path('supplied-items/<int:pk>/', SuppliedItemDetailView.as_view(), name='supplied_item_detail'),
-    path('supplied-items/bulk-import/', SuppliedItemBulkImportView.as_view(), name='supplied_item_bulk_import'),
-    path('supplied-items/csv-template/', SuppliedItemCSVTemplateView.as_view(), name='supplied_item_csv_template'),
+
+    # 支給品価格履歴関連
+    path('supplied-item-price-histories/', SuppliedItemPriceHistoryListCreateView.as_view(), name='supplied_item_price_history_list_create'),
+    path('supplied-item-price-histories/<int:pk>/', SuppliedItemPriceHistoryDetailView.as_view(), name='supplied_item_price_history_detail'),
+
+    # 支給品Quote file download
+    path('supplied-item-price-histories/<int:pk>/quote-file/', views.download_supplied_item_quote_file, name='supplied_item-price-history-quote-file'),
 ]
