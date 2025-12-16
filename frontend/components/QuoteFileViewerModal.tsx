@@ -26,6 +26,7 @@ interface QuoteFileViewerModalProps {
     onClose: () => void;
     priceHistoryId: number;
     fileName: string;
+    isSuppliedItem?: boolean;
 }
 
 export const QuoteFileViewerModal: React.FC<QuoteFileViewerModalProps> = ({
@@ -33,6 +34,7 @@ export const QuoteFileViewerModal: React.FC<QuoteFileViewerModalProps> = ({
     onClose,
     priceHistoryId,
     fileName,
+    isSuppliedItem = false,
 }) => {
     const [loading, setLoading] = useState(true);
     const [fileUrl, setFileUrl] = useState<string | null>(null);
@@ -60,17 +62,19 @@ export const QuoteFileViewerModal: React.FC<QuoteFileViewerModalProps> = ({
     }, [open, priceHistoryId]);
 
     const loadFile = async () => {
-        console.log('[QuoteFileViewerModal] Loading file:', { priceHistoryId, fileName });
+        console.log('[QuoteFileViewerModal] Loading file:', { priceHistoryId, fileName, isSuppliedItem });
         setLoading(true);
         setError(null);
-        
+
         try {
-            const blob = await purchasesApi.downloadQuoteFile(priceHistoryId);
+            const blob = isSuppliedItem
+                ? await purchasesApi.downloadSuppliedItemQuoteFile(priceHistoryId)
+                : await purchasesApi.downloadQuoteFile(priceHistoryId);
             console.log('[QuoteFileViewerModal] File loaded, blob size:', blob.size);
-            
+
             const url = URL.createObjectURL(blob);
             console.log('[QuoteFileViewerModal] Object URL created:', url);
-            
+
             setFileUrl(url);
         } catch (err) {
             console.error('[QuoteFileViewerModal] Failed to load file:', err);
@@ -83,7 +87,7 @@ export const QuoteFileViewerModal: React.FC<QuoteFileViewerModalProps> = ({
 
     const handleDownload = async () => {
         console.log('[QuoteFileViewerModal] Download clicked');
-        
+
         if (!fileUrl) {
             toast.error('ファイルが読み込まれていません');
             return;
@@ -91,7 +95,9 @@ export const QuoteFileViewerModal: React.FC<QuoteFileViewerModalProps> = ({
 
         try {
             // Blobを再取得してダウンロード
-            const blob = await purchasesApi.downloadQuoteFile(priceHistoryId);
+            const blob = isSuppliedItem
+                ? await purchasesApi.downloadSuppliedItemQuoteFile(priceHistoryId)
+                : await purchasesApi.downloadQuoteFile(priceHistoryId);
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -100,7 +106,7 @@ export const QuoteFileViewerModal: React.FC<QuoteFileViewerModalProps> = ({
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            
+
             console.log('[QuoteFileViewerModal] Download started');
             toast.success('ダウンロードを開始しました');
         } catch (err) {

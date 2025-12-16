@@ -1,35 +1,49 @@
 // components/SuppliedItemModal/SuppliedItemPriceListModal.tsx
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Dialog,
     DialogTitle,
     DialogContent,
     DialogActions,
     Button,
-    Typography,
     Box,
+    Typography,
+    IconButton,
     Chip,
+    CircularProgress,
+    Alert,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    Paper,
+    Tooltip,
 } from '@mui/material';
 import {
-    DataGrid,
-    GridColDef,
-    GridRenderCellParams,
-} from '@mui/x-data-grid';
-import {
     Close as CloseIcon,
-    ArrowBack as ArrowBackIcon,
     Add as AddIcon,
+    Edit as EditIcon,
+    Delete as DeleteIcon,
+    Visibility as VisibilityIcon,
+    Download as DownloadIcon,
+    ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 import { SuppliedItem, SuppliedItemPriceHistory } from '@/types/purchases';
-import { SectionCard } from '@/components/common/display/SectionCard';
+import { purchasesApi } from '@/services/apiPurchases';
+import { SuppliedItemPriceHistoryFormModal } from './SuppliedItemPriceHistoryFormModal';
+import { QuoteFileViewerModal } from '../QuoteFileViewerModal';
+import toast from 'react-hot-toast';
 
 interface SuppliedItemPriceListModalProps {
     open: boolean;
     onClose: () => void;
     suppliedItem: SuppliedItem | null;
     onSwitchToDetail?: (suppliedItem: SuppliedItem) => void;
+    onSuccess?: () => void;
 }
 
 export const SuppliedItemPriceListModal: React.FC<SuppliedItemPriceListModalProps> = ({
@@ -37,142 +51,355 @@ export const SuppliedItemPriceListModal: React.FC<SuppliedItemPriceListModalProp
     onClose,
     suppliedItem,
     onSwitchToDetail,
+    onSuccess,
 }) => {
-    const [newPriceModalOpen, setNewPriceModalOpen] = useState(false);
+    const [priceHistories, setPriceHistories] = useState<SuppliedItemPriceHistory[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [priceFormOpen, setPriceFormOpen] = useState(false);
+    const [selectedPrice, setSelectedPrice] = useState<SuppliedItemPriceHistory | null>(null);
 
-    const handleBack = useCallback(() => {
+    const fetchPriceHistories = useCallback(async () => {
+        if (!suppliedItem) return;
+
+        setLoading(true);
+        try {
+            const data = await purchasesApi.getSuppliedItemPriceHistories({ supplied_item: suppliedItem.id });
+            setPriceHistories(data);
+        } catch (error) {
+            console.error(error);
+            toast.error('価格履歴の取得に失敗しました');
+        } finally {
+            setLoading(false);
+        }
+    }, [suppliedItem]);
+
+    useEffect(() => {
+        if (open && suppliedItem) {
+            fetchPriceHistories();
+        }
+    }, [open, suppliedItem, fetchPriceHistories]);
+
+    const handleAddPrice = () => {
+        setSelectedPrice(null);
+        setPriceFormOpen(true);
+    };
+
+    const handleEditPrice = (price: SuppliedItemPriceHistory) => {
+        setSelectedPrice(price);
+        setPriceFormOpen(true);
+    };
+
+    const handleDeletePrice = async (priceId: number) => {
+        if (!confirm('この価格履歴を削除してもよろしいですか?')) {
+            return;
+        }
+
+        try {
+            await purchasesApi.deleteSuppliedItemPriceHistory(priceId);
+            toast.success('価格履歴を削除しました');
+            fetchPriceHistories();
+            if (onSuccess) {
+                onSuccess();
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error('価格履歴の削除に失敗しました');
+        }
+    };
+
+    // 見積書表示モーダル状態管理
+    const [quoteViewerOpen, setQuoteViewerOpen] = useState(false);
+    const [selectedQuoteFile, setSelectedQuoteFile] = useState<{
+        priceHistoryId: number;
+        fileName: string;
+    } | null>(null);
+
+    // 見積書表示モーダルを閉じる
+    const handleCloseQuoteViewer = () => {
+        setQuoteViewerOpen(false);
+        setSelectedQuoteFile(null);
+    };
+
+    const handleViewFile = (priceHistory: SuppliedItemPriceHistory) => {
+        console.log('[SuppliedItemPriceListModal] View quote file:', priceHistory);
+        console.log('[SuppliedItemPriceListModal] quote_file_name:', priceHistory.quote_file_name);
+        console.log('[SuppliedItemPriceListModal] quote_file:', priceHistory.quote_file);
+
+        if (priceHistory.quote_file_name) {
+            setSelectedQuoteFile({
+                priceHistoryId: priceHistory.id,
+                fileName: priceHistory.quote_file_name,
+            });
+            setQuoteViewerOpen(true);
+        } else {
+            toast.error('見積書ファイルが見つかりません');
+        }
+    };
+
+    const handleDownloadFile = async (priceHistoryId: number, fileName: string) => {
+        try {
+            const blob = await purchasesApi.downloadSuppliedItemQuoteFile(priceHistoryId);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success('ファイルをダウンロードしました');
+        } catch (error) {
+            console.error(error);
+            toast.error('ファイルのダウンロードに失敗しました');
+        }
+    };
+
+    const handlePriceFormClose = () => {
+        setPriceFormOpen(false);
+        setSelectedPrice(null);
+    };
+
+    const handlePriceFormSuccess = () => {
+        setPriceFormOpen(false);
+        setSelectedPrice(null);
+        fetchPriceHistories();
+        if (onSuccess) {
+            onSuccess();
+        }
+    };
+
+    const handleBackToDetail = () => {
         if (suppliedItem && onSwitchToDetail) {
             onSwitchToDetail(suppliedItem);
         }
-    }, [suppliedItem, onSwitchToDetail]);
+    };
 
-    const columns: GridColDef[] = [
-        {
-            field: 'price',
-            headerName: '単価',
-            width: 120,
-            valueFormatter: (params) => `¥${Number(params).toLocaleString()}`,
-        },
-        {
-            field: 'start_date',
-            headerName: '開始日',
-            width: 120,
-        },
-        {
-            field: 'end_date',
-            headerName: '終了日',
-            width: 120,
-            valueFormatter: (params) => params || '無期限',
-        },
-        {
-            field: 'is_current',
-            headerName: 'ステータス',
-            width: 100,
-            renderCell: (params: GridRenderCellParams) => {
-                if (params.row.is_current) {
-                    return <Chip label="適用中" color="success" size="small" />;
-                } else if (params.row.is_future) {
-                    return <Chip label="将来" color="info" size="small" />;
-                } else if (params.row.is_expired) {
-                    return <Chip label="期限切れ" color="default" size="small" />;
-                }
-                return <Chip label="無効" color="default" size="small" />;
-            },
-        },
-        {
-            field: 'change_reason',
-            headerName: '変更理由',
-            width: 200,
-        },
-        {
-            field: 'quote_file_name',
-            headerName: '見積書',
-            width: 150,
-            renderCell: (params: GridRenderCellParams) => {
-                if (params.value) {
-                    return (
-                        <Typography
-                            variant="body2"
-                            sx={{ cursor: 'pointer', color: 'primary.main' }}
-                        >
-                            {params.value}
-                        </Typography>
-                    );
-                }
-                return '-';
-            },
-        },
-        {
-            field: 'created_at',
-            headerName: '作成日時',
-            width: 150,
-            valueFormatter: (params) => new Date(params as string).toLocaleString('ja-JP'),
-        },
-    ];
+    const getStatusChip = (price: SuppliedItemPriceHistory) => {
+        if (price.is_current) {
+            return <Chip label="現在" color="success" size="small" />;
+        } else if (price.is_future) {
+            return <Chip label="予定" color="info" size="small" />;
+        } else if (price.is_expired) {
+            return <Chip label="過去" color="default" size="small" />;
+        } else if (!price.is_active) {
+            return <Chip label="無効" color="error" size="small" />;
+        }
+        return null;
+    };
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-            <DialogTitle>
-                支給品価格履歴
-                {suppliedItem && (
-                    <Typography variant="body2" color="text.secondary">
-                        {suppliedItem.item_number} - {suppliedItem.item_name}
-                    </Typography>
-                )}
-            </DialogTitle>
-            <DialogContent dividers>
-                {suppliedItem ? (
-                    <Box>
-                        {/* 現在の価格情報 */}
-                        <SectionCard title="現在の価格情報">
-                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                                <Typography variant="h6">
-                                    {suppliedItem.current_price
-                                        ? `¥${suppliedItem.current_price.toLocaleString()}`
-                                        : '未設定'}
+        <>
+            <Dialog
+                open={open}
+                onClose={onClose}
+                maxWidth="lg"
+                fullWidth
+                PaperProps={{
+                    sx: { minHeight: '600px' }
+                }}
+            >
+                <DialogTitle>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {onSwitchToDetail && (
+                                <Tooltip title="支給品詳細に戻る">
+                                    <IconButton
+                                        onClick={handleBackToDetail}
+                                        size="small"
+                                        sx={{ mr: 1 }}
+                                    >
+                                        <ArrowBackIcon />
+                                    </IconButton>
+                                </Tooltip>
+                            )}
+                            <Box>
+                                <Typography variant="h6" component="div">
+                                    価格履歴
                                 </Typography>
-                                <Chip
-                                    label={`価格履歴: ${suppliedItem.price_history_count || 0}件`}
-                                    size="small"
-                                />
+                                {suppliedItem && (
+                                    <Typography variant="body2" color="text.secondary">
+                                        {suppliedItem.item_number} - {suppliedItem.item_name}
+                                    </Typography>
+                                )}
                             </Box>
-                        </SectionCard>
-
-                        {/* 価格履歴一覧 */}
-                        <Box sx={{ mt: 3, height: 400 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                                <Typography variant="h6">価格履歴一覧</Typography>
-                                <Button
-                                    variant="contained"
-                                    startIcon={<AddIcon />}
-                                    onClick={() => setNewPriceModalOpen(true)}
-                                >
-                                    価格追加
-                                </Button>
-                            </Box>
-                            <DataGrid
-                                rows={suppliedItem.supplied_item_price_histories || []}
-                                columns={columns}
-                                pageSizeOptions={[10, 25, 50]}
-                                initialState={{
-                                    pagination: { paginationModel: { pageSize: 10 } },
-                                }}
-                                disableRowSelectionOnClick
-                            />
                         </Box>
+                        <Button
+                            variant="contained"
+                            startIcon={<AddIcon />}
+                            onClick={handleAddPrice}
+                            disabled={!suppliedItem}
+                        >
+                            新規価格
+                        </Button>
                     </Box>
-                ) : (
-                    <Typography>支給品情報が見つかりません</Typography>
-                )}
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={handleBack} startIcon={<ArrowBackIcon />}>
-                    詳細に戻る
-                </Button>
-                <Button onClick={onClose} startIcon={<CloseIcon />}>
-                    閉じる
-                </Button>
-            </DialogActions>
-        </Dialog>
+                </DialogTitle>
+
+                <DialogContent dividers>
+                    {loading ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+                            <CircularProgress />
+                        </Box>
+                    ) : priceHistories.length > 0 ? (
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table>
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>ステータス</TableCell>
+                                        <TableCell align="right">単価</TableCell>
+                                        <TableCell>開始日</TableCell>
+                                        <TableCell>終了日</TableCell>
+                                        <TableCell>変更理由</TableCell>
+                                        <TableCell>見積書</TableCell>
+                                        <TableCell align="center">操作</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {priceHistories.map((price) => (
+                                        <TableRow
+                                            key={price.id}
+                                            sx={{
+                                                '&:hover': { bgcolor: 'action.hover' },
+                                                opacity: price.is_active ? 1 : 0.6,
+                                            }}
+                                        >
+                                            <TableCell>
+                                                {getStatusChip(price)}
+                                            </TableCell>
+                                            <TableCell align="right">
+                                                <Typography variant="body2" fontWeight={price.is_current ? 'bold' : 'normal'}>
+                                                    ¥{Number(price.price).toLocaleString()}
+                                                </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Typography variant="body2">
+                                                    {new Date(price.start_date).toLocaleDateString('ja-JP')}
+                                                </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Typography variant="body2">
+                                                    {price.end_date
+                                                        ? new Date(price.end_date).toLocaleDateString('ja-JP')
+                                                        : '無期限'
+                                                    }
+                                                </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                                                    {price.change_reason || '-'}
+                                                </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                                {price.quote_file ? (
+                                                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                                        <Tooltip title="表示">
+                                                            <IconButton
+                                                                size="small"
+                                                                onClick={() => handleViewFile(price)}
+                                                            >
+                                                                <VisibilityIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                        <Tooltip title="ダウンロード">
+                                                            <IconButton
+                                                                size="small"
+                                                                onClick={() => handleDownloadFile(
+                                                                    price.id,
+                                                                    price.quote_file_name || 'quote_file'
+                                                                )}
+                                                            >
+                                                                <DownloadIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    </Box>
+                                                ) : (
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        -
+                                                    </Typography>
+                                                )}
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                                                    <Tooltip title="編集">
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={() => handleEditPrice(price)}
+                                                        >
+                                                            <EditIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <Tooltip title="削除">
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={() => handleDeletePrice(price.id)}
+                                                            color="error"
+                                                        >
+                                                            <DeleteIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                </Box>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    ) : (
+                        <Box sx={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            minHeight: 400,
+                            gap: 2,
+                        }}>
+                            <Typography color="text.secondary">
+                                価格履歴がありません
+                            </Typography>
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={handleAddPrice}
+                            >
+                                最初の価格を登録
+                            </Button>
+                        </Box>
+                    )}
+
+                    {suppliedItem?.has_multiple_active_prices && (
+                        <Alert severity="warning" sx={{ mt: 2 }}>
+                            複数の有効な価格が同時期に設定されています。価格の適用期間を確認してください。
+                        </Alert>
+                    )}
+                </DialogContent>
+
+                <DialogActions>
+                    <Button onClick={onClose} startIcon={<CloseIcon />}>
+                        閉じる
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* 価格登録・編集モーダル */}
+            {suppliedItem && (
+                <SuppliedItemPriceHistoryFormModal
+                    open={priceFormOpen}
+                    onClose={handlePriceFormClose}
+                    onSuccess={handlePriceFormSuccess}
+                    suppliedItem={suppliedItem}
+                    priceHistory={selectedPrice}
+                />
+            )}
+
+            {/* 見積書表示モーダル */}
+            {selectedQuoteFile && (
+                <QuoteFileViewerModal
+                    open={quoteViewerOpen}
+                    onClose={handleCloseQuoteViewer}
+                    priceHistoryId={selectedQuoteFile.priceHistoryId}
+                    fileName={selectedQuoteFile.fileName}
+                    isSuppliedItem={true}
+                />
+            )}
+        </>
     );
 };

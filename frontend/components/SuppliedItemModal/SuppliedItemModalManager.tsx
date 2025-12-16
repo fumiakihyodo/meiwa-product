@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { SuppliedItem } from '@/types/purchases';
+import { purchasesApi } from '@/services/apiPurchases';
 import { SuppliedItemDetailModal } from './SuppliedItemDetailModal';
 import { SuppliedItemPriceListModal } from './SuppliedItemPriceListModal';
 import { SuppliedItemFormModal } from './SuppliedItemFormModal';
@@ -40,13 +41,33 @@ export const SuppliedItemModalManager: React.FC<SuppliedItemModalManagerProps> =
 }) => {
     const [currentModal, setCurrentModal] = useState<ModalType>(initialModal);
     const [currentSuppliedItem, setCurrentSuppliedItem] = useState<SuppliedItem | null>(null);
+    const [loadingSuppliedItem, setLoadingSuppliedItem] = useState(false);
+
+    // suppliedItemIdから支給品情報を取得
+    const fetchSuppliedItem = useCallback(async () => {
+        if (!suppliedItemId) return;
+
+        setLoadingSuppliedItem(true);
+        try {
+            const data = await purchasesApi.getSuppliedItem(suppliedItemId);
+            setCurrentSuppliedItem(data);
+        } catch (error) {
+            console.error('支給品情報の取得に失敗しました:', error);
+        } finally {
+            setLoadingSuppliedItem(false);
+        }
+    }, [suppliedItemId]);
 
     // モーダルが開かれた時に初期モーダルをセット
     useEffect(() => {
         if (open) {
             setCurrentModal(initialModal);
+            // 価格履歴モーダルを直接開く場合は、支給品情報を取得
+            if (initialModal === 'priceList' && suppliedItemId) {
+                fetchSuppliedItem();
+            }
         }
-    }, [open, initialModal]);
+    }, [open, initialModal, suppliedItemId, fetchSuppliedItem]);
 
     // モーダルを閉じる時にリセット
     const handleClose = useCallback(() => {
@@ -88,6 +109,13 @@ export const SuppliedItemModalManager: React.FC<SuppliedItemModalManagerProps> =
         onClose();
     }, [onSuccess, onClose]);
 
+    // 価格履歴モーダル成功時の処理
+    const handlePriceListSuccess = useCallback(() => {
+        if (onSuccess) {
+            onSuccess();
+        }
+    }, [onSuccess]);
+
     // 詳細モーダルまたは編集モーダルの表示判定
     const isDetailOrEditMode = currentModal === 'detail' || currentModal === 'edit';
 
@@ -108,6 +136,7 @@ export const SuppliedItemModalManager: React.FC<SuppliedItemModalManagerProps> =
                 onClose={handleClose}
                 suppliedItem={currentSuppliedItem}
                 onSwitchToDetail={handleSwitchToDetail}
+                onSuccess={handlePriceListSuccess}
             />
 
             {/* 複製モーダル */}

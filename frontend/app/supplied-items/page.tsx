@@ -1,12 +1,13 @@
 // app/supplied-items/page.tsx
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Box,
     Paper,
     Typography,
     Button,
+    IconButton,
     Chip,
     Dialog,
     DialogActions,
@@ -27,10 +28,13 @@ import {
 } from '@mui/x-data-grid';
 import {
     Add as AddIcon,
+    Edit as EditIcon,
+    Delete as DeleteIcon,
     Refresh as RefreshIcon,
     Visibility as VisibilityIcon,
     Search as SearchIcon,
     AttachMoney as MoneyIcon,
+    ShoppingCart as ShoppingCartIcon,
 } from '@mui/icons-material';
 import { SuppliedItem } from '@/types/purchases';
 import { Product } from '@/types/procuct';
@@ -41,13 +45,17 @@ import { Sidebar } from '@/components/Sidebar';
 import { useFetchData } from '@/hooks/useFetchData';
 import { SuppliedItemModalManager } from '@/components/SuppliedItemModal/SuppliedItemModalManager';
 import { SuppliedItemFormModal } from '@/components/SuppliedItemModal/SuppliedItemFormModal';
+import { SuppliedItemPriceListModal } from '@/components/SuppliedItemModal/SuppliedItemPriceListModal';
 import toast from 'react-hot-toast';
+import Link from 'next/link';
 
 // 支給品検索のパラメータ型を定義
 type SuppliedItemSearchParams = {
     search?: string;
     product?: number;
 };
+
+type SuppliedItemModalType = 'detail' | 'edit' | 'priceList';
 
 export default function SuppliedItemsPage() {
     const [selectedSuppliedItem, setSelectedSuppliedItem] = useState<SuppliedItem | null>(null);
@@ -57,7 +65,7 @@ export default function SuppliedItemsPage() {
 
     // モーダル制御用の状態
     const [suppliedItemModalOpen, setSuppliedItemModalOpen] = useState<boolean>(false);
-    const [initialModalType, setInitialModalType] = useState<'detail' | 'edit' | 'priceList'>('detail');
+    const [initialModalType, setInitialModalType] = useState<SuppliedItemModalType>('detail');
     const [newSuppliedItemModalOpen, setNewSuppliedItemModalOpen] = useState<boolean>(false);
     const [selectedSuppliedItemId, setSelectedSuppliedItemId] = useState<number | null>(null);
 
@@ -85,49 +93,81 @@ export default function SuppliedItemsPage() {
         errorMessage: '製品一覧の取得に失敗しました',
     });
 
+    const loading = suppliedItemsLoading || productsLoading;
+
     // 初回データ取得
-    React.useEffect(() => {
+    useEffect(() => {
         fetchSuppliedItems();
         fetchProducts();
     }, [fetchSuppliedItems, fetchProducts]);
 
-    // 検索実行
-    const handleSearch = useCallback(() => {
-        const params: SuppliedItemSearchParams = {};
-        if (searchText) params.search = searchText;
-        if (selectedProduct) params.product = selectedProduct;
-        fetchSuppliedItems(params);
-    }, [searchText, selectedProduct, fetchSuppliedItems]);
-
-    // リセット
-    const handleReset = useCallback(() => {
-        setSearchText('');
-        setSelectedProduct('');
-        fetchSuppliedItems();
-    }, [fetchSuppliedItems]);
-
     // 詳細表示
-    const handleViewDetail = useCallback((suppliedItem: SuppliedItem) => {
-        setSelectedSuppliedItemId(suppliedItem.id);
+    const handleViewDetail = useCallback((suppliedItemId: number) => {
+        setSelectedSuppliedItemId(suppliedItemId);
         setInitialModalType('detail');
         setSuppliedItemModalOpen(true);
     }, []);
 
-    // 価格履歴表示
-    const handleViewPriceHistory = useCallback((suppliedItem: SuppliedItem) => {
-        setSelectedSuppliedItemId(suppliedItem.id);
-        setInitialModalType('priceList');
+    // 編集
+    const handleEdit = useCallback((suppliedItemId: number) => {
+        setSelectedSuppliedItemId(suppliedItemId);
+        setInitialModalType('edit');
         setSuppliedItemModalOpen(true);
     }, []);
 
+    // 価格履歴を表示
+    const handlePriceHistory = useCallback((suppliedItemId: number) => {
+        const suppliedItem = suppliedItems?.find(item => item.id === suppliedItemId);
+
+        if (suppliedItem) {
+            setSelectedSuppliedItemForPrice(suppliedItem);
+            setPriceListModalOpen(true);
+        } else {
+            toast.error('支給品情報の取得に失敗しました');
+        }
+    }, [suppliedItems]);
+
+    // 新規支給品追加
+    const handleNewSuppliedItem = useCallback(() => {
+        setNewSuppliedItemModalOpen(true);
+    }, []);
+
+    // モーダルを閉じる
+    const handleCloseSuppliedItemModal = useCallback(() => {
+        setSuppliedItemModalOpen(false);
+        setSelectedSuppliedItemId(null);
+        setInitialModalType('detail');
+    }, []);
+
+    const handleCloseNewSuppliedItemModal = useCallback(() => {
+        setNewSuppliedItemModalOpen(false);
+    }, []);
+
+    // 価格履歴モーダルを閉じる
+    const handleClosePriceListModal = useCallback(() => {
+        setPriceListModalOpen(false);
+        setSelectedSuppliedItemForPrice(null);
+    }, []);
+
+    // モーダル操作成功時の処理
+    const handleSuppliedItemModalSuccess = useCallback(() => {
+        fetchSuppliedItems();
+    }, [fetchSuppliedItems]);
+
+    // 新規支給品追加成功時の処理
+    const handleNewSuppliedItemSuccess = useCallback(() => {
+        setNewSuppliedItemModalOpen(false);
+        fetchSuppliedItems();
+    }, [fetchSuppliedItems]);
+
     // 削除ダイアログを開く
-    const handleDeleteClick = useCallback((suppliedItem: SuppliedItem) => {
+    const handleOpenDeleteDialog = useCallback((suppliedItem: SuppliedItem) => {
         setSelectedSuppliedItem(suppliedItem);
         setDeleteDialogOpen(true);
     }, []);
 
-    // 削除実行
-    const handleDelete = useCallback(async () => {
+    // 支給品削除処理
+    const handleDeleteSuppliedItem = useCallback(async () => {
         if (!selectedSuppliedItem) return;
 
         try {
@@ -143,46 +183,64 @@ export default function SuppliedItemsPage() {
         }
     }, [selectedSuppliedItem, fetchSuppliedItems]);
 
-    // DataGridの列定義
+    const handleSearch = () => {
+        const params: SuppliedItemSearchParams = {};
+        if (searchText) params.search = searchText;
+        if (selectedProduct) params.product = selectedProduct;
+        fetchSuppliedItems(params);
+    };
+
+    const handleReset = () => {
+        setSearchText('');
+        setSelectedProduct('');
+        fetchSuppliedItems();
+    };
+
     const columns: GridColDef[] = [
         {
             field: 'item_number',
             headerName: '支給品品番',
             width: 150,
-            renderCell: (params: GridRenderCellParams) => (
-                <Box
-                    sx={{
-                        cursor: 'pointer',
-                        color: 'primary.main',
-                        '&:hover': { textDecoration: 'underline' },
-                    }}
-                    onClick={() => handleViewDetail(params.row)}
-                >
-                    {params.value}
-                </Box>
-            ),
         },
-        { field: 'item_name', headerName: '支給品名', width: 200 },
-        { field: 'product_number', headerName: '製品品番', width: 130 },
-        { field: 'product_name', headerName: '製品名', width: 180 },
-        { field: 'specification', headerName: '仕様', width: 150 },
-        { field: 'unit', headerName: '単位', width: 80 },
-        { field: 'standard_quantity', headerName: '標準数量', width: 100, type: 'number' },
+        {
+            field: 'item_name',
+            headerName: '支給品名',
+            width: 180,
+        },
+        {
+            field: 'product_name',
+            headerName: '製品',
+            width: 150,
+        },
+        {
+            field: 'customer_name',
+            headerName: '顧客',
+            width: 150,
+        },
+        {
+            field: 'specification',
+            headerName: '仕様',
+            width: 150,
+        },
+        {
+            field: 'standard_quantity',
+            headerName: '標準数量',
+            width: 100,
+            type: 'number',
+        },
+        {
+            field: 'unit',
+            headerName: '単位',
+            width: 80,
+        },
         {
             field: 'current_price',
             headerName: '現在単価',
             width: 120,
-            type: 'number',
-            valueFormatter: (params) => {
-                if (params == null) return '-';
-                return `¥${Number(params).toLocaleString()}`;
+            renderCell: (params) => {
+                if (!params.value) return '-';
+                return `¥${Number(params.value).toLocaleString()}`;
             },
-        },
-        {
-            field: 'price_history_count',
-            headerName: '価格履歴数',
-            width: 110,
-            type: 'number',
         },
         {
             field: 'is_active',
@@ -200,20 +258,32 @@ export default function SuppliedItemsPage() {
             field: 'actions',
             type: 'actions',
             headerName: '操作',
-            width: 120,
+            width: 150,
             getActions: (params) => [
                 <GridActionsCellItem
                     key="view"
                     icon={<VisibilityIcon />}
                     label="詳細"
-                    onClick={() => handleViewDetail(params.row)}
-                    showInMenu
+                    onClick={() => handleViewDetail(params.row.id)}
                 />,
                 <GridActionsCellItem
                     key="price"
                     icon={<MoneyIcon />}
                     label="価格履歴"
-                    onClick={() => handleViewPriceHistory(params.row)}
+                    onClick={() => handlePriceHistory(params.row.id)}
+                />,
+                <GridActionsCellItem
+                    key="edit"
+                    icon={<EditIcon />}
+                    label="編集"
+                    onClick={() => handleEdit(params.row.id)}
+                    showInMenu
+                />,
+                <GridActionsCellItem
+                    key="delete"
+                    icon={<DeleteIcon />}
+                    label="削除"
+                    onClick={() => handleOpenDeleteDialog(params.row)}
                     showInMenu
                 />,
             ],
@@ -222,54 +292,62 @@ export default function SuppliedItemsPage() {
 
     return (
         <AuthGuard>
-            <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-                <Sidebar />
-                <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-                    <Paper sx={{ p: 3 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                            <Typography variant="h5" component="h1">
-                                支給品マスタ管理
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Sidebar>
+                <Box sx={{ width: '100%' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                        <Typography variant="h4" component="h1">
+                            支給品管理
+                        </Typography>
+                        <Box>
+                            <Link href="/parts" passHref legacyBehavior>
                                 <Button
                                     variant="outlined"
-                                    startIcon={<RefreshIcon />}
-                                    onClick={() => fetchSuppliedItems()}
+                                    startIcon={<ShoppingCartIcon />}
+                                    sx={{ mr: 1 }}
                                 >
-                                    更新
+                                    部品管理
                                 </Button>
-                                <Button
-                                    variant="contained"
-                                    startIcon={<AddIcon />}
-                                    onClick={() => setNewSuppliedItemModalOpen(true)}
-                                >
-                                    新規支給品登録
-                                </Button>
-                            </Box>
+                            </Link>
+                            <IconButton onClick={() => fetchSuppliedItems()} sx={{ mr: 1 }}>
+                                <RefreshIcon />
+                            </IconButton>
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={handleNewSuppliedItem}
+                            >
+                                新規支給品
+                            </Button>
                         </Box>
+                    </Box>
 
-                        {/* 検索フィルター */}
-                        <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    {/* 検索フィルター */}
+                    <Paper sx={{ p: 2, mb: 2 }}>
+                        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
                             <TextField
-                                label="キーワード検索"
-                                placeholder="支給品品番、支給品名、製品品番、製品名"
+                                size="small"
+                                placeholder="支給品名または品番で検索"
                                 value={searchText}
                                 onChange={(e) => setSearchText(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                                sx={{ minWidth: 300 }}
-                                size="small"
+                                onKeyPress={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleSearch();
+                                    }
+                                }}
+                                sx={{ width: 250 }}
                             />
-                            <FormControl size="small" sx={{ minWidth: 200 }}>
+                            <FormControl size="small" sx={{ minWidth: 180 }}>
                                 <InputLabel>製品</InputLabel>
                                 <Select
                                     value={selectedProduct}
-                                    label="製品"
                                     onChange={(e) => setSelectedProduct(e.target.value as number | '')}
+                                    label="製品"
+                                    disabled={!products || products.length === 0}
                                 >
-                                    <MenuItem value="">全て</MenuItem>
+                                    <MenuItem value="">すべて</MenuItem>
                                     {products?.map((product) => (
                                         <MenuItem key={product.id} value={product.id}>
-                                            {product.product_number} - {product.product_name}
+                                            {product.product_name}
                                         </MenuItem>
                                     ))}
                                 </Select>
@@ -281,77 +359,112 @@ export default function SuppliedItemsPage() {
                             >
                                 検索
                             </Button>
-                            <Button
-                                variant="outlined"
-                                onClick={handleReset}
-                            >
+                            <Button variant="outlined" onClick={handleReset}>
                                 リセット
                             </Button>
                         </Box>
-
-                        {/* データグリッド */}
-                        <Box sx={{ height: 600, width: '100%' }}>
-                            <DataGrid
-                                rows={suppliedItems || []}
-                                columns={columns}
-                                loading={suppliedItemsLoading}
-                                pageSizeOptions={[10, 25, 50, 100]}
-                                initialState={{
-                                    pagination: { paginationModel: { pageSize: 25 } },
-                                }}
-                                disableRowSelectionOnClick
-                                sx={{
-                                    '& .MuiDataGrid-cell:focus': {
-                                        outline: 'none',
-                                    },
-                                }}
-                            />
-                        </Box>
                     </Paper>
 
-                    {/* 支給品詳細・編集・複製モーダル */}
-                    <SuppliedItemModalManager
-                        open={suppliedItemModalOpen}
-                        onClose={() => {
-                            setSuppliedItemModalOpen(false);
-                            setSelectedSuppliedItemId(null);
-                        }}
-                        suppliedItemId={selectedSuppliedItemId}
-                        onSuccess={() => {
-                            fetchSuppliedItems();
-                        }}
-                        initialModal={initialModalType}
-                    />
+                    <Paper sx={{ width: '100%' }}>
+                        <DataGrid
+                            rows={suppliedItems ?? []}
+                            columns={columns}
+                            loading={loading}
+                            pageSizeOptions={[10, 25, 50]}
+                            initialState={{
+                                pagination: {
+                                    paginationModel: { pageSize: 10, page: 0 },
+                                },
+                            }}
+                            checkboxSelection
+                            disableRowSelectionOnClick
+                            autoHeight
+                            sx={{
+                                '& .MuiDataGrid-cell:focus': {
+                                    outline: 'none',
+                                },
+                            }}
+                        />
+                    </Paper>
 
-                    {/* 新規支給品登録モーダル */}
-                    <SuppliedItemFormModal
-                        open={newSuppliedItemModalOpen}
-                        onClose={() => setNewSuppliedItemModalOpen(false)}
-                        onSuccess={() => {
-                            setNewSuppliedItemModalOpen(false);
-                            fetchSuppliedItems();
-                        }}
-                    />
+                    {/* モーダルコンポーネント */}
+                    {suppliedItemModalOpen && selectedSuppliedItemId && (
+                        <SuppliedItemModalManager
+                            open={suppliedItemModalOpen}
+                            onClose={handleCloseSuppliedItemModal}
+                            suppliedItemId={selectedSuppliedItemId}
+                            onSuccess={handleSuppliedItemModalSuccess}
+                            initialModal={initialModalType}
+                        />
+                    )}
 
-                    {/* 削除確認ダイアログ */}
+                    {newSuppliedItemModalOpen && (
+                        <SuppliedItemFormModal
+                            open={newSuppliedItemModalOpen}
+                            onClose={handleCloseNewSuppliedItemModal}
+                            onSuccess={handleNewSuppliedItemSuccess}
+                        />
+                    )}
+
+                    {/* 価格履歴モーダル */}
+                    {priceListModalOpen && selectedSuppliedItemForPrice && (
+                        <SuppliedItemPriceListModal
+                            open={priceListModalOpen}
+                            onClose={handleClosePriceListModal}
+                            suppliedItem={selectedSuppliedItemForPrice}
+                            onSuccess={handleSuppliedItemModalSuccess}
+                        />
+                    )}
+
+                    {/* Delete Confirmation Dialog */}
                     <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
                         <DialogTitle>支給品の削除</DialogTitle>
                         <DialogContent>
                             <DialogContentText>
-                                支給品「{selectedSuppliedItem?.item_number} - {selectedSuppliedItem?.item_name}」を削除してもよろしいですか？
-                                <br />
-                                この操作は取り消せません。
+                                以下の支給品を削除してもよろしいですか?
                             </DialogContentText>
+                            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                                <Typography variant="body2" color="text.secondary" gutterBottom>
+                                    品番
+                                </Typography>
+                                <Typography variant="body1" gutterBottom>
+                                    {selectedSuppliedItem?.item_number}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" gutterBottom>
+                                    支給品名
+                                </Typography>
+                                <Typography variant="body1" gutterBottom>
+                                    {selectedSuppliedItem?.item_name}
+                                </Typography>
+                                {selectedSuppliedItem?.product_name && (
+                                    <>
+                                        <Typography
+                                            variant="body2"
+                                            color="text.secondary"
+                                            gutterBottom
+                                            sx={{ mt: 1 }}
+                                        >
+                                            製品
+                                        </Typography>
+                                        <Typography variant="body1">
+                                            {selectedSuppliedItem.product_name}
+                                        </Typography>
+                                    </>
+                                )}
+                            </Box>
+                            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+                                ※ この操作は取り消せません
+                            </Typography>
                         </DialogContent>
                         <DialogActions>
                             <Button onClick={() => setDeleteDialogOpen(false)}>キャンセル</Button>
-                            <Button onClick={handleDelete} color="error" variant="contained">
+                            <Button onClick={handleDeleteSuppliedItem} color="error" autoFocus>
                                 削除
                             </Button>
                         </DialogActions>
                     </Dialog>
                 </Box>
-            </Box>
+            </Sidebar>
         </AuthGuard>
     );
 }
