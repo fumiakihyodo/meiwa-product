@@ -140,7 +140,7 @@ class PartListSerializer(serializers.ModelSerializer):
             'id', 'part_number', 'part_name','supplier_part_name', 'order_type','product', 'product_number',
             'product_name', 'supplier_branch', 'supplier_name', 'branch_name',
             'specification', 'unit', 'minimum_order_quantity',
-            'lead_time_days', 'current_price', 'price_history_count',
+            'lead_time_days', 'usage_quantity', 'current_price', 'price_history_count',
             'is_active', 'created_at'
         ]
 
@@ -188,11 +188,11 @@ class PartDetailSerializer(serializers.ModelSerializer):
         model = Part
         fields = [
             'id', 'product', 'product_number', 'product_name',
-            'customer_name', 'customer_branch_name', 
+            'customer_name', 'customer_branch_name',
             'supplier_branch', 'supplier_name', 'branch_name',
             'branch_display_name', 'part_number', 'part_name','supplier_part_name',
             'order_type', 'specification', 'unit', 'minimum_order_quantity',
-            'lead_time_days', 'current_price', 'has_multiple_active_prices',
+            'lead_time_days', 'usage_quantity', 'current_price', 'has_multiple_active_prices',
             'price_history_count', 'price_histories', 'is_active',
             'notes', 'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
@@ -229,7 +229,7 @@ class PartCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'product', 'supplier_branch', 'part_number', 'part_name','order_type', 'supplier_part_name',
-            'specification', 'unit', 'minimum_order_quantity',
+            'specification', 'unit', 'standard_quantity', 'usage_quantity', 'minimum_order_quantity',
             'lead_time_days', 'is_active', 'notes',
             'created_by'
         ]

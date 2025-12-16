@@ -89,7 +89,15 @@ class Part(models.Model):
         verbose_name="リードタイム（日）",
         help_text="標準納期日数"
     )
-    
+
+    # 使用数量
+    usage_quantity = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+        verbose_name="使用数",
+        help_text="製品1個あたりの使用数量"
+    )
+
     # ステータス
     is_active = models.BooleanField(
         default=True,

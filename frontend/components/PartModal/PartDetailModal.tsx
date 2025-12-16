@@ -225,6 +225,14 @@ export const PartDetailModal: React.FC<PartDetailModalProps> = ({
         setEditedPart(prev => ({ ...prev, order_type: e.target.value }))
     }, []);
 
+    const handleStandardQuantityChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        setEditedPart(prev => ({ ...prev, standard_quantity: Number(e.target.value) }));
+    }, []);
+
+    const handleUsageQuantityChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        setEditedPart(prev => ({ ...prev, usage_quantity: Number(e.target.value) }));
+    }, []);
+
     const handleMinimumOrderQuantityChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         setEditedPart(prev => ({ ...prev, minimum_order_quantity: Number(e.target.value) }));
     }, []);
@@ -432,6 +440,40 @@ export const PartDetailModal: React.FC<PartDetailModalProps> = ({
                                                 size='small'
                                                 value={editedPart.specification || ''}
                                                 onChange={handleSpecificationChange}
+                                                disabled={saving}
+                                            />
+                                        }
+                                    />
+                                </Grid>
+                                <Grid item xs={6} sm={2}>
+                                    <InfoRow
+                                        isEditMode={isEditMode}
+                                        label='標準数量'
+                                        value={part.standard_quantity ? `${Number(part.standard_quantity).toLocaleString()}` : 0}
+                                        editComponent={
+                                            <MemoizedTextField
+                                                type='number'
+                                                fullWidth
+                                                size='small'
+                                                value={editedPart.standard_quantity || ''}
+                                                onChange={handleStandardQuantityChange}
+                                                disabled={saving}
+                                            />
+                                        }
+                                    />
+                                </Grid>
+                                <Grid item xs={6} sm={2}>
+                                    <InfoRow
+                                        isEditMode={isEditMode}
+                                        label='使用数'
+                                        value={part.usage_quantity ? `${Number(part.usage_quantity).toLocaleString()}` : 0}
+                                        editComponent={
+                                            <MemoizedTextField
+                                                type='number'
+                                                fullWidth
+                                                size='small'
+                                                value={editedPart.usage_quantity || ''}
+                                                onChange={handleUsageQuantityChange}
                                                 disabled={saving}
                                             />
                                         }

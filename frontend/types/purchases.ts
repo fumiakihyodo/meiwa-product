@@ -16,6 +16,8 @@ export interface Part {
     specification?: string;
     unit: string;
     order_type: string;
+    standard_quantity: number;
+    usage_quantity: number;
     minimum_order_quantity: number;
     lead_time_days?: number;
     current_price?: number;
@@ -62,6 +64,8 @@ export interface PartCreateData {
     specification?: string;
     unit?: string;
     order_type: string;
+    standard_quantity?: number;
+    usage_quantity?: number;
     minimum_order_quantity?: number;
     lead_time_days?: number;
     is_active?: boolean;
@@ -77,6 +81,8 @@ export interface PartFormData {
     part_name: string;
     specification?: string;
     unit: string;
+    standard_quantity: number;
+    usage_quantity: number;
     minimum_order_quantity: number;
     lead_time_days?: number;
     is_active: boolean;

@@ -234,6 +234,18 @@ export default function PartsPage() {
             width: 180,
         },
         {
+            field: 'standard_quantity',
+            headerName: '標準数量',
+            width: 100,
+            type: 'number',
+        },
+        {
+            field: 'usage_quantity',
+            headerName: '使用数',
+            width: 90,
+            type: 'number',
+        },
+        {
             field: 'current_price',
             headerName: '現在単価',
             width: 120,
