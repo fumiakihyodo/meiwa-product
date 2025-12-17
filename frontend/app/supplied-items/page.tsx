@@ -299,15 +299,15 @@ export default function SuppliedItemsPage() {
                             支給品管理
                         </Typography>
                         <Box>
-                            <Link href="/parts" passHref legacyBehavior>
-                                <Button
-                                    variant="outlined"
-                                    startIcon={<ShoppingCartIcon />}
-                                    sx={{ mr: 1 }}
-                                >
-                                    部品管理
-                                </Button>
-                            </Link>
+                            <Button
+                                component={Link}
+                                href="/parts"
+                                variant="outlined"
+                                startIcon={<ShoppingCartIcon />}
+                                sx={{ mr: 1 }}
+                            >
+                                部品管理
+                            </Button>
                             <IconButton onClick={() => fetchSuppliedItems()} sx={{ mr: 1 }}>
                                 <RefreshIcon />
                             </IconButton>

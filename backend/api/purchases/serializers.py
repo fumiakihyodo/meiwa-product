@@ -282,8 +282,6 @@ class SuppliedItemPriceHistoryListSerializer(serializers.ModelSerializer):
     is_current = serializers.BooleanField(read_only=True)
     is_future = serializers.BooleanField(read_only=True)
     is_expired = serializers.BooleanField(read_only=True)
-    quote_file_name = serializers.CharField(read_only=True)
-    quote_file_size = serializers.IntegerField(read_only=True)
     created_by_name = serializers.CharField(
         source='created_by.full_name',
         read_only=True,
@@ -295,8 +293,7 @@ class SuppliedItemPriceHistoryListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'price', 'start_date', 'end_date', 'is_active',
             'is_current', 'is_future', 'is_expired',
-            'change_reason', 'quote_file', 'quote_file_name', 'quote_file_size',
-            'created_at', 'created_by_name'
+            'change_reason', 'created_at', 'created_by_name'
         ]
 
 
@@ -307,8 +304,6 @@ class SuppliedItemPriceHistoryDetailSerializer(serializers.ModelSerializer):
     is_current = serializers.BooleanField(read_only=True)
     is_future = serializers.BooleanField(read_only=True)
     is_expired = serializers.BooleanField(read_only=True)
-    quote_file_name = serializers.CharField(read_only=True)
-    quote_file_size = serializers.IntegerField(read_only=True)
     created_by_name = serializers.CharField(
         source='created_by.full_name',
         read_only=True,
@@ -321,8 +316,7 @@ class SuppliedItemPriceHistoryDetailSerializer(serializers.ModelSerializer):
             'id', 'supplied_item', 'item_number', 'item_name',
             'price', 'start_date', 'end_date', 'is_active',
             'is_current', 'is_future', 'is_expired',
-            'change_reason', 'quote_file', 'quote_file_name',
-            'quote_file_size', 'notes', 'created_at', 'updated_at',
+            'change_reason', 'notes', 'created_at', 'updated_at',
             'created_by', 'created_by_name'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
@@ -339,7 +333,7 @@ class SuppliedItemPriceHistoryCreateUpdateSerializer(serializers.ModelSerializer
         model = SuppliedItemPriceHistory
         fields = [
             'id', 'supplied_item', 'price', 'start_date', 'end_date',
-            'is_active', 'change_reason', 'quote_file', 'notes',
+            'is_active', 'change_reason', 'notes',
             'created_by'
         ]
         read_only_fields = ['id']
@@ -369,17 +363,7 @@ class SuppliedItemPriceHistoryCreateUpdateSerializer(serializers.ModelSerializer
 
     def create(self, validated_data):
         """作成時の処理"""
-        import logging
-        logger = logging.getLogger(__name__)
-
-        logger.info(f"[Serializer Create] validated_data: {validated_data}")
-        logger.info(f"[Serializer Create] quote_file present: {'quote_file' in validated_data}")
-
         instance = super().create(validated_data)
-
-        logger.info(f"[Serializer Create] Created instance: {instance.id}")
-        logger.info(f"[Serializer Create] Instance quote_file: {instance.quote_file}")
-
         return instance
 
     def to_representation(self, instance):

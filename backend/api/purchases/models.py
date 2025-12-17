@@ -672,12 +672,6 @@ class SuppliedItem(models.Model):
         return self.current_prices.count() > 1
 
 
-def supplied_item_quote_file_upload_path(instance, filename):
-    """支給品見積書ファイルのアップロードパスを生成"""
-    date = timezone.now()
-    return f"supplied_item_quotes/{instance.supplied_item.item_number}/{date.year}/{date.month:02d}/{filename}"
-
-
 class SuppliedItemPriceHistory(models.Model):
     """支給品価格履歴モデル"""
 
@@ -722,16 +716,6 @@ class SuppliedItemPriceHistory(models.Model):
         blank=True,
         verbose_name="変更理由",
         help_text="価格変更の理由や背景"
-    )
-
-    # 見積書ファイル
-    quote_file = models.FileField(
-        upload_to=supplied_item_quote_file_upload_path,
-        null=True,
-        blank=True,
-        verbose_name="見積書ファイル",
-        help_text="見積書のPDFやExcelファイル",
-        max_length=500
     )
 
     # 備考
@@ -827,14 +811,6 @@ class SuppliedItemPriceHistory(models.Model):
 
         super().save(*args, **kwargs)
 
-    def delete(self, *args, **kwargs):
-        """削除時にファイルも削除"""
-        if self.quote_file:
-            # ファイルが存在する場合は削除
-            if os.path.isfile(self.quote_file.path):
-                os.remove(self.quote_file.path)
-        super().delete(*args, **kwargs)
-
     @property
     def is_current(self):
         """現在有効な価格かどうか"""
@@ -867,17 +843,3 @@ class SuppliedItemPriceHistory(models.Model):
         if not self.end_date:
             return False
         return self.end_date < timezone.now().date()
-
-    @property
-    def quote_file_name(self):
-        """見積書ファイル名を取得"""
-        if self.quote_file:
-            return os.path.basename(self.quote_file.name)
-        return None
-
-    @property
-    def quote_file_size(self):
-        """見積書ファイルサイズを取得（バイト）"""
-        if self.quote_file:
-            return self.quote_file.size
-        return None

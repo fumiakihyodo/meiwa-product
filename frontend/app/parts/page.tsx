@@ -331,15 +331,15 @@ export default function PartsPage() {
                             部品管理
                         </Typography>
                         <Box>
-                            <Link href="/supplied-items" passHref legacyBehavior>
-                                <Button
-                                    variant="outlined"
-                                    startIcon={<Inventory2Icon />}
-                                    sx={{ mr: 1 }}
-                                >
-                                    支給品管理
-                                </Button>
-                            </Link>
+                            <Button
+                                component={Link}
+                                href="/supplied-items"
+                                variant="outlined"
+                                startIcon={<Inventory2Icon />}
+                                sx={{ mr: 1 }}
+                            >
+                                支給品管理
+                            </Button>
                             <IconButton onClick={() => fetchParts()} sx={{ mr: 1 }}>
                                 <RefreshIcon />
                             </IconButton>

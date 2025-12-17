@@ -16,15 +16,11 @@ import {
     Switch,
     Typography,
     Box,
-    Alert,
     CircularProgress,
 } from '@mui/material';
 import {
     Close as CloseIcon,
     Save as SaveIcon,
-    Upload as UploadIcon,
-    Delete as DeleteIcon,
-    AttachFile as AttachFileIcon,
 } from '@mui/icons-material';
 import { SuppliedItem, SuppliedItemPriceHistory, SuppliedItemPriceHistoryCreateData, SuppliedItemPriceHistoryUpdateData } from '@/types/purchases';
 import { purchasesApi } from '@/services/apiPurchases';
@@ -56,8 +52,6 @@ export const SuppliedItemPriceHistoryFormModal: React.FC<SuppliedItemPriceHistor
     priceHistory,
 }) => {
     const isEdit = !!priceHistory;
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [existingFileName, setExistingFileName] = useState<string | null>(null);
 
     const {
         register,
@@ -82,7 +76,6 @@ export const SuppliedItemPriceHistoryFormModal: React.FC<SuppliedItemPriceHistor
     useEffect(() => {
         if (open) {
             if (isEdit && priceHistory) {
-                setExistingFileName(priceHistory.quote_file_name || null);
                 reset({
                     supplied_item: priceHistory.supplied_item,
                     price: Number(priceHistory.price),
@@ -102,48 +95,14 @@ export const SuppliedItemPriceHistoryFormModal: React.FC<SuppliedItemPriceHistor
                     change_reason: '',
                     notes: '',
                 });
-                setExistingFileName(null);
             }
-            setSelectedFile(null);
         }
     }, [open, isEdit, priceHistory, suppliedItem.id, reset]);
-
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-            // ファイルサイズチェック（10MB）
-            if (file.size > 10 * 1024 * 1024) {
-                toast.error('ファイルサイズは10MB以下にしてください');
-                event.target.value = '';
-                return;
-            }
-
-            console.log('[SuppliedItemPriceHistoryFormModal] File selected:', {
-                name: file.name,
-                size: file.size,
-                type: file.type,
-            });
-
-            setSelectedFile(file);
-            toast.success(`${file.name} を選択しました`);
-        }
-    };
-
-    const handleRemoveFile = () => {
-        console.log('[SuppliedItemPriceHistoryFormModal] Removing file');
-        setSelectedFile(null);
-
-        const fileInput = document.getElementById('supplied-item-quote-file-input') as HTMLInputElement;
-        if (fileInput) {
-            fileInput.value = '';
-        }
-    };
 
     const onSubmit = async (data: PriceFormData) => {
         try {
             console.log('[SuppliedItemPriceHistoryFormModal] Submit started');
             console.log('[SuppliedItemPriceHistoryFormModal] Form data:', data);
-            console.log('[SuppliedItemPriceHistoryFormModal] Selected file:', selectedFile);
 
             const submitData: SuppliedItemPriceHistoryCreateData | SuppliedItemPriceHistoryUpdateData = {
                 supplied_item: data.supplied_item,
@@ -164,19 +123,7 @@ export const SuppliedItemPriceHistoryFormModal: React.FC<SuppliedItemPriceHistor
                 submitData.notes = data.notes;
             }
 
-            if (selectedFile) {
-                console.log('[SuppliedItemPriceHistoryFormModal] Adding file to submit data:', {
-                    name: selectedFile.name,
-                    size: selectedFile.size,
-                    type: selectedFile.type,
-                });
-                submitData.quote_file = selectedFile;
-            }
-
-            console.log('[SuppliedItemPriceHistoryFormModal] Final submit data:', {
-                ...submitData,
-                quote_file: selectedFile ? `File: ${selectedFile.name}` : 'No file',
-            });
+            console.log('[SuppliedItemPriceHistoryFormModal] Final submit data:', submitData);
 
             if (isEdit && priceHistory) {
                 console.log('[SuppliedItemPriceHistoryFormModal] Updating price history:', priceHistory.id);
@@ -363,76 +310,6 @@ export const SuppliedItemPriceHistoryFormModal: React.FC<SuppliedItemPriceHistor
                                 placeholder="例: 原材料費の高騰により価格改定"
                                 {...register('change_reason')}
                             />
-                        </Grid>
-
-                        {/* 見積書ファイル */}
-                        <Grid item xs={12}>
-                            <Typography variant="body2" gutterBottom fontWeight="medium">
-                                見積書ファイル
-                            </Typography>
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                    <Button
-                                        variant="outlined"
-                                        component="label"
-                                        startIcon={<UploadIcon />}
-                                        size="small"
-                                    >
-                                        ファイルを選択
-                                        <input
-                                            id="supplied-item-quote-file-input"
-                                            type="file"
-                                            hidden
-                                            accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png"
-                                            onChange={handleFileChange}
-                                        />
-                                    </Button>
-
-                                    {selectedFile && (
-                                        <Box
-                                            sx={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 1,
-                                                p: 1,
-                                                bgcolor: 'action.hover',
-                                                borderRadius: 1,
-                                                flex: 1,
-                                            }}
-                                        >
-                                            <AttachFileIcon fontSize="small" color="primary" />
-                                            <Typography variant="body2" sx={{ flex: 1 }}>
-                                                {selectedFile.name}
-                                            </Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                                ({(selectedFile.size / 1024).toFixed(1)} KB)
-                                            </Typography>
-                                            <IconButton
-                                                size="small"
-                                                onClick={handleRemoveFile}
-                                                color="error"
-                                            >
-                                                <DeleteIcon fontSize="small" />
-                                            </IconButton>
-                                        </Box>
-                                    )}
-                                </Box>
-
-                                {!selectedFile && existingFileName && (
-                                    <Alert severity="info" sx={{ py: 0.5 }}>
-                                        <Typography variant="body2">
-                                            現在のファイル: <strong>{existingFileName}</strong>
-                                        </Typography>
-                                        <Typography variant="caption" color="text.secondary">
-                                            新しいファイルを選択すると置き換えられます
-                                        </Typography>
-                                    </Alert>
-                                )}
-
-                                <Typography variant="caption" color="text.secondary">
-                                    PDF, Excel, Word, 画像ファイル（最大10MB）
-                                </Typography>
-                            </Box>
                         </Grid>
 
                         {/* 備考 */}
