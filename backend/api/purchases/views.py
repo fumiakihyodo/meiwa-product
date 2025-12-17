@@ -14,7 +14,11 @@ import os
 import csv
 import io
 
-from api.purchases.models import Part, PriceHistory, SuppliedItem, SuppliedItemPriceHistory
+from api.purchases.models import (
+    Part, PriceHistory, SuppliedItem, SuppliedItemPriceHistory,
+    SuppliedItemList, SuppliedItemListItem, SuppliedItemReceiving,
+    SuppliedItemReceivingItem, SuppliedItemInventory
+)
 from api.purchases.serializers import (
     PartListSerializer,
     PartDetailSerializer,
@@ -28,6 +32,23 @@ from api.purchases.serializers import (
     SuppliedItemPriceHistoryListSerializer,
     SuppliedItemPriceHistoryDetailSerializer,
     SuppliedItemPriceHistoryCreateUpdateSerializer,
+    # 在庫管理用
+    SuppliedItemListListSerializer,
+    SuppliedItemListDetailSerializer,
+    SuppliedItemListCreateSerializer,
+    SuppliedItemListUpdateSerializer,
+    SuppliedItemListItemSerializer,
+    SuppliedItemListItemCreateSerializer,
+    SuppliedItemListItemCountConfirmSerializer,
+    SuppliedItemListItemReceivingConfirmSerializer,
+    SuppliedItemReceivingListSerializer,
+    SuppliedItemReceivingDetailSerializer,
+    SuppliedItemReceivingCreateSerializer,
+    SuppliedItemReceivingUpdateSerializer,
+    SuppliedItemInventoryListSerializer,
+    SuppliedItemInventoryDetailSerializer,
+    SuppliedItemInventoryCreateSerializer,
+    SuppliedItemInventoryUpdateSerializer,
 )
 from api.products.models import Product
 from api.supplier.models import SupplierBranch
@@ -1103,3 +1124,510 @@ def download_supplied_item_quote_file(request, pk):
         logger.error(
             f"[SuppliedItem Quote File Download] Traceback: {traceback.format_exc()}")
         raise Http404("ファイルのダウンロードに失敗しました")
+
+
+# ==================== 在庫管理 Views ====================
+
+class SuppliedItemListListCreateView(generics.ListCreateAPIView):
+    """支給品リスト一覧取得・作成ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = SuppliedItemList.objects.select_related(
+            'customer',
+            'created_by'
+        ).prefetch_related('items')
+
+        # フィルタリング
+        customer_id = self.request.query_params.get('customer', None)
+        if customer_id:
+            queryset = queryset.filter(customer_id=customer_id)
+
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        # 検索
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(list_number__icontains=search) |
+                Q(customer__name__icontains=search)
+            )
+
+        return queryset.order_by('-created_at')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return SuppliedItemListCreateSerializer
+        return SuppliedItemListListSerializer
+
+
+class SuppliedItemListDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """支給品リスト詳細取得・更新・削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        return SuppliedItemList.objects.select_related(
+            'customer',
+            'created_by'
+        ).prefetch_related(
+            'items',
+            'items__supplied_item',
+            'items__receiving_confirmed_by',
+            'items__count_confirmed_by'
+        )
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return SuppliedItemListUpdateSerializer
+        return SuppliedItemListDetailSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        """支給品リストの削除（管理者のみ）"""
+        if not request.user.is_administrator:
+            return Response(
+                {"error": "削除権限がありません"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        self.perform_destroy(self.get_object())
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SuppliedItemListItemListCreateView(generics.ListCreateAPIView):
+    """支給品リスト項目一覧取得・作成ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = SuppliedItemListItem.objects.select_related(
+            'supplied_item_list',
+            'supplied_item',
+            'receiving_confirmed_by',
+            'count_confirmed_by'
+        )
+
+        list_id = self.request.query_params.get('list', None)
+        if list_id:
+            queryset = queryset.filter(supplied_item_list_id=list_id)
+
+        receiving_confirmed = self.request.query_params.get('receiving_confirmed', None)
+        if receiving_confirmed is not None:
+            queryset = queryset.filter(receiving_confirmed=receiving_confirmed.lower() == 'true')
+
+        count_confirmed = self.request.query_params.get('count_confirmed', None)
+        if count_confirmed is not None:
+            queryset = queryset.filter(count_confirmed=count_confirmed.lower() == 'true')
+
+        return queryset.order_by('id')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return SuppliedItemListItemCreateSerializer
+        return SuppliedItemListItemSerializer
+
+
+class SuppliedItemListItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """支給品リスト項目詳細取得・更新・削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        return SuppliedItemListItem.objects.select_related(
+            'supplied_item_list',
+            'supplied_item',
+            'receiving_confirmed_by',
+            'count_confirmed_by'
+        )
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return SuppliedItemListItemCreateSerializer
+        return SuppliedItemListItemSerializer
+
+
+class SuppliedItemListItemReceivingConfirmView(generics.UpdateAPIView):
+    """支給品リスト項目の受入確認ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = SuppliedItemListItemReceivingConfirmSerializer
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        return SuppliedItemListItem.objects.select_related(
+            'supplied_item_list',
+            'receiving_confirmed_by'
+        )
+
+
+class SuppliedItemListItemCountConfirmView(generics.UpdateAPIView):
+    """支給品リスト項目の員数確認ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = SuppliedItemListItemCountConfirmSerializer
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        return SuppliedItemListItem.objects.select_related(
+            'supplied_item_list',
+            'count_confirmed_by'
+        )
+
+
+# ==================== 受入確認 Views ====================
+
+class SuppliedItemReceivingListCreateView(generics.ListCreateAPIView):
+    """支給品受入確認一覧取得・作成ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = SuppliedItemReceiving.objects.select_related(
+            'supplied_item_list__customer',
+            'created_by'
+        ).prefetch_related('items')
+
+        list_id = self.request.query_params.get('list', None)
+        if list_id:
+            queryset = queryset.filter(supplied_item_list_id=list_id)
+
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        return queryset.order_by('-created_at')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return SuppliedItemReceivingCreateSerializer
+        return SuppliedItemReceivingListSerializer
+
+
+class SuppliedItemReceivingDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """支給品受入確認詳細取得・更新・削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        return SuppliedItemReceiving.objects.select_related(
+            'supplied_item_list__customer',
+            'created_by'
+        ).prefetch_related(
+            'items',
+            'items__list_item'
+        )
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return SuppliedItemReceivingUpdateSerializer
+        return SuppliedItemReceivingDetailSerializer
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def complete_receiving(request, pk):
+    """受入確認を完了し、リスト項目を更新する"""
+    try:
+        receiving = SuppliedItemReceiving.objects.get(pk=pk)
+
+        if receiving.status == 'completed':
+            return Response(
+                {"error": "この受入確認は既に完了しています"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with transaction.atomic():
+            # 受入確認項目をリスト項目に反映
+            for item in receiving.items.all():
+                if item.list_item:
+                    list_item = item.list_item
+                    list_item.receiving_confirmed = True
+                    list_item.receiving_confirmed_at = timezone.now()
+                    list_item.receiving_confirmed_by = request.user
+                    list_item.received_quantity = item.calculated_quantity
+                    list_item.quantity_per_box = item.quantity_per_box
+                    list_item.box_count = item.box_count
+                    list_item.save()
+
+            # 受入確認ステータスを完了に
+            receiving.status = 'completed'
+            receiving.save()
+
+            # リストのステータスも更新
+            supplied_list = receiving.supplied_item_list
+            if supplied_list.received_items_count == supplied_list.total_items:
+                supplied_list.status = 'pending_count'
+            else:
+                supplied_list.status = 'receiving'
+            supplied_list.save()
+
+        return Response(
+            SuppliedItemReceivingDetailSerializer(receiving).data,
+            status=status.HTTP_200_OK
+        )
+
+    except SuppliedItemReceiving.DoesNotExist:
+        return Response(
+            {"error": "受入確認が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+# ==================== 在庫 Views ====================
+
+class SuppliedItemInventoryListCreateView(generics.ListCreateAPIView):
+    """支給品在庫一覧取得・作成ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = SuppliedItemInventory.objects.select_related(
+            'supplied_item__product__customer_branch__customer',
+            'list_item__supplied_item_list',
+            'created_by'
+        )
+
+        # フィルタリング
+        supplied_item_id = self.request.query_params.get('supplied_item', None)
+        if supplied_item_id:
+            queryset = queryset.filter(supplied_item_id=supplied_item_id)
+
+        product_id = self.request.query_params.get('product', None)
+        if product_id:
+            queryset = queryset.filter(supplied_item__product_id=product_id)
+
+        customer_id = self.request.query_params.get('customer', None)
+        if customer_id:
+            queryset = queryset.filter(
+                supplied_item__product__customer_branch__customer_id=customer_id
+            )
+
+        # 検索
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(supplied_item__item_number__icontains=search) |
+                Q(supplied_item__item_name__icontains=search) |
+                Q(lot_number__icontains=search)
+            )
+
+        return queryset.order_by('-received_date', '-created_at')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return SuppliedItemInventoryCreateSerializer
+        return SuppliedItemInventoryListSerializer
+
+
+class SuppliedItemInventoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """支給品在庫詳細取得・更新・削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        return SuppliedItemInventory.objects.select_related(
+            'supplied_item__product__customer_branch__customer',
+            'list_item__supplied_item_list',
+            'created_by'
+        )
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return SuppliedItemInventoryUpdateSerializer
+        return SuppliedItemInventoryDetailSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        """支給品在庫の削除（管理者のみ）"""
+        if not request.user.is_administrator:
+            return Response(
+                {"error": "削除権限がありません"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        self.perform_destroy(self.get_object())
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def register_inventory_from_list(request, list_id):
+    """リストから在庫を一括登録する"""
+    try:
+        supplied_list = SuppliedItemList.objects.get(pk=list_id)
+
+        # 員数確認が完了していない項目があるかチェック
+        unconfirmed_count = supplied_list.items.filter(count_confirmed=False).count()
+        if unconfirmed_count > 0:
+            return Response(
+                {"error": f"{unconfirmed_count}件の項目が員数確認されていません"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        created_inventories = []
+        with transaction.atomic():
+            for item in supplied_list.items.filter(count_confirmed=True):
+                # 支給品マスタに紐付いている場合のみ在庫登録
+                if item.supplied_item:
+                    inventory = SuppliedItemInventory.objects.create(
+                        supplied_item=item.supplied_item,
+                        list_item=item,
+                        quantity=item.received_quantity or item.quantity,
+                        received_date=supplied_list.delivery_date,
+                        created_by=request.user
+                    )
+                    created_inventories.append(inventory)
+
+            # リストステータスを完了に
+            supplied_list.status = 'completed'
+            supplied_list.save()
+
+        return Response(
+            {
+                "message": f"{len(created_inventories)}件の在庫を登録しました",
+                "inventories": SuppliedItemInventoryListSerializer(
+                    created_inventories, many=True
+                ).data
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+    except SuppliedItemList.DoesNotExist:
+        return Response(
+            {"error": "リストが見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+# ==================== CSV インポート ====================
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def import_supplied_item_list_csv(request, list_id):
+    """支給品リストにCSVからデータをインポート"""
+    try:
+        supplied_list = SuppliedItemList.objects.get(pk=list_id)
+    except SuppliedItemList.DoesNotExist:
+        return Response(
+            {"error": "リストが見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    csv_file = request.FILES.get('csv_file')
+    if not csv_file:
+        return Response(
+            {"error": "CSVファイルが必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # CSVファイルを読み込む
+        decoded_file = csv_file.read().decode('utf-8-sig')
+        io_string = io.StringIO(decoded_file)
+        reader = csv.DictReader(io_string)
+
+        created_items = []
+        errors = []
+
+        with transaction.atomic():
+            for row_num, row in enumerate(reader, start=2):
+                try:
+                    # 必須フィールドのチェック
+                    item_number = row.get('品番', row.get('item_number', '')).strip()
+                    item_name = row.get('品名', row.get('item_name', '')).strip()
+                    quantity_str = row.get('数量', row.get('quantity', '')).strip()
+
+                    if not item_number:
+                        errors.append(f"行{row_num}: 品番が必要です")
+                        continue
+                    if not item_name:
+                        errors.append(f"行{row_num}: 品名が必要です")
+                        continue
+                    if not quantity_str:
+                        errors.append(f"行{row_num}: 数量が必要です")
+                        continue
+
+                    try:
+                        quantity = int(quantity_str)
+                    except ValueError:
+                        errors.append(f"行{row_num}: 数量が不正です: {quantity_str}")
+                        continue
+
+                    # オプションフィールド
+                    unit = row.get('単位', row.get('unit', '個')).strip() or '個'
+                    quantity_per_box_str = row.get('入数', row.get('quantity_per_box', '')).strip()
+                    box_count_str = row.get('箱数', row.get('box_count', '')).strip()
+                    notes = row.get('備考', row.get('notes', '')).strip()
+
+                    quantity_per_box = None
+                    if quantity_per_box_str:
+                        try:
+                            quantity_per_box = int(quantity_per_box_str)
+                        except ValueError:
+                            pass
+
+                    box_count = None
+                    if box_count_str:
+                        try:
+                            box_count = int(box_count_str)
+                        except ValueError:
+                            pass
+
+                    # 支給品マスタとの紐付け（存在する場合）
+                    supplied_item = SuppliedItem.objects.filter(
+                        item_number=item_number,
+                        is_active=True
+                    ).first()
+
+                    # リスト項目を作成
+                    list_item = SuppliedItemListItem.objects.create(
+                        supplied_item_list=supplied_list,
+                        supplied_item=supplied_item,
+                        item_number=item_number,
+                        item_name=item_name,
+                        quantity=quantity,
+                        quantity_per_box=quantity_per_box,
+                        box_count=box_count,
+                        unit=unit,
+                        notes=notes
+                    )
+                    created_items.append(list_item)
+
+                except Exception as e:
+                    errors.append(f"行{row_num}: エラー - {str(e)}")
+
+            # CSVファイルを保存
+            supplied_list.csv_file = csv_file
+            supplied_list.status = 'pending_receiving'
+            supplied_list.save()
+
+        response_data = {
+            "message": f"{len(created_items)}件のデータをインポートしました",
+            "created_count": len(created_items),
+            "items": SuppliedItemListItemSerializer(created_items, many=True).data
+        }
+
+        if errors:
+            response_data["errors"] = errors
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+    except UnicodeDecodeError:
+        return Response(
+            {"error": "CSVファイルの文字コードがUTF-8ではありません"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        logger.error(f"CSV import error: {str(e)}")
+        return Response(
+            {"error": f"インポートエラー: {str(e)}"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+# timezoneインポートを追加
+from django.utils import timezone

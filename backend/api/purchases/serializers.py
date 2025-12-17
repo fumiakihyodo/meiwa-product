@@ -1,7 +1,11 @@
 # api/purchases/serializers.py
 
 from rest_framework import serializers
-from api.purchases.models import Part, PriceHistory, SuppliedItem, SuppliedItemPriceHistory
+from api.purchases.models import (
+    Part, PriceHistory, SuppliedItem, SuppliedItemPriceHistory,
+    SuppliedItemList, SuppliedItemListItem, SuppliedItemReceiving,
+    SuppliedItemReceivingItem, SuppliedItemInventory
+)
 from decimal import Decimal
 
 
@@ -501,3 +505,480 @@ class SuppliedItemCreateUpdateSerializer(serializers.ModelSerializer):
             )
 
         return attrs
+
+
+# ===== 在庫管理関連のシリアライザー =====
+
+class SuppliedItemListItemSerializer(serializers.ModelSerializer):
+    """支給品リスト項目シリアライザー"""
+    is_quantity_matched = serializers.BooleanField(read_only=True)
+    receiving_confirmed_by_name = serializers.CharField(
+        source='receiving_confirmed_by.full_name',
+        read_only=True,
+        default=None
+    )
+    count_confirmed_by_name = serializers.CharField(
+        source='count_confirmed_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = SuppliedItemListItem
+        fields = [
+            'id', 'supplied_item_list', 'supplied_item',
+            'item_number', 'item_name', 'quantity', 'quantity_per_box',
+            'box_count', 'unit', 'receiving_confirmed', 'receiving_confirmed_at',
+            'receiving_confirmed_by', 'receiving_confirmed_by_name',
+            'received_quantity', 'is_quantity_matched',
+            'count_confirmed', 'count_confirmed_at', 'count_confirmed_by',
+            'count_confirmed_by_name', 'notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class SuppliedItemListItemCreateSerializer(serializers.ModelSerializer):
+    """支給品リスト項目作成シリアライザー"""
+
+    class Meta:
+        model = SuppliedItemListItem
+        fields = [
+            'id', 'supplied_item_list', 'supplied_item',
+            'item_number', 'item_name', 'quantity', 'quantity_per_box',
+            'box_count', 'unit', 'notes'
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'item_number': {'required': True},
+            'item_name': {'required': True},
+            'quantity': {'required': True},
+        }
+
+
+class SuppliedItemListListSerializer(serializers.ModelSerializer):
+    """支給品リスト一覧シリアライザー"""
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    total_items = serializers.IntegerField(read_only=True)
+    total_quantity = serializers.IntegerField(read_only=True)
+    received_items_count = serializers.IntegerField(read_only=True)
+    count_confirmed_items_count = serializers.IntegerField(read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = SuppliedItemList
+        fields = [
+            'id', 'list_number', 'customer', 'customer_name', 'delivery_date',
+            'status', 'status_display', 'total_items', 'total_quantity',
+            'received_items_count', 'count_confirmed_items_count',
+            'notes', 'created_at', 'updated_at', 'created_by_name'
+        ]
+
+
+class SuppliedItemListDetailSerializer(serializers.ModelSerializer):
+    """支給品リスト詳細シリアライザー"""
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    items = SuppliedItemListItemSerializer(many=True, read_only=True)
+    total_items = serializers.IntegerField(read_only=True)
+    total_quantity = serializers.IntegerField(read_only=True)
+    received_items_count = serializers.IntegerField(read_only=True)
+    count_confirmed_items_count = serializers.IntegerField(read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = SuppliedItemList
+        fields = [
+            'id', 'list_number', 'customer', 'customer_name', 'delivery_date',
+            'csv_file', 'status', 'status_display', 'items',
+            'total_items', 'total_quantity', 'received_items_count',
+            'count_confirmed_items_count', 'notes',
+            'created_at', 'updated_at', 'created_by', 'created_by_name'
+        ]
+        read_only_fields = ['id', 'list_number', 'created_at', 'updated_at', 'created_by']
+
+
+class SuppliedItemListCreateSerializer(serializers.ModelSerializer):
+    """支給品リスト作成シリアライザー"""
+    items = SuppliedItemListItemCreateSerializer(many=True, required=False)
+    created_by = serializers.HiddenField(
+        default=serializers.CurrentUserDefault()
+    )
+
+    class Meta:
+        model = SuppliedItemList
+        fields = [
+            'id', 'customer', 'delivery_date', 'csv_file',
+            'status', 'notes', 'items', 'created_by'
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'customer': {'required': True},
+            'delivery_date': {'required': True},
+        }
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        instance = SuppliedItemList.objects.create(**validated_data)
+
+        for item_data in items_data:
+            SuppliedItemListItem.objects.create(
+                supplied_item_list=instance,
+                **item_data
+            )
+
+        return instance
+
+    def to_representation(self, instance):
+        return SuppliedItemListDetailSerializer(instance, context=self.context).data
+
+
+class SuppliedItemListUpdateSerializer(serializers.ModelSerializer):
+    """支給品リスト更新シリアライザー"""
+
+    class Meta:
+        model = SuppliedItemList
+        fields = [
+            'id', 'customer', 'delivery_date', 'csv_file',
+            'status', 'notes'
+        ]
+        read_only_fields = ['id']
+
+    def to_representation(self, instance):
+        return SuppliedItemListDetailSerializer(instance, context=self.context).data
+
+
+# ===== 受入確認関連のシリアライザー =====
+
+class SuppliedItemReceivingItemSerializer(serializers.ModelSerializer):
+    """支給品受入確認項目シリアライザー"""
+
+    class Meta:
+        model = SuppliedItemReceivingItem
+        fields = [
+            'id', 'receiving', 'list_item', 'item_number',
+            'quantity_per_box', 'box_count', 'calculated_quantity',
+            'notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'calculated_quantity', 'created_at', 'updated_at']
+
+
+class SuppliedItemReceivingItemCreateSerializer(serializers.ModelSerializer):
+    """支給品受入確認項目作成シリアライザー"""
+
+    class Meta:
+        model = SuppliedItemReceivingItem
+        fields = [
+            'id', 'list_item', 'item_number',
+            'quantity_per_box', 'box_count', 'notes'
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'item_number': {'required': True},
+            'quantity_per_box': {'required': True},
+            'box_count': {'required': True},
+        }
+
+
+class SuppliedItemReceivingListSerializer(serializers.ModelSerializer):
+    """支給品受入確認一覧シリアライザー"""
+    list_number = serializers.CharField(source='supplied_item_list.list_number', read_only=True)
+    customer_name = serializers.CharField(source='supplied_item_list.customer.name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    items_count = serializers.IntegerField(source='items.count', read_only=True)
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = SuppliedItemReceiving
+        fields = [
+            'id', 'supplied_item_list', 'list_number', 'customer_name',
+            'status', 'status_display', 'receiving_date', 'items_count',
+            'notes', 'created_at', 'updated_at', 'created_by_name'
+        ]
+
+
+class SuppliedItemReceivingDetailSerializer(serializers.ModelSerializer):
+    """支給品受入確認詳細シリアライザー"""
+    list_number = serializers.CharField(source='supplied_item_list.list_number', read_only=True)
+    customer_name = serializers.CharField(source='supplied_item_list.customer.name', read_only=True)
+    items = SuppliedItemReceivingItemSerializer(many=True, read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = SuppliedItemReceiving
+        fields = [
+            'id', 'supplied_item_list', 'list_number', 'customer_name',
+            'status', 'status_display', 'receiving_date', 'items',
+            'notes', 'created_at', 'updated_at', 'created_by', 'created_by_name'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
+
+
+class SuppliedItemReceivingCreateSerializer(serializers.ModelSerializer):
+    """支給品受入確認作成シリアライザー（一時保存対応）"""
+    items = SuppliedItemReceivingItemCreateSerializer(many=True, required=False)
+    created_by = serializers.HiddenField(
+        default=serializers.CurrentUserDefault()
+    )
+
+    class Meta:
+        model = SuppliedItemReceiving
+        fields = [
+            'id', 'supplied_item_list', 'status', 'receiving_date',
+            'notes', 'items', 'created_by'
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'supplied_item_list': {'required': True},
+        }
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        instance = SuppliedItemReceiving.objects.create(**validated_data)
+
+        for item_data in items_data:
+            SuppliedItemReceivingItem.objects.create(
+                receiving=instance,
+                **item_data
+            )
+
+        return instance
+
+    def to_representation(self, instance):
+        return SuppliedItemReceivingDetailSerializer(instance, context=self.context).data
+
+
+class SuppliedItemReceivingUpdateSerializer(serializers.ModelSerializer):
+    """支給品受入確認更新シリアライザー（一時保存対応）"""
+    items = SuppliedItemReceivingItemCreateSerializer(many=True, required=False)
+
+    class Meta:
+        model = SuppliedItemReceiving
+        fields = [
+            'id', 'status', 'receiving_date', 'notes', 'items'
+        ]
+        read_only_fields = ['id']
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+
+        # 基本情報の更新
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # 項目の更新（全削除して再作成）
+        if items_data is not None:
+            instance.items.all().delete()
+            for item_data in items_data:
+                SuppliedItemReceivingItem.objects.create(
+                    receiving=instance,
+                    **item_data
+                )
+
+        return instance
+
+    def to_representation(self, instance):
+        return SuppliedItemReceivingDetailSerializer(instance, context=self.context).data
+
+
+# ===== 在庫関連のシリアライザー =====
+
+class SuppliedItemInventoryListSerializer(serializers.ModelSerializer):
+    """支給品在庫一覧シリアライザー"""
+    item_number = serializers.CharField(source='supplied_item.item_number', read_only=True)
+    item_name = serializers.CharField(source='supplied_item.item_name', read_only=True)
+    unit = serializers.CharField(source='supplied_item.unit', read_only=True)
+    product_name = serializers.CharField(
+        source='supplied_item.product.product_name',
+        read_only=True
+    )
+    customer_name = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = SuppliedItemInventory
+        fields = [
+            'id', 'supplied_item', 'item_number', 'item_name', 'unit',
+            'product_name', 'customer_name', 'list_item', 'quantity',
+            'lot_number', 'received_date', 'notes',
+            'created_at', 'updated_at', 'created_by_name'
+        ]
+
+    def get_customer_name(self, obj):
+        try:
+            if obj.supplied_item.product and obj.supplied_item.product.customer_branch:
+                return obj.supplied_item.product.customer_branch.customer.company_name
+        except AttributeError:
+            pass
+        return None
+
+
+class SuppliedItemInventoryDetailSerializer(serializers.ModelSerializer):
+    """支給品在庫詳細シリアライザー"""
+    item_number = serializers.CharField(source='supplied_item.item_number', read_only=True)
+    item_name = serializers.CharField(source='supplied_item.item_name', read_only=True)
+    unit = serializers.CharField(source='supplied_item.unit', read_only=True)
+    product_name = serializers.CharField(
+        source='supplied_item.product.product_name',
+        read_only=True
+    )
+    customer_name = serializers.SerializerMethodField()
+    list_number = serializers.CharField(
+        source='list_item.supplied_item_list.list_number',
+        read_only=True,
+        default=None
+    )
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = SuppliedItemInventory
+        fields = [
+            'id', 'supplied_item', 'item_number', 'item_name', 'unit',
+            'product_name', 'customer_name', 'list_item', 'list_number',
+            'quantity', 'lot_number', 'received_date', 'notes',
+            'created_at', 'updated_at', 'created_by', 'created_by_name'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
+
+    def get_customer_name(self, obj):
+        try:
+            if obj.supplied_item.product and obj.supplied_item.product.customer_branch:
+                return obj.supplied_item.product.customer_branch.customer.company_name
+        except AttributeError:
+            pass
+        return None
+
+
+class SuppliedItemInventoryCreateSerializer(serializers.ModelSerializer):
+    """支給品在庫作成シリアライザー"""
+    created_by = serializers.HiddenField(
+        default=serializers.CurrentUserDefault()
+    )
+
+    class Meta:
+        model = SuppliedItemInventory
+        fields = [
+            'id', 'supplied_item', 'list_item', 'quantity',
+            'lot_number', 'received_date', 'notes', 'created_by'
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'supplied_item': {'required': True},
+            'quantity': {'required': True},
+        }
+
+    def validate_quantity(self, value):
+        if value < 1:
+            raise serializers.ValidationError("数量は1以上である必要があります")
+        return value
+
+    def to_representation(self, instance):
+        return SuppliedItemInventoryDetailSerializer(instance, context=self.context).data
+
+
+class SuppliedItemInventoryUpdateSerializer(serializers.ModelSerializer):
+    """支給品在庫更新シリアライザー"""
+
+    class Meta:
+        model = SuppliedItemInventory
+        fields = [
+            'id', 'quantity', 'lot_number', 'received_date', 'notes'
+        ]
+        read_only_fields = ['id']
+
+    def validate_quantity(self, value):
+        if value < 1:
+            raise serializers.ValidationError("数量は1以上である必要があります")
+        return value
+
+    def to_representation(self, instance):
+        return SuppliedItemInventoryDetailSerializer(instance, context=self.context).data
+
+
+# ===== 員数確認用のシリアライザー =====
+
+class SuppliedItemListItemCountConfirmSerializer(serializers.ModelSerializer):
+    """支給品リスト項目員数確認シリアライザー"""
+
+    class Meta:
+        model = SuppliedItemListItem
+        fields = ['id', 'count_confirmed', 'notes']
+        read_only_fields = ['id']
+
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+
+        count_confirmed = validated_data.get('count_confirmed', instance.count_confirmed)
+
+        if count_confirmed and not instance.count_confirmed:
+            instance.count_confirmed_at = timezone.now()
+            instance.count_confirmed_by = self.context['request'].user
+        elif not count_confirmed:
+            instance.count_confirmed_at = None
+            instance.count_confirmed_by = None
+
+        instance.count_confirmed = count_confirmed
+        instance.notes = validated_data.get('notes', instance.notes)
+        instance.save()
+
+        return instance
+
+    def to_representation(self, instance):
+        return SuppliedItemListItemSerializer(instance, context=self.context).data
+
+
+class SuppliedItemListItemReceivingConfirmSerializer(serializers.ModelSerializer):
+    """支給品リスト項目受入確認シリアライザー"""
+
+    class Meta:
+        model = SuppliedItemListItem
+        fields = ['id', 'receiving_confirmed', 'received_quantity', 'notes']
+        read_only_fields = ['id']
+
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+
+        receiving_confirmed = validated_data.get('receiving_confirmed', instance.receiving_confirmed)
+
+        if receiving_confirmed and not instance.receiving_confirmed:
+            instance.receiving_confirmed_at = timezone.now()
+            instance.receiving_confirmed_by = self.context['request'].user
+        elif not receiving_confirmed:
+            instance.receiving_confirmed_at = None
+            instance.receiving_confirmed_by = None
+
+        instance.receiving_confirmed = receiving_confirmed
+        instance.received_quantity = validated_data.get('received_quantity', instance.received_quantity)
+        instance.notes = validated_data.get('notes', instance.notes)
+        instance.save()
+
+        return instance
+
+    def to_representation(self, instance):
+        return SuppliedItemListItemSerializer(instance, context=self.context).data

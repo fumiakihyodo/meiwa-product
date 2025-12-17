@@ -208,119 +208,6 @@ class Part(models.Model):
     # The field is now added dynamically in views using annotate()
 
 
-class SuppliedItem(models.Model):
-    """支給品モデル（顧客から支給される部品）"""
-
-    # 関連
-    product = models.ForeignKey(
-        'products.Product',
-        on_delete=models.CASCADE,
-        related_name='supplied_items',
-        verbose_name="製品",
-        help_text="この支給品が使用される製品"
-    )
-
-    # 基本情報
-    item_number = models.CharField(
-        max_length=100,
-        verbose_name="品番",
-        help_text="支給品を識別する品番"
-    )
-    item_name = models.CharField(
-        max_length=200,
-        verbose_name="品名"
-    )
-
-    # 仕様情報
-    specification = models.TextField(
-        blank=True,
-        verbose_name="仕様",
-        help_text="支給品の詳細仕様"
-    )
-    unit = models.CharField(
-        max_length=20,
-        default="個",
-        verbose_name="単位",
-        help_text="使用単位（個、kg、m等）"
-    )
-
-    # 使用数（支給品は必須）
-    quantity_per_product = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.01'))],
-        verbose_name="製品あたりの使用数",
-        help_text="製品1個を製造する際に必要な支給品の数量"
-    )
-
-    # ステータス
-    is_active = models.BooleanField(
-        default=True,
-        verbose_name="有効",
-        help_text="この支給品が現在使用可能かどうか"
-    )
-
-    # 備考
-    notes = models.TextField(
-        blank=True,
-        verbose_name="備考"
-    )
-
-    # タイムスタンプ
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="作成日時"
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        verbose_name="更新日時"
-    )
-    created_by = models.ForeignKey(
-        'accounts.User',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='created_supplied_items',
-        verbose_name="作成者"
-    )
-
-    class Meta:
-        verbose_name = "支給品"
-        verbose_name_plural = "支給品一覧"
-        ordering = ['item_number']
-        db_table = "supplied_items"
-        unique_together = [['product', 'item_number']]
-        indexes = [
-            models.Index(fields=['item_number']),
-            models.Index(fields=['product', 'is_active']),
-            models.Index(fields=['created_at']),
-        ]
-
-    def __str__(self):
-        return f"{self.item_number} - {self.item_name}"
-
-    def clean(self):
-        """バリデーション"""
-        super().clean()
-
-        # 同じ製品で同じ品番が存在しないかチェック
-        if self.pk:
-            existing = SuppliedItem.objects.filter(
-                product=self.product,
-                item_number=self.item_number
-            ).exclude(pk=self.pk)
-        else:
-            existing = SuppliedItem.objects.filter(
-                product=self.product,
-                item_number=self.item_number
-            )
-
-        if existing.exists():
-            raise ValidationError(
-                "この製品で同じ品番が既に登録されています。"
-            )
-
-
 def quote_file_upload_path(instance, filename):
     """見積書ファイルのアップロードパスを生成"""
     # ファイル名をサニタイズ
@@ -843,3 +730,506 @@ class SuppliedItemPriceHistory(models.Model):
         if not self.end_date:
             return False
         return self.end_date < timezone.now().date()
+
+
+# ===== 在庫管理モデル =====
+
+def supplied_item_list_file_upload_path(instance, filename):
+    """支給品リストCSVファイルのアップロードパスを生成"""
+    date = timezone.now()
+    return f"supplied_item_lists/{date.year}/{date.month:02d}/{filename}"
+
+
+class SuppliedItemList(models.Model):
+    """支給品リストモデル（CSVインポート用）"""
+
+    class ListStatus(models.TextChoices):
+        DRAFT = 'draft', '下書き'
+        PENDING_RECEIVING = 'pending_receiving', '受入待ち'
+        RECEIVING = 'receiving', '受入中'
+        PENDING_COUNT = 'pending_count', '員数確認待ち'
+        COUNTING = 'counting', '員数確認中'
+        COMPLETED = 'completed', '完了'
+        CANCELLED = 'cancelled', 'キャンセル'
+
+    # リスト番号（自動生成）
+    list_number = models.CharField(
+        max_length=50,
+        unique=True,
+        verbose_name="リスト番号",
+        help_text="支給品リストを識別する番号"
+    )
+
+    # 取引先（顧客）
+    customer = models.ForeignKey(
+        'customer.Customer',
+        on_delete=models.PROTECT,
+        related_name='supplied_item_lists',
+        verbose_name="取引先"
+    )
+
+    # 納品予定日
+    delivery_date = models.DateField(
+        verbose_name="納品予定日",
+        help_text="支給品の納品予定日"
+    )
+
+    # CSVファイル
+    csv_file = models.FileField(
+        upload_to=supplied_item_list_file_upload_path,
+        null=True,
+        blank=True,
+        verbose_name="CSVファイル",
+        help_text="インポート元のCSVファイル"
+    )
+
+    # ステータス
+    status = models.CharField(
+        max_length=20,
+        choices=ListStatus.choices,
+        default=ListStatus.DRAFT,
+        verbose_name="ステータス"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_supplied_item_lists',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "支給品リスト"
+        verbose_name_plural = "支給品リスト一覧"
+        ordering = ['-created_at']
+        db_table = "supplied_item_lists"
+        indexes = [
+            models.Index(fields=['list_number']),
+            models.Index(fields=['customer', 'status']),
+            models.Index(fields=['delivery_date']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"{self.list_number} - {self.customer.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.list_number:
+            # リスト番号を自動生成 (SL-YYYYMMDD-NNNN)
+            today = timezone.now()
+            prefix = f"SL-{today.strftime('%Y%m%d')}-"
+            last_list = SuppliedItemList.objects.filter(
+                list_number__startswith=prefix
+            ).order_by('-list_number').first()
+
+            if last_list:
+                last_num = int(last_list.list_number.split('-')[-1])
+                self.list_number = f"{prefix}{last_num + 1:04d}"
+            else:
+                self.list_number = f"{prefix}0001"
+
+        super().save(*args, **kwargs)
+
+    @property
+    def total_items(self):
+        """リスト内の品番数"""
+        return self.items.count()
+
+    @property
+    def total_quantity(self):
+        """リスト内の合計数量"""
+        return self.items.aggregate(
+            total=models.Sum('quantity')
+        )['total'] or 0
+
+    @property
+    def received_items_count(self):
+        """受入確認済みの品番数"""
+        return self.items.filter(receiving_confirmed=True).count()
+
+    @property
+    def count_confirmed_items_count(self):
+        """員数確認済みの品番数"""
+        return self.items.filter(count_confirmed=True).count()
+
+
+class SuppliedItemListItem(models.Model):
+    """支給品リスト項目モデル（リスト内の各品番）"""
+
+    # 親リスト
+    supplied_item_list = models.ForeignKey(
+        'SuppliedItemList',
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name="支給品リスト"
+    )
+
+    # 支給品マスタ（任意：マスタに紐づける場合）
+    supplied_item = models.ForeignKey(
+        'SuppliedItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='list_items',
+        verbose_name="支給品マスタ"
+    )
+
+    # 品番情報（CSVからの直接入力も可能にするため）
+    item_number = models.CharField(
+        max_length=100,
+        verbose_name="品番"
+    )
+    item_name = models.CharField(
+        max_length=200,
+        verbose_name="品名"
+    )
+
+    # 数量情報
+    quantity = models.PositiveIntegerField(
+        verbose_name="数量",
+        help_text="リストに記載された数量"
+    )
+    quantity_per_box = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="入数",
+        help_text="1箱あたりの入数"
+    )
+    box_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="箱数"
+    )
+
+    # 単位
+    unit = models.CharField(
+        max_length=20,
+        default="個",
+        verbose_name="単位"
+    )
+
+    # 受入確認
+    receiving_confirmed = models.BooleanField(
+        default=False,
+        verbose_name="受入確認済み"
+    )
+    receiving_confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="受入確認日時"
+    )
+    receiving_confirmed_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='receiving_confirmed_items',
+        verbose_name="受入確認者"
+    )
+
+    # 実際の受入数量（受入時に入力）
+    received_quantity = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="受入数量",
+        help_text="実際に受け入れた数量"
+    )
+
+    # 員数確認
+    count_confirmed = models.BooleanField(
+        default=False,
+        verbose_name="員数確認済み"
+    )
+    count_confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="員数確認日時"
+    )
+    count_confirmed_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='count_confirmed_items',
+        verbose_name="員数確認者"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+
+    class Meta:
+        verbose_name = "支給品リスト項目"
+        verbose_name_plural = "支給品リスト項目一覧"
+        ordering = ['id']
+        db_table = "supplied_item_list_items"
+        indexes = [
+            models.Index(fields=['supplied_item_list']),
+            models.Index(fields=['item_number']),
+            models.Index(fields=['receiving_confirmed']),
+            models.Index(fields=['count_confirmed']),
+        ]
+
+    def __str__(self):
+        return f"{self.item_number} - {self.item_name} ({self.quantity}{self.unit})"
+
+    @property
+    def is_quantity_matched(self):
+        """受入数量がリスト数量と一致しているか"""
+        if self.received_quantity is None:
+            return None
+        return self.received_quantity == self.quantity
+
+
+class SuppliedItemReceiving(models.Model):
+    """支給品受入確認モデル（一時保存対応）"""
+
+    class ReceivingStatus(models.TextChoices):
+        DRAFT = 'draft', '一時保存'
+        COMPLETED = 'completed', '完了'
+
+    # 支給品リスト
+    supplied_item_list = models.ForeignKey(
+        'SuppliedItemList',
+        on_delete=models.CASCADE,
+        related_name='receivings',
+        verbose_name="支給品リスト"
+    )
+
+    # ステータス
+    status = models.CharField(
+        max_length=20,
+        choices=ReceivingStatus.choices,
+        default=ReceivingStatus.DRAFT,
+        verbose_name="ステータス"
+    )
+
+    # 受入日時
+    receiving_date = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="受入日時"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_receivings',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "支給品受入確認"
+        verbose_name_plural = "支給品受入確認一覧"
+        ordering = ['-created_at']
+        db_table = "supplied_item_receivings"
+        indexes = [
+            models.Index(fields=['supplied_item_list']),
+            models.Index(fields=['status']),
+            models.Index(fields=['receiving_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.supplied_item_list.list_number} - {self.receiving_date}"
+
+
+class SuppliedItemReceivingItem(models.Model):
+    """支給品受入確認項目モデル"""
+
+    # 親の受入確認
+    receiving = models.ForeignKey(
+        'SuppliedItemReceiving',
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name="受入確認"
+    )
+
+    # リスト項目（任意）
+    list_item = models.ForeignKey(
+        'SuppliedItemListItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='receiving_items',
+        verbose_name="リスト項目"
+    )
+
+    # 品番情報
+    item_number = models.CharField(
+        max_length=100,
+        verbose_name="品番"
+    )
+
+    # 入数
+    quantity_per_box = models.PositiveIntegerField(
+        verbose_name="入数",
+        help_text="1箱あたりの入数"
+    )
+
+    # 箱数
+    box_count = models.PositiveIntegerField(
+        verbose_name="箱数"
+    )
+
+    # 計算された数量（入数 × 箱数）
+    calculated_quantity = models.PositiveIntegerField(
+        verbose_name="数量",
+        help_text="入数 × 箱数で自動計算"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+
+    class Meta:
+        verbose_name = "支給品受入確認項目"
+        verbose_name_plural = "支給品受入確認項目一覧"
+        ordering = ['id']
+        db_table = "supplied_item_receiving_items"
+        indexes = [
+            models.Index(fields=['receiving']),
+            models.Index(fields=['item_number']),
+        ]
+
+    def __str__(self):
+        return f"{self.item_number} ({self.quantity_per_box} × {self.box_count} = {self.calculated_quantity})"
+
+    def save(self, *args, **kwargs):
+        # 数量を自動計算
+        self.calculated_quantity = self.quantity_per_box * self.box_count
+        super().save(*args, **kwargs)
+
+
+class SuppliedItemInventory(models.Model):
+    """支給品在庫モデル"""
+
+    # 支給品マスタ
+    supplied_item = models.ForeignKey(
+        'SuppliedItem',
+        on_delete=models.CASCADE,
+        related_name='inventories',
+        verbose_name="支給品"
+    )
+
+    # リスト項目（どのリストから来たか）
+    list_item = models.ForeignKey(
+        'SuppliedItemListItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='inventories',
+        verbose_name="リスト項目"
+    )
+
+    # 数量
+    quantity = models.PositiveIntegerField(
+        verbose_name="在庫数量"
+    )
+
+    # ロット番号
+    lot_number = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="ロット番号"
+    )
+
+    # 入庫日
+    received_date = models.DateField(
+        default=timezone.now,
+        verbose_name="入庫日"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_inventories',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "支給品在庫"
+        verbose_name_plural = "支給品在庫一覧"
+        ordering = ['-received_date', '-created_at']
+        db_table = "supplied_item_inventories"
+        indexes = [
+            models.Index(fields=['supplied_item']),
+            models.Index(fields=['lot_number']),
+            models.Index(fields=['received_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.supplied_item.item_number} - {self.quantity}{self.supplied_item.unit}"

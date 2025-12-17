@@ -14,6 +14,22 @@ import {
     SuppliedItemUpdateData,
     SuppliedItemPriceHistoryCreateData,
     SuppliedItemPriceHistoryUpdateData,
+    // 在庫管理用
+    SuppliedItemList,
+    SuppliedItemListItem,
+    SuppliedItemListCreateData,
+    SuppliedItemListUpdateData,
+    SuppliedItemListItemCreateData,
+    SuppliedItemReceiving,
+    SuppliedItemReceivingCreateData,
+    SuppliedItemReceivingUpdateData,
+    SuppliedItemInventory,
+    SuppliedItemInventoryCreateData,
+    SuppliedItemInventoryUpdateData,
+    SuppliedItemListStatus,
+    ReceivingStatus,
+    CountConfirmData,
+    ReceivingConfirmData,
 } from '@/types/purchases';
 
 import {
@@ -374,5 +390,171 @@ export const purchasesApi = {
             }
         );
         return response.data;
+    },
+
+    // ===== 在庫管理 - 支給品リスト =====
+    getSuppliedItemLists: async (params?: {
+        customer?: number;
+        status?: SuppliedItemListStatus;
+        search?: string;
+    }): Promise<SuppliedItemList[]> => {
+        const response = await apiClient.get<PaginatedResponse<SuppliedItemList>>('/purchases/supplied-item-lists/', { params });
+        return response.data.results;
+    },
+
+    getSuppliedItemList: async (id: number): Promise<SuppliedItemList> => {
+        const response = await apiClient.get<SuppliedItemList>(`/purchases/supplied-item-lists/${id}/`);
+        return response.data;
+    },
+
+    createSuppliedItemList: async (data: SuppliedItemListCreateData): Promise<SuppliedItemList> => {
+        const response = await apiClient.post<SuppliedItemList>('/purchases/supplied-item-lists/', data);
+        return response.data;
+    },
+
+    updateSuppliedItemList: async (id: number, data: SuppliedItemListUpdateData): Promise<SuppliedItemList> => {
+        const response = await apiClient.patch<SuppliedItemList>(`/purchases/supplied-item-lists/${id}/`, data);
+        return response.data;
+    },
+
+    deleteSuppliedItemList: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/supplied-item-lists/${id}/`);
+    },
+
+    // CSVインポート
+    importSuppliedItemListCsv: async (listId: number, csvFile: File): Promise<{
+        message: string;
+        created_count: number;
+        items: SuppliedItemListItem[];
+        errors?: string[];
+    }> => {
+        const formData = new FormData();
+        formData.append('csv_file', csvFile);
+        const response = await apiClient.post(
+            `/purchases/supplied-item-lists/${listId}/import-csv/`,
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' } }
+        );
+        return response.data;
+    },
+
+    // 在庫一括登録
+    registerInventoryFromList: async (listId: number): Promise<{
+        message: string;
+        inventories: SuppliedItemInventory[];
+    }> => {
+        const response = await apiClient.post(`/purchases/supplied-item-lists/${listId}/register-inventory/`);
+        return response.data;
+    },
+
+    // ===== 支給品リスト項目 =====
+    getSuppliedItemListItems: async (params?: {
+        list?: number;
+        receiving_confirmed?: string;
+        count_confirmed?: string;
+    }): Promise<SuppliedItemListItem[]> => {
+        const response = await apiClient.get<PaginatedResponse<SuppliedItemListItem>>('/purchases/supplied-item-list-items/', { params });
+        return response.data.results;
+    },
+
+    getSuppliedItemListItem: async (id: number): Promise<SuppliedItemListItem> => {
+        const response = await apiClient.get<SuppliedItemListItem>(`/purchases/supplied-item-list-items/${id}/`);
+        return response.data;
+    },
+
+    createSuppliedItemListItem: async (data: SuppliedItemListItemCreateData): Promise<SuppliedItemListItem> => {
+        const response = await apiClient.post<SuppliedItemListItem>('/purchases/supplied-item-list-items/', data);
+        return response.data;
+    },
+
+    updateSuppliedItemListItem: async (id: number, data: Partial<SuppliedItemListItemCreateData>): Promise<SuppliedItemListItem> => {
+        const response = await apiClient.patch<SuppliedItemListItem>(`/purchases/supplied-item-list-items/${id}/`, data);
+        return response.data;
+    },
+
+    deleteSuppliedItemListItem: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/supplied-item-list-items/${id}/`);
+    },
+
+    // 受入確認
+    confirmReceivingListItem: async (id: number, data: ReceivingConfirmData): Promise<SuppliedItemListItem> => {
+        const response = await apiClient.patch<SuppliedItemListItem>(
+            `/purchases/supplied-item-list-items/${id}/receiving-confirm/`,
+            data
+        );
+        return response.data;
+    },
+
+    // 員数確認
+    confirmCountListItem: async (id: number, data: CountConfirmData): Promise<SuppliedItemListItem> => {
+        const response = await apiClient.patch<SuppliedItemListItem>(
+            `/purchases/supplied-item-list-items/${id}/count-confirm/`,
+            data
+        );
+        return response.data;
+    },
+
+    // ===== 受入確認 =====
+    getSuppliedItemReceivings: async (params?: {
+        list?: number;
+        status?: ReceivingStatus;
+    }): Promise<SuppliedItemReceiving[]> => {
+        const response = await apiClient.get<PaginatedResponse<SuppliedItemReceiving>>('/purchases/supplied-item-receivings/', { params });
+        return response.data.results;
+    },
+
+    getSuppliedItemReceiving: async (id: number): Promise<SuppliedItemReceiving> => {
+        const response = await apiClient.get<SuppliedItemReceiving>(`/purchases/supplied-item-receivings/${id}/`);
+        return response.data;
+    },
+
+    createSuppliedItemReceiving: async (data: SuppliedItemReceivingCreateData): Promise<SuppliedItemReceiving> => {
+        const response = await apiClient.post<SuppliedItemReceiving>('/purchases/supplied-item-receivings/', data);
+        return response.data;
+    },
+
+    updateSuppliedItemReceiving: async (id: number, data: SuppliedItemReceivingUpdateData): Promise<SuppliedItemReceiving> => {
+        const response = await apiClient.patch<SuppliedItemReceiving>(`/purchases/supplied-item-receivings/${id}/`, data);
+        return response.data;
+    },
+
+    deleteSuppliedItemReceiving: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/supplied-item-receivings/${id}/`);
+    },
+
+    // 受入確認完了
+    completeReceiving: async (id: number): Promise<SuppliedItemReceiving> => {
+        const response = await apiClient.post<SuppliedItemReceiving>(`/purchases/supplied-item-receivings/${id}/complete/`);
+        return response.data;
+    },
+
+    // ===== 在庫 =====
+    getSuppliedItemInventories: async (params?: {
+        supplied_item?: number;
+        product?: number;
+        customer?: number;
+        search?: string;
+    }): Promise<SuppliedItemInventory[]> => {
+        const response = await apiClient.get<PaginatedResponse<SuppliedItemInventory>>('/purchases/supplied-item-inventories/', { params });
+        return response.data.results;
+    },
+
+    getSuppliedItemInventory: async (id: number): Promise<SuppliedItemInventory> => {
+        const response = await apiClient.get<SuppliedItemInventory>(`/purchases/supplied-item-inventories/${id}/`);
+        return response.data;
+    },
+
+    createSuppliedItemInventory: async (data: SuppliedItemInventoryCreateData): Promise<SuppliedItemInventory> => {
+        const response = await apiClient.post<SuppliedItemInventory>('/purchases/supplied-item-inventories/', data);
+        return response.data;
+    },
+
+    updateSuppliedItemInventory: async (id: number, data: SuppliedItemInventoryUpdateData): Promise<SuppliedItemInventory> => {
+        const response = await apiClient.patch<SuppliedItemInventory>(`/purchases/supplied-item-inventories/${id}/`, data);
+        return response.data;
+    },
+
+    deleteSuppliedItemInventory: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/supplied-item-inventories/${id}/`);
     },
 };

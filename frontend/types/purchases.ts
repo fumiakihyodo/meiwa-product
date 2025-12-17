@@ -189,3 +189,200 @@ export interface SuppliedItemPriceHistoryCreateData {
 
 export type SuppliedItemPriceHistoryUpdateData = Partial<SuppliedItemPriceHistoryCreateData>;
 
+
+// ===== 在庫管理関連の型定義 =====
+
+// 支給品リストのステータス
+export type SuppliedItemListStatus =
+    | 'draft'
+    | 'pending_receiving'
+    | 'receiving'
+    | 'pending_count'
+    | 'counting'
+    | 'completed'
+    | 'cancelled';
+
+// 支給品リスト
+export interface SuppliedItemList {
+    id: number;
+    list_number: string;
+    customer: number;
+    customer_name?: string;
+    delivery_date: string;
+    csv_file?: string;
+    status: SuppliedItemListStatus;
+    status_display?: string;
+    items?: SuppliedItemListItem[];
+    total_items?: number;
+    total_quantity?: number;
+    received_items_count?: number;
+    count_confirmed_items_count?: number;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+    created_by?: number;
+    created_by_name?: string;
+}
+
+// 支給品リスト項目
+export interface SuppliedItemListItem {
+    id: number;
+    supplied_item_list: number;
+    supplied_item?: number;
+    item_number: string;
+    item_name: string;
+    quantity: number;
+    quantity_per_box?: number;
+    box_count?: number;
+    unit: string;
+    receiving_confirmed: boolean;
+    receiving_confirmed_at?: string;
+    receiving_confirmed_by?: number;
+    receiving_confirmed_by_name?: string;
+    received_quantity?: number;
+    is_quantity_matched?: boolean | null;
+    count_confirmed: boolean;
+    count_confirmed_at?: string;
+    count_confirmed_by?: number;
+    count_confirmed_by_name?: string;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+// 支給品リスト作成データ
+export interface SuppliedItemListCreateData {
+    customer: number;
+    delivery_date: string;
+    csv_file?: File;
+    status?: SuppliedItemListStatus;
+    notes?: string;
+    items?: SuppliedItemListItemCreateData[];
+}
+
+export type SuppliedItemListUpdateData = Partial<SuppliedItemListCreateData>;
+
+// 支給品リスト項目作成データ
+export interface SuppliedItemListItemCreateData {
+    supplied_item_list?: number;
+    supplied_item?: number;
+    item_number: string;
+    item_name: string;
+    quantity: number;
+    quantity_per_box?: number;
+    box_count?: number;
+    unit?: string;
+    notes?: string;
+}
+
+// 受入確認のステータス
+export type ReceivingStatus = 'draft' | 'completed';
+
+// 支給品受入確認
+export interface SuppliedItemReceiving {
+    id: number;
+    supplied_item_list: number;
+    list_number?: string;
+    customer_name?: string;
+    status: ReceivingStatus;
+    status_display?: string;
+    receiving_date: string;
+    items?: SuppliedItemReceivingItem[];
+    items_count?: number;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+    created_by?: number;
+    created_by_name?: string;
+}
+
+// 支給品受入確認項目
+export interface SuppliedItemReceivingItem {
+    id: number;
+    receiving: number;
+    list_item?: number;
+    item_number: string;
+    quantity_per_box: number;
+    box_count: number;
+    calculated_quantity: number;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+// 支給品受入確認作成データ
+export interface SuppliedItemReceivingCreateData {
+    supplied_item_list: number;
+    status?: ReceivingStatus;
+    receiving_date?: string;
+    notes?: string;
+    items?: SuppliedItemReceivingItemCreateData[];
+}
+
+export type SuppliedItemReceivingUpdateData = Partial<SuppliedItemReceivingCreateData>;
+
+// 支給品受入確認項目作成データ
+export interface SuppliedItemReceivingItemCreateData {
+    list_item?: number;
+    item_number: string;
+    quantity_per_box: number;
+    box_count: number;
+    notes?: string;
+}
+
+// 支給品在庫
+export interface SuppliedItemInventory {
+    id: number;
+    supplied_item: number;
+    item_number?: string;
+    item_name?: string;
+    unit?: string;
+    product_name?: string;
+    customer_name?: string;
+    list_item?: number;
+    list_number?: string;
+    quantity: number;
+    lot_number?: string;
+    received_date: string;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+    created_by?: number;
+    created_by_name?: string;
+}
+
+// 支給品在庫作成データ
+export interface SuppliedItemInventoryCreateData {
+    supplied_item: number;
+    list_item?: number;
+    quantity: number;
+    lot_number?: string;
+    received_date?: string;
+    notes?: string;
+}
+
+export type SuppliedItemInventoryUpdateData = Partial<SuppliedItemInventoryCreateData>;
+
+// 受入確認フォーム入力行
+export interface ReceivingInputRow {
+    id: string;  // 一時的なID（UUID等）
+    item_number: string;
+    quantity_per_box: number | '';
+    box_count: number | '';
+    calculated_quantity: number;
+    list_item_id?: number;
+    notes?: string;
+}
+
+// 員数確認データ
+export interface CountConfirmData {
+    count_confirmed: boolean;
+    notes?: string;
+}
+
+// 受入確認データ
+export interface ReceivingConfirmData {
+    receiving_confirmed: boolean;
+    received_quantity?: number;
+    notes?: string;
+}
