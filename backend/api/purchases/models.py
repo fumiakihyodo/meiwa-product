@@ -762,7 +762,7 @@ class SuppliedItemList(models.Model):
 
     # 取引先（顧客）
     customer = models.ForeignKey(
-        'customer.Customer',
+        'customers.Customer',
         on_delete=models.PROTECT,
         related_name='supplied_item_lists',
         verbose_name="取引先"

@@ -44,14 +44,14 @@ import {
 } from '@mui/icons-material';
 import MainLayout from '@/components/layout/MainLayout';
 import { purchasesApi } from '@/services/apiPurchases';
-import { customersApi } from '@/services/apiCustomers';
+import { customerApi } from '@/services/apiCustomer';
 import {
     SuppliedItemList,
     SuppliedItemListStatus,
     SuppliedItemListCreateData,
     SuppliedItemInventory,
 } from '@/types/purchases';
-import { Customer } from '@/types/business';
+import { Customer } from '@/types/customer';
 
 // ステータス表示用のChip
 const StatusChip: React.FC<{ status: SuppliedItemListStatus; statusDisplay?: string }> = ({ status, statusDisplay }) => {
@@ -136,7 +136,7 @@ export default function SuppliedItemInventoryPage() {
                     status: statusFilter || undefined,
                     customer: customerFilter || undefined,
                 }),
-                customersApi.getCustomers(),
+                customerApi.getCustomers(),
                 purchasesApi.getSuppliedItemInventories(),
             ]);
             setLists(listsData);
@@ -367,7 +367,7 @@ export default function SuppliedItemInventoryPage() {
                                 >
                                     <MenuItem value="">すべて</MenuItem>
                                     {customers.map((c) => (
-                                        <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                                        <MenuItem key={c.id} value={c.id}>{c.company_name}</MenuItem>
                                     ))}
                                 </Select>
                             </FormControl>
@@ -418,7 +418,7 @@ export default function SuppliedItemInventoryPage() {
                                     onChange={(e) => setFormData({ ...formData, customer: e.target.value as number })}
                                 >
                                     {customers.map((c) => (
-                                        <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                                        <MenuItem key={c.id} value={c.id}>{c.company_name}</MenuItem>
                                     ))}
                                 </Select>
                             </FormControl>
