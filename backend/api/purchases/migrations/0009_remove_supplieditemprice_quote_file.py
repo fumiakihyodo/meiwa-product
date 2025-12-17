@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RemoveField(
-            model_name="supplieditemprice​history",
+            model_name="supplieditempricehistory",
             name="quote_file",
         ),
     ]
