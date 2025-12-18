@@ -31,6 +31,7 @@ import {
     ExpandLess,
     ExpandMore,
     CloudUpload as CloudUploadIcon,
+    Inventory2 as Inventory2Icon,
 } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
 import { Header } from '@/components/Header';
@@ -124,6 +125,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
             text: '一括登録',
             icon: <CloudUploadIcon />,
             path: '/bulk-import',
+            show: true,
+        },
+        {
+            text: '支給品在庫管理',
+            icon: <Inventory2Icon />,
+            path: '/supplied-item-inventory',
             show: true,
         },
         {
