@@ -45,6 +45,7 @@ import {
 import MainLayout from '@/components/layout/MainLayout';
 import { purchasesApi } from '@/services/apiPurchases';
 import { productApi } from '@/services/apiProduct';
+import CSVImportModal from '@/components/SuppliedItemInventory/CSVImportModal';
 import {
     SuppliedItemList,
     SuppliedItemListStatus,
@@ -371,20 +372,15 @@ export default function SuppliedItemInventoryPage() {
                     </Paper>
                 </TabPanel>
 
-                {/* CSVインポートダイアログ - TODO: 実装予定 */}
-                <Dialog open={csvImportDialogOpen} onClose={() => setCsvImportDialogOpen(false)} maxWidth="md" fullWidth>
-                    <DialogTitle>CSVインポート</DialogTitle>
-                    <DialogContent>
-                        <Alert severity="info" sx={{ mt: 2 }}>
-                            CSV import modal is under construction.
-                            <br />
-                            機能実装中です。CSVファイルから支給品リストを作成する機能を準備しています。
-                        </Alert>
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setCsvImportDialogOpen(false)}>閉じる</Button>
-                    </DialogActions>
-                </Dialog>
+                {/* CSVインポートモーダル */}
+                <CSVImportModal
+                    open={csvImportDialogOpen}
+                    onClose={() => setCsvImportDialogOpen(false)}
+                    onSuccess={(list) => {
+                        setCsvImportDialogOpen(false);
+                        fetchData();
+                    }}
+                />
 
                 {/* 削除確認ダイアログ */}
                 <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
