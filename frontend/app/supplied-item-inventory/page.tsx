@@ -44,14 +44,14 @@ import {
 } from '@mui/icons-material';
 import MainLayout from '@/components/layout/MainLayout';
 import { purchasesApi } from '@/services/apiPurchases';
-import { customerApi } from '@/services/apiCustomer';
+import { productApi } from '@/services/apiProduct';
 import {
     SuppliedItemList,
     SuppliedItemListStatus,
-    SuppliedItemListCreateData,
     SuppliedItemInventory,
+    CSVParseResult,
 } from '@/types/purchases';
-import { Customer } from '@/types/customer';
+import { Product } from '@/types/product';
 
 // ステータス表示用のChip
 const StatusChip: React.FC<{ status: SuppliedItemListStatus; statusDisplay?: string }> = ({ status, statusDisplay }) => {
@@ -104,86 +104,43 @@ export default function SuppliedItemInventoryPage() {
     // リスト一覧関連
     const [lists, setLists] = useState<SuppliedItemList[]>([]);
     const [inventories, setInventories] = useState<SuppliedItemInventory[]>([]);
-    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchText, setSearchText] = useState('');
     const [statusFilter, setStatusFilter] = useState<SuppliedItemListStatus | ''>('');
-    const [customerFilter, setCustomerFilter] = useState<number | ''>('');
+    const [productFilter, setProductFilter] = useState<number | ''>('');
 
     // ダイアログ関連
-    const [createDialogOpen, setCreateDialogOpen] = useState(false);
-    const [csvDialogOpen, setCsvDialogOpen] = useState(false);
+    const [csvImportDialogOpen, setCsvImportDialogOpen] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [selectedList, setSelectedList] = useState<SuppliedItemList | null>(null);
-    const [csvFile, setCsvFile] = useState<File | null>(null);
-    const [importing, setImporting] = useState(false);
-    const [importResult, setImportResult] = useState<{ message: string; errors?: string[] } | null>(null);
-
-    // フォームデータ
-    const [formData, setFormData] = useState<SuppliedItemListCreateData>({
-        customer: 0,
-        delivery_date: new Date().toISOString().split('T')[0],
-        notes: '',
-    });
 
     // データ取得
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [listsData, customersData, inventoriesData] = await Promise.all([
+            const [listsData, productsData, inventoriesData] = await Promise.all([
                 purchasesApi.getSuppliedItemLists({
                     search: searchText || undefined,
                     status: statusFilter || undefined,
-                    customer: customerFilter || undefined,
+                    product: productFilter || undefined,
                 }),
-                customerApi.getCustomers(),
+                productApi.getProducts(),
                 purchasesApi.getSuppliedItemInventories(),
             ]);
             setLists(listsData);
-            setCustomers(customersData);
+            setProducts(productsData);
             setInventories(inventoriesData);
         } catch (error) {
             console.error('データ取得エラー:', error);
         } finally {
             setLoading(false);
         }
-    }, [searchText, statusFilter, customerFilter]);
+    }, [searchText, statusFilter, productFilter]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
-
-    // リスト作成
-    const handleCreateList = async () => {
-        if (!formData.customer || !formData.delivery_date) {
-            return;
-        }
-        try {
-            await purchasesApi.createSuppliedItemList(formData);
-            setCreateDialogOpen(false);
-            setFormData({ customer: 0, delivery_date: new Date().toISOString().split('T')[0], notes: '' });
-            fetchData();
-        } catch (error) {
-            console.error('リスト作成エラー:', error);
-        }
-    };
-
-    // CSVインポート
-    const handleCsvImport = async () => {
-        if (!selectedList || !csvFile) return;
-        setImporting(true);
-        setImportResult(null);
-        try {
-            const result = await purchasesApi.importSuppliedItemListCsv(selectedList.id, csvFile);
-            setImportResult(result);
-            fetchData();
-        } catch (error) {
-            console.error('CSVインポートエラー:', error);
-            setImportResult({ message: 'インポートに失敗しました', errors: ['エラーが発生しました'] });
-        } finally {
-            setImporting(false);
-        }
-    };
 
     // 削除
     const handleDelete = async () => {
@@ -201,15 +158,15 @@ export default function SuppliedItemInventoryPage() {
     // リスト一覧カラム
     const listColumns: GridColDef[] = [
         { field: 'list_number', headerName: 'リスト番号', width: 180 },
-        { field: 'customer_name', headerName: '取引先', width: 150 },
-        { field: 'delivery_date', headerName: '納品予定日', width: 120 },
+        { field: 'issue_date', headerName: '発行日', width: 120 },
         {
-            field: 'status',
-            headerName: 'ステータス',
-            width: 130,
-            renderCell: (params: GridRenderCellParams<SuppliedItemList>) => (
-                <StatusChip status={params.row.status} statusDisplay={params.row.status_display} />
-            ),
+            field: 'product_name',
+            headerName: '製品名',
+            width: 200,
+            valueGetter: (params: any) => {
+                const row = params.row as SuppliedItemList;
+                return row.product_number ? `${row.product_number} - ${row.product_name}` : row.product_name;
+            }
         },
         {
             field: 'progress',
@@ -236,16 +193,15 @@ export default function SuppliedItemInventoryPage() {
                 );
             },
         },
-        { field: 'total_items', headerName: '品番数', width: 80, type: 'number' },
-        { field: 'total_quantity', headerName: '合計数量', width: 100, type: 'number' },
+        { field: 'total_items', headerName: '品番数', width: 90, type: 'number' },
         {
             field: 'actions',
             headerName: '操作',
-            width: 180,
+            width: 200,
             sortable: false,
             renderCell: (params: GridRenderCellParams<SuppliedItemList>) => (
                 <Box>
-                    <Tooltip title="詳細">
+                    <Tooltip title="詳細確認">
                         <IconButton
                             size="small"
                             onClick={() => window.location.href = `/supplied-item-inventory/${params.row.id}`}
@@ -253,17 +209,25 @@ export default function SuppliedItemInventoryPage() {
                             <ViewIcon />
                         </IconButton>
                     </Tooltip>
-                    <Tooltip title="CSVインポート">
-                        <IconButton
-                            size="small"
-                            onClick={() => {
-                                setSelectedList(params.row);
-                                setCsvDialogOpen(true);
-                            }}
-                            disabled={params.row.status !== 'draft' && params.row.status !== 'pending_receiving'}
-                        >
-                            <UploadIcon />
-                        </IconButton>
+                    <Tooltip title="受け入れ登録（準備中）">
+                        <span>
+                            <IconButton
+                                size="small"
+                                disabled
+                            >
+                                <CheckCircleIcon />
+                            </IconButton>
+                        </span>
+                    </Tooltip>
+                    <Tooltip title="員数確認（準備中）">
+                        <span>
+                            <IconButton
+                                size="small"
+                                disabled
+                            >
+                                <PendingIcon />
+                            </IconButton>
+                        </span>
                     </Tooltip>
                     <Tooltip title="削除">
                         <IconButton
@@ -311,10 +275,10 @@ export default function SuppliedItemInventoryPage() {
                         </Button>
                         <Button
                             variant="contained"
-                            startIcon={<AddIcon />}
-                            onClick={() => setCreateDialogOpen(true)}
+                            startIcon={<UploadIcon />}
+                            onClick={() => setCsvImportDialogOpen(true)}
                         >
-                            新規リスト作成
+                            CSVインポート
                         </Button>
                     </Box>
                 </Box>
@@ -358,16 +322,18 @@ export default function SuppliedItemInventoryPage() {
                                     <MenuItem value="completed">完了</MenuItem>
                                 </Select>
                             </FormControl>
-                            <FormControl size="small" sx={{ minWidth: 150 }}>
-                                <InputLabel>取引先</InputLabel>
+                            <FormControl size="small" sx={{ minWidth: 200 }}>
+                                <InputLabel>製品</InputLabel>
                                 <Select
-                                    value={customerFilter}
-                                    label="取引先"
-                                    onChange={(e) => setCustomerFilter(e.target.value as number | '')}
+                                    value={productFilter}
+                                    label="製品"
+                                    onChange={(e) => setProductFilter(e.target.value as number | '')}
                                 >
                                     <MenuItem value="">すべて</MenuItem>
-                                    {customers.map((c) => (
-                                        <MenuItem key={c.id} value={c.id}>{c.company_name}</MenuItem>
+                                    {products.map((p) => (
+                                        <MenuItem key={p.id} value={p.id}>
+                                            {p.product_number} - {p.product_name}
+                                        </MenuItem>
                                     ))}
                                 </Select>
                             </FormControl>
@@ -405,109 +371,18 @@ export default function SuppliedItemInventoryPage() {
                     </Paper>
                 </TabPanel>
 
-                {/* リスト作成ダイアログ */}
-                <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
-                    <DialogTitle>新規支給品リスト作成</DialogTitle>
-                    <DialogContent>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-                            <FormControl fullWidth required>
-                                <InputLabel>取引先</InputLabel>
-                                <Select
-                                    value={formData.customer || ''}
-                                    label="取引先"
-                                    onChange={(e) => setFormData({ ...formData, customer: e.target.value as number })}
-                                >
-                                    {customers.map((c) => (
-                                        <MenuItem key={c.id} value={c.id}>{c.company_name}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                            <TextField
-                                label="納品予定日"
-                                type="date"
-                                value={formData.delivery_date}
-                                onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })}
-                                InputLabelProps={{ shrink: true }}
-                                required
-                                fullWidth
-                            />
-                            <TextField
-                                label="備考"
-                                value={formData.notes}
-                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                multiline
-                                rows={3}
-                                fullWidth
-                            />
-                        </Box>
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setCreateDialogOpen(false)}>キャンセル</Button>
-                        <Button
-                            variant="contained"
-                            onClick={handleCreateList}
-                            disabled={!formData.customer || !formData.delivery_date}
-                        >
-                            作成
-                        </Button>
-                    </DialogActions>
-                </Dialog>
-
-                {/* CSVインポートダイアログ */}
-                <Dialog open={csvDialogOpen} onClose={() => { setCsvDialogOpen(false); setImportResult(null); setCsvFile(null); }} maxWidth="sm" fullWidth>
+                {/* CSVインポートダイアログ - TODO: 実装予定 */}
+                <Dialog open={csvImportDialogOpen} onClose={() => setCsvImportDialogOpen(false)} maxWidth="md" fullWidth>
                     <DialogTitle>CSVインポート</DialogTitle>
                     <DialogContent>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-                            <Typography variant="body2" color="text.secondary">
-                                CSVファイルをアップロードして支給品リストにデータをインポートします。
-                            </Typography>
-                            <Alert severity="info">
-                                CSVファイルには以下のカラムが必要です：<br />
-                                品番, 品名, 数量<br />
-                                オプション: 単位, 入数, 箱数, 備考
-                            </Alert>
-                            <Button
-                                variant="outlined"
-                                component="label"
-                                startIcon={<UploadIcon />}
-                            >
-                                ファイルを選択
-                                <input
-                                    type="file"
-                                    accept=".csv"
-                                    hidden
-                                    onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-                                />
-                            </Button>
-                            {csvFile && (
-                                <Typography variant="body2">
-                                    選択されたファイル: {csvFile.name}
-                                </Typography>
-                            )}
-                            {importing && <CircularProgress />}
-                            {importResult && (
-                                <Alert severity={importResult.errors?.length ? 'warning' : 'success'}>
-                                    {importResult.message}
-                                    {importResult.errors && (
-                                        <ul>
-                                            {importResult.errors.map((err, i) => (
-                                                <li key={i}>{err}</li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </Alert>
-                            )}
-                        </Box>
+                        <Alert severity="info" sx={{ mt: 2 }}>
+                            CSV import modal is under construction.
+                            <br />
+                            機能実装中です。CSVファイルから支給品リストを作成する機能を準備しています。
+                        </Alert>
                     </DialogContent>
                     <DialogActions>
-                        <Button onClick={() => { setCsvDialogOpen(false); setImportResult(null); setCsvFile(null); }}>閉じる</Button>
-                        <Button
-                            variant="contained"
-                            onClick={handleCsvImport}
-                            disabled={!csvFile || importing}
-                        >
-                            インポート
-                        </Button>
+                        <Button onClick={() => setCsvImportDialogOpen(false)}>閉じる</Button>
                     </DialogActions>
                 </Dialog>
 
