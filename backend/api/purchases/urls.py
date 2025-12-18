@@ -65,6 +65,10 @@ urlpatterns = [
     path('supplied-item-lists/<int:list_id>/import-csv/', views.import_supplied_item_list_csv, name='supplied_item_list_import_csv'),
     path('supplied-item-lists/<int:list_id>/register-inventory/', views.register_inventory_from_list, name='supplied_item_list_register_inventory'),
 
+    # CSVインポート（新バージョン）
+    path('supplied-item-lists/parse-csv/', views.parse_supplied_item_csv, name='parse_supplied_item_csv'),
+    path('supplied-item-lists/create-from-csv/', views.create_supplied_item_list_from_csv, name='create_supplied_item_list_from_csv'),
+
     # 支給品リスト項目
     path('supplied-item-list-items/', SuppliedItemListItemListCreateView.as_view(), name='supplied_item_list_item_list_create'),
     path('supplied-item-list-items/<int:pk>/', SuppliedItemListItemDetailView.as_view(), name='supplied_item_list_item_detail'),

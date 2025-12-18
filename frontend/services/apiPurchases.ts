@@ -30,6 +30,9 @@ import {
     ReceivingStatus,
     CountConfirmData,
     ReceivingConfirmData,
+    // CSVインポート用
+    CSVParseResult,
+    CSVImportCreateData,
 } from '@/types/purchases';
 
 import {
@@ -421,7 +424,7 @@ export const purchasesApi = {
         await apiClient.delete(`/purchases/supplied-item-lists/${id}/`);
     },
 
-    // CSVインポート
+    // CSVインポート（旧バージョン）
     importSuppliedItemListCsv: async (listId: number, csvFile: File): Promise<{
         message: string;
         created_count: number;
@@ -432,6 +435,38 @@ export const purchasesApi = {
         formData.append('csv_file', csvFile);
         const response = await apiClient.post(
             `/purchases/supplied-item-lists/${listId}/import-csv/`,
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' } }
+        );
+        return response.data;
+    },
+
+    // CSVファイル解析（新バージョン）
+    parseSuppliedItemCsv: async (csvFile: File): Promise<CSVParseResult> => {
+        const formData = new FormData();
+        formData.append('csv_file', csvFile);
+        const response = await apiClient.post<CSVParseResult>(
+            '/purchases/supplied-item-lists/parse-csv/',
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' } }
+        );
+        return response.data;
+    },
+
+    // CSVから支給品リスト作成（新バージョン）
+    createSuppliedItemListFromCsv: async (data: CSVImportCreateData): Promise<SuppliedItemList> => {
+        const formData = new FormData();
+        formData.append('product_id', data.product_id.toString());
+        formData.append('issue_date', data.issue_date);
+        formData.append('items', JSON.stringify(data.items));
+        formData.append('register_unregistered', data.register_unregistered.toString());
+        if (data.unregistered_items) {
+            formData.append('unregistered_items', JSON.stringify(data.unregistered_items));
+        }
+        formData.append('csv_file', data.csv_file);
+
+        const response = await apiClient.post<SuppliedItemList>(
+            '/purchases/supplied-item-lists/create-from-csv/',
             formData,
             { headers: { 'Content-Type': 'multipart/form-data' } }
         );

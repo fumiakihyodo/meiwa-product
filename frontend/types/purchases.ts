@@ -206,9 +206,11 @@ export type SuppliedItemListStatus =
 export interface SuppliedItemList {
     id: number;
     list_number: string;
-    customer: number;
-    customer_name?: string;
-    delivery_date: string;
+    product: number;
+    product_name?: string;
+    product_number?: string;
+    issue_date: string;
+    delivery_date?: string;
     csv_file?: string;
     status: SuppliedItemListStatus;
     status_display?: string;
@@ -252,8 +254,9 @@ export interface SuppliedItemListItem {
 
 // 支給品リスト作成データ
 export interface SuppliedItemListCreateData {
-    customer: number;
-    delivery_date: string;
+    product: number;
+    issue_date: string;
+    delivery_date?: string;
     csv_file?: File;
     status?: SuppliedItemListStatus;
     notes?: string;
@@ -385,4 +388,49 @@ export interface ReceivingConfirmData {
     receiving_confirmed: boolean;
     received_quantity?: number;
     notes?: string;
+}
+
+// CSV解析結果
+export interface CSVParseResult {
+    items: CSVParsedItem[];
+    total_items: number;
+    unregistered_part_numbers: UnregisteredPartNumber[];
+    product_info: string[];
+    suggested_products: SuggestedProduct[];
+    issue_date?: string;
+    errors?: string[];
+}
+
+// CSV解析された品目
+export interface CSVParsedItem {
+    item_number: string;
+    item_name: string;
+    quantity: number;
+    unit: string;
+}
+
+// 未登録品番
+export interface UnregisteredPartNumber {
+    item_number: string;
+    item_name: string;
+    quantity: number;
+    unit: string;
+}
+
+// 推奨製品
+export interface SuggestedProduct {
+    id: number;
+    product_number: string;
+    product_name: string;
+    matched_keyword: string;
+}
+
+// CSV インポート作成データ
+export interface CSVImportCreateData {
+    product_id: number;
+    issue_date: string;
+    items: CSVParsedItem[];
+    csv_file: File;
+    register_unregistered: boolean;
+    unregistered_items?: UnregisteredPartNumber[];
 }

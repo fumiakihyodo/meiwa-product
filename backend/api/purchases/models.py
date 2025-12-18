@@ -760,16 +760,24 @@ class SuppliedItemList(models.Model):
         help_text="支給品リストを識別する番号"
     )
 
-    # 取引先（顧客）
-    customer = models.ForeignKey(
-        'customers.Customer',
+    # 製品
+    product = models.ForeignKey(
+        'products.Product',
         on_delete=models.PROTECT,
         related_name='supplied_item_lists',
-        verbose_name="取引先"
+        verbose_name="製品"
+    )
+
+    # 発行日
+    issue_date = models.DateField(
+        verbose_name="発行日",
+        help_text="CSVの発行日（1列目）"
     )
 
     # 納品予定日
     delivery_date = models.DateField(
+        null=True,
+        blank=True,
         verbose_name="納品予定日",
         help_text="支給品の納品予定日"
     )
@@ -822,13 +830,14 @@ class SuppliedItemList(models.Model):
         db_table = "supplied_item_lists"
         indexes = [
             models.Index(fields=['list_number']),
-            models.Index(fields=['customer', 'status']),
+            models.Index(fields=['product', 'status']),
+            models.Index(fields=['issue_date']),
             models.Index(fields=['delivery_date']),
             models.Index(fields=['status']),
         ]
 
     def __str__(self):
-        return f"{self.list_number} - {self.customer.name}"
+        return f"{self.list_number} - {self.product.product_name}"
 
     def save(self, *args, **kwargs):
         if not self.list_number:

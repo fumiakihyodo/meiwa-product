@@ -557,7 +557,8 @@ class SuppliedItemListItemCreateSerializer(serializers.ModelSerializer):
 
 class SuppliedItemListListSerializer(serializers.ModelSerializer):
     """支給品リスト一覧シリアライザー"""
-    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    product_name = serializers.CharField(source='product.product_name', read_only=True)
+    product_number = serializers.CharField(source='product.product_number', read_only=True)
     total_items = serializers.IntegerField(read_only=True)
     total_quantity = serializers.IntegerField(read_only=True)
     received_items_count = serializers.IntegerField(read_only=True)
@@ -572,16 +573,18 @@ class SuppliedItemListListSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemList
         fields = [
-            'id', 'list_number', 'customer', 'customer_name', 'delivery_date',
-            'status', 'status_display', 'total_items', 'total_quantity',
-            'received_items_count', 'count_confirmed_items_count',
-            'notes', 'created_at', 'updated_at', 'created_by_name'
+            'id', 'list_number', 'product', 'product_name', 'product_number',
+            'issue_date', 'delivery_date', 'status', 'status_display',
+            'total_items', 'total_quantity', 'received_items_count',
+            'count_confirmed_items_count', 'notes', 'created_at',
+            'updated_at', 'created_by_name'
         ]
 
 
 class SuppliedItemListDetailSerializer(serializers.ModelSerializer):
     """支給品リスト詳細シリアライザー"""
-    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    product_name = serializers.CharField(source='product.product_name', read_only=True)
+    product_number = serializers.CharField(source='product.product_number', read_only=True)
     items = SuppliedItemListItemSerializer(many=True, read_only=True)
     total_items = serializers.IntegerField(read_only=True)
     total_quantity = serializers.IntegerField(read_only=True)
@@ -597,11 +600,11 @@ class SuppliedItemListDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemList
         fields = [
-            'id', 'list_number', 'customer', 'customer_name', 'delivery_date',
-            'csv_file', 'status', 'status_display', 'items',
-            'total_items', 'total_quantity', 'received_items_count',
-            'count_confirmed_items_count', 'notes',
-            'created_at', 'updated_at', 'created_by', 'created_by_name'
+            'id', 'list_number', 'product', 'product_name', 'product_number',
+            'issue_date', 'delivery_date', 'csv_file', 'status', 'status_display',
+            'items', 'total_items', 'total_quantity', 'received_items_count',
+            'count_confirmed_items_count', 'notes', 'created_at', 'updated_at',
+            'created_by', 'created_by_name'
         ]
         read_only_fields = ['id', 'list_number', 'created_at', 'updated_at', 'created_by']
 
@@ -616,13 +619,14 @@ class SuppliedItemListCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemList
         fields = [
-            'id', 'customer', 'delivery_date', 'csv_file',
+            'id', 'product', 'issue_date', 'delivery_date', 'csv_file',
             'status', 'notes', 'items', 'created_by'
         ]
         read_only_fields = ['id']
         extra_kwargs = {
-            'customer': {'required': True},
-            'delivery_date': {'required': True},
+            'product': {'required': True},
+            'issue_date': {'required': True},
+            'delivery_date': {'required': False},
         }
 
     def create(self, validated_data):
@@ -647,7 +651,7 @@ class SuppliedItemListUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemList
         fields = [
-            'id', 'customer', 'delivery_date', 'csv_file',
+            'id', 'product', 'issue_date', 'delivery_date', 'csv_file',
             'status', 'notes'
         ]
         read_only_fields = ['id']
@@ -691,7 +695,7 @@ class SuppliedItemReceivingItemCreateSerializer(serializers.ModelSerializer):
 class SuppliedItemReceivingListSerializer(serializers.ModelSerializer):
     """支給品受入確認一覧シリアライザー"""
     list_number = serializers.CharField(source='supplied_item_list.list_number', read_only=True)
-    customer_name = serializers.CharField(source='supplied_item_list.customer.name', read_only=True)
+    product_name = serializers.CharField(source='supplied_item_list.product.product_name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     items_count = serializers.IntegerField(source='items.count', read_only=True)
     created_by_name = serializers.CharField(
@@ -703,7 +707,7 @@ class SuppliedItemReceivingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceiving
         fields = [
-            'id', 'supplied_item_list', 'list_number', 'customer_name',
+            'id', 'supplied_item_list', 'list_number', 'product_name',
             'status', 'status_display', 'receiving_date', 'items_count',
             'notes', 'created_at', 'updated_at', 'created_by_name'
         ]
@@ -712,7 +716,7 @@ class SuppliedItemReceivingListSerializer(serializers.ModelSerializer):
 class SuppliedItemReceivingDetailSerializer(serializers.ModelSerializer):
     """支給品受入確認詳細シリアライザー"""
     list_number = serializers.CharField(source='supplied_item_list.list_number', read_only=True)
-    customer_name = serializers.CharField(source='supplied_item_list.customer.name', read_only=True)
+    product_name = serializers.CharField(source='supplied_item_list.product.product_name', read_only=True)
     items = SuppliedItemReceivingItemSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     created_by_name = serializers.CharField(
@@ -724,7 +728,7 @@ class SuppliedItemReceivingDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceiving
         fields = [
-            'id', 'supplied_item_list', 'list_number', 'customer_name',
+            'id', 'supplied_item_list', 'list_number', 'product_name',
             'status', 'status_display', 'receiving_date', 'items',
             'notes', 'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]

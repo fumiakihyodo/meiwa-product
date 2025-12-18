@@ -1506,9 +1506,12 @@ def register_inventory_from_list(request, list_id):
 # ==================== CSV インポート ====================
 
 @api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([IsAuthenticated])
 def import_supplied_item_list_csv(request, list_id):
-    """支給品リストにCSVからデータをインポート"""
+    """
+    支給品リストにCSVからデータをインポート（旧バージョン - 互換性のため残す）
+    新しいインポートは parse_supplied_item_csv と create_supplied_item_list_from_csv を使用
+    """
     try:
         supplied_list = SuppliedItemList.objects.get(pk=list_id)
     except SuppliedItemList.DoesNotExist:
@@ -1528,77 +1531,78 @@ def import_supplied_item_list_csv(request, list_id):
         # CSVファイルを読み込む
         decoded_file = csv_file.read().decode('utf-8-sig')
         io_string = io.StringIO(decoded_file)
-        reader = csv.DictReader(io_string)
+        reader = csv.reader(io_string)
 
         created_items = []
         errors = []
+        items_by_part_number = {}
 
         with transaction.atomic():
-            for row_num, row in enumerate(reader, start=2):
+            for row_num, row in enumerate(reader, start=1):
                 try:
-                    # 必須フィールドのチェック
-                    item_number = row.get('品番', row.get('item_number', '')).strip()
-                    item_name = row.get('品名', row.get('item_name', '')).strip()
-                    quantity_str = row.get('数量', row.get('quantity', '')).strip()
+                    # ヘッダー行をスキップ
+                    if row_num == 1:
+                        continue
 
+                    # 列数チェック（最低27列必要）
+                    if len(row) < 27:
+                        errors.append(f"行{row_num}: 列数が不足しています（最低27列必要）")
+                        continue
+
+                    # 指定された列のみを読み取り
+                    # 1列目: 発行日, 6列目: 品番, 7列目: 品名, 23列目: 支給数, 24列目: 単位, 27列目: 機種情報
+                    issue_date_str = row[0].strip() if len(row) > 0 else ''
+                    item_number = row[5].strip() if len(row) > 5 else ''  # 6列目 (0-indexed: 5)
+                    item_name = row[6].strip() if len(row) > 6 else ''    # 7列目
+                    quantity_str = row[22].strip() if len(row) > 22 else ''  # 23列目 (0-indexed: 22)
+                    unit = row[23].strip() if len(row) > 23 else '個'    # 24列目
+                    product_info = row[26].strip() if len(row) > 26 else ''  # 27列目 (0-indexed: 26)
+
+                    # 品番が空の場合はスキップ
                     if not item_number:
-                        errors.append(f"行{row_num}: 品番が必要です")
-                        continue
-                    if not item_name:
-                        errors.append(f"行{row_num}: 品名が必要です")
-                        continue
-                    if not quantity_str:
-                        errors.append(f"行{row_num}: 数量が必要です")
                         continue
 
+                    # 数量を解析
                     try:
-                        quantity = int(quantity_str)
+                        quantity = int(quantity_str) if quantity_str else 0
                     except ValueError:
                         errors.append(f"行{row_num}: 数量が不正です: {quantity_str}")
                         continue
 
-                    # オプションフィールド
-                    unit = row.get('単位', row.get('unit', '個')).strip() or '個'
-                    quantity_per_box_str = row.get('入数', row.get('quantity_per_box', '')).strip()
-                    box_count_str = row.get('箱数', row.get('box_count', '')).strip()
-                    notes = row.get('備考', row.get('notes', '')).strip()
-
-                    quantity_per_box = None
-                    if quantity_per_box_str:
-                        try:
-                            quantity_per_box = int(quantity_per_box_str)
-                        except ValueError:
-                            pass
-
-                    box_count = None
-                    if box_count_str:
-                        try:
-                            box_count = int(box_count_str)
-                        except ValueError:
-                            pass
-
-                    # 支給品マスタとの紐付け（存在する場合）
-                    supplied_item = SuppliedItem.objects.filter(
-                        item_number=item_number,
-                        is_active=True
-                    ).first()
-
-                    # リスト項目を作成
-                    list_item = SuppliedItemListItem.objects.create(
-                        supplied_item_list=supplied_list,
-                        supplied_item=supplied_item,
-                        item_number=item_number,
-                        item_name=item_name,
-                        quantity=quantity,
-                        quantity_per_box=quantity_per_box,
-                        box_count=box_count,
-                        unit=unit,
-                        notes=notes
-                    )
-                    created_items.append(list_item)
+                    # 同じ品番が存在する場合は数量を合計
+                    if item_number in items_by_part_number:
+                        items_by_part_number[item_number]['quantity'] += quantity
+                    else:
+                        items_by_part_number[item_number] = {
+                            'item_number': item_number,
+                            'item_name': item_name,
+                            'quantity': quantity,
+                            'unit': unit or '個',
+                            'product_info': product_info
+                        }
 
                 except Exception as e:
                     errors.append(f"行{row_num}: エラー - {str(e)}")
+
+            # 集計したデータからリスト項目を作成
+            for item_number, item_data in items_by_part_number.items():
+                # 支給品マスタとの紐付け（存在する場合）
+                supplied_item = SuppliedItem.objects.filter(
+                    item_number=item_number,
+                    is_active=True
+                ).first()
+
+                # リスト項目を作成
+                list_item = SuppliedItemListItem.objects.create(
+                    supplied_item_list=supplied_list,
+                    supplied_item=supplied_item,
+                    item_number=item_data['item_number'],
+                    item_name=item_data['item_name'],
+                    quantity=item_data['quantity'],
+                    unit=item_data['unit'],
+                    notes=f"機種: {item_data['product_info']}" if item_data['product_info'] else ''
+                )
+                created_items.append(list_item)
 
             # CSVファイルを保存
             supplied_list.csv_file = csv_file
@@ -1625,6 +1629,274 @@ def import_supplied_item_list_csv(request, list_id):
         logger.error(f"CSV import error: {str(e)}")
         return Response(
             {"error": f"インポートエラー: {str(e)}"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def parse_supplied_item_csv(request):
+    """
+    CSVファイルを解析し、未登録の品番とProduct情報を返す
+
+    このエンドポイントは以下を行う:
+    1. CSVから指定列を読み取り
+    2. 品番ごとに集計
+    3. マスターチェック（未登録品番の確認）
+    4. Product情報の抽出（27列目）
+
+    Returns:
+        - items: 集計された品目リスト
+        - unregistered_part_numbers: 未登録の品番リスト
+        - product_info: CSV 27列目の機種情報
+        - suggested_products: マッチする可能性のある製品リスト
+        - issue_date: CSV 1列目の発行日
+    """
+    csv_file = request.FILES.get('csv_file')
+    if not csv_file:
+        return Response(
+            {"error": "CSVファイルが必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # CSVファイルを読み込む
+        decoded_file = csv_file.read().decode('utf-8-sig')
+        io_string = io.StringIO(decoded_file)
+        reader = csv.reader(io_string)
+
+        items_by_part_number = {}
+        issue_date = None
+        product_info_set = set()
+        errors = []
+
+        for row_num, row in enumerate(reader, start=1):
+            try:
+                # ヘッダー行をスキップ
+                if row_num == 1:
+                    continue
+
+                # 列数チェック（最低27列必要）
+                if len(row) < 27:
+                    if any(cell.strip() for cell in row):  # 空行でない場合のみエラー
+                        errors.append(f"行{row_num}: 列数が不足しています（最低27列必要）")
+                    continue
+
+                # 指定された列のみを読み取り
+                # 1列目: 発行日, 6列目: 品番, 7列目: 品名, 23列目: 支給数, 24列目: 単位, 27列目: 機種情報
+                issue_date_str = row[0].strip() if len(row) > 0 else ''
+                item_number = row[5].strip() if len(row) > 5 else ''  # 6列目 (0-indexed: 5)
+                item_name = row[6].strip() if len(row) > 6 else ''    # 7列目
+                quantity_str = row[22].strip() if len(row) > 22 else ''  # 23列目 (0-indexed: 22)
+                unit = row[23].strip() if len(row) > 23 else '個'    # 24列目
+                product_info = row[26].strip() if len(row) > 26 else ''  # 27列目 (0-indexed: 26)
+
+                # 発行日を保存（最初の行から）
+                if issue_date_str and not issue_date:
+                    try:
+                        # 日付形式を解析 (YYYY-MM-DD, YYYY/MM/DD など)
+                        from datetime import datetime
+                        for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y%m%d']:
+                            try:
+                                issue_date = datetime.strptime(issue_date_str, fmt).date().isoformat()
+                                break
+                            except ValueError:
+                                continue
+                    except:
+                        pass
+
+                # Product情報を収集
+                if product_info:
+                    product_info_set.add(product_info)
+
+                # 品番が空の場合はスキップ
+                if not item_number:
+                    continue
+
+                # 数量を解析
+                try:
+                    quantity = int(float(quantity_str)) if quantity_str else 0
+                except ValueError:
+                    errors.append(f"行{row_num}: 数量が不正です: {quantity_str}")
+                    continue
+
+                # 同じ品番が存在する場合は数量を合計
+                if item_number in items_by_part_number:
+                    items_by_part_number[item_number]['quantity'] += quantity
+                else:
+                    items_by_part_number[item_number] = {
+                        'item_number': item_number,
+                        'item_name': item_name,
+                        'quantity': quantity,
+                        'unit': unit or '個',
+                    }
+
+            except Exception as e:
+                errors.append(f"行{row_num}: エラー - {str(e)}")
+
+        # マスターチェック: 未登録の品番を確認
+        all_item_numbers = list(items_by_part_number.keys())
+        registered_items = SuppliedItem.objects.filter(
+            item_number__in=all_item_numbers,
+            is_active=True
+        ).values_list('item_number', flat=True)
+
+        unregistered_part_numbers = [
+            {
+                'item_number': num,
+                'item_name': items_by_part_number[num]['item_name'],
+                'quantity': items_by_part_number[num]['quantity'],
+                'unit': items_by_part_number[num]['unit'],
+            }
+            for num in all_item_numbers if num not in registered_items
+        ]
+
+        # Product情報からマッチする製品を検索
+        from api.products.models import Product
+        suggested_products = []
+        for product_info in product_info_set:
+            if product_info:
+                # product_numberまたはproduct_nameで検索
+                products = Product.objects.filter(
+                    models.Q(product_number__icontains=product_info) |
+                    models.Q(product_name__icontains=product_info),
+                    status='ACTIVE'
+                )[:5]  # 最大5件
+                for product in products:
+                    suggested_products.append({
+                        'id': product.id,
+                        'product_number': product.product_number,
+                        'product_name': product.product_name,
+                        'matched_keyword': product_info
+                    })
+
+        response_data = {
+            'items': list(items_by_part_number.values()),
+            'total_items': len(items_by_part_number),
+            'unregistered_part_numbers': unregistered_part_numbers,
+            'product_info': list(product_info_set),
+            'suggested_products': suggested_products,
+            'issue_date': issue_date,
+            'errors': errors if errors else None,
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    except UnicodeDecodeError:
+        return Response(
+            {"error": "CSVファイルの文字コードがUTF-8ではありません"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        logger.error(f"CSV parse error: {str(e)}")
+        return Response(
+            {"error": f"CSV解析エラー: {str(e)}"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_supplied_item_list_from_csv(request):
+    """
+    解析済みCSVデータから支給品リストを作成
+
+    Required fields:
+        - product_id: 製品ID
+        - issue_date: 発行日
+        - items: 品目リスト (item_number, item_name, quantity, unit)
+        - csv_file: CSVファイル
+        - register_unregistered: 未登録品番をマスターに登録するか (boolean)
+        - unregistered_items: 未登録品番のリスト（register_unregistered=Trueの場合）
+    """
+    try:
+        product_id = request.data.get('product_id')
+        issue_date = request.data.get('issue_date')
+        items_data = request.data.get('items', [])
+        register_unregistered = request.data.get('register_unregistered', False)
+        unregistered_items = request.data.get('unregistered_items', [])
+        csv_file = request.FILES.get('csv_file')
+
+        # バリデーション
+        if not product_id:
+            return Response(
+                {"error": "製品IDが必要です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not issue_date:
+            return Response(
+                {"error": "発行日が必要です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not items_data:
+            return Response(
+                {"error": "品目データが必要です"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Productの存在確認
+        from api.products.models import Product
+        try:
+            product = Product.objects.get(pk=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {"error": "指定された製品が見つかりません"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        with transaction.atomic():
+            # 未登録品番をマスターに登録
+            if register_unregistered and unregistered_items:
+                for item in unregistered_items:
+                    SuppliedItem.objects.get_or_create(
+                        item_number=item['item_number'],
+                        defaults={
+                            'product': product,
+                            'item_name': item.get('item_name', ''),
+                            'unit': item.get('unit', '個'),
+                            'standard_quantity': item.get('quantity', 1),
+                            'is_active': True,
+                            'created_by': request.user
+                        }
+                    )
+
+            # SuppliedItemListを作成
+            supplied_list = SuppliedItemList.objects.create(
+                product=product,
+                issue_date=issue_date,
+                delivery_date=None,  # nullable
+                csv_file=csv_file,
+                status='draft',
+                created_by=request.user
+            )
+
+            # リスト項目を作成
+            created_items = []
+            for item_data in items_data:
+                # 支給品マスタとの紐付け
+                supplied_item = SuppliedItem.objects.filter(
+                    item_number=item_data['item_number'],
+                    is_active=True
+                ).first()
+
+                list_item = SuppliedItemListItem.objects.create(
+                    supplied_item_list=supplied_list,
+                    supplied_item=supplied_item,
+                    item_number=item_data['item_number'],
+                    item_name=item_data.get('item_name', ''),
+                    quantity=item_data['quantity'],
+                    unit=item_data.get('unit', '個'),
+                )
+                created_items.append(list_item)
+
+        # レスポンスを返す
+        serializer = SuppliedItemListDetailSerializer(supplied_list)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Create supplied item list error: {str(e)}")
+        return Response(
+            {"error": f"リスト作成エラー: {str(e)}"},
             status=status.HTTP_400_BAD_REQUEST
         )
 
