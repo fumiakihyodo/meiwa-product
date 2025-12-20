@@ -57,6 +57,41 @@ from api.supplier.models import SupplierBranch
 logger = logging.getLogger(__name__)
 
 
+def decode_csv_file(csv_file):
+    """
+    CSVファイルを複数のエンコーディングで試してデコード
+
+    UTF-8とShift-JIS（およびその変種）をサポート
+
+    Args:
+        csv_file: アップロードされたCSVファイル
+
+    Returns:
+        デコードされた文字列
+
+    Raises:
+        UnicodeDecodeError: すべてのエンコーディングで失敗した場合
+    """
+    file_content = csv_file.read()
+
+    # 試すエンコーディングのリスト（優先順）
+    encodings = ['utf-8-sig', 'utf-8', 'shift_jis', 'cp932', 'euc-jp']
+
+    for encoding in encodings:
+        try:
+            decoded = file_content.decode(encoding)
+            logger.info(f"CSV file successfully decoded with encoding: {encoding}")
+            return decoded
+        except UnicodeDecodeError:
+            continue
+
+    # すべてのエンコーディングで失敗した場合
+    raise UnicodeDecodeError(
+        'unknown', file_content, 0, len(file_content),
+        f"CSVファイルを読み込めませんでした。サポートされているエンコーディング: {', '.join(encodings)}"
+    )
+
+
 class IsAdminUser(permissions.BasePermission):
     """管理者権限の確認"""
 
@@ -447,7 +482,7 @@ class PartBulkImportView(APIView):
             )
 
         try:
-            decoded_file = csv_file.read().decode('utf-8-sig')
+            decoded_file = decode_csv_file(csv_file)
             io_string = io.StringIO(decoded_file)
             reader = csv.DictReader(io_string)
 
@@ -634,7 +669,7 @@ class PriceHistoryBulkImportView(APIView):
             )
 
         try:
-            decoded_file = csv_file.read().decode('utf-8-sig')
+            decoded_file = decode_csv_file(csv_file)
             io_string = io.StringIO(decoded_file)
             reader = csv.DictReader(io_string)
 
@@ -1136,14 +1171,20 @@ class SuppliedItemListListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         """クエリセットを取得"""
         queryset = SuppliedItemList.objects.select_related(
-            'customer',
+            'product',
+            'product__customer_branch',
+            'product__customer_branch__customer',
             'created_by'
         ).prefetch_related('items')
 
         # フィルタリング
         customer_id = self.request.query_params.get('customer', None)
         if customer_id:
-            queryset = queryset.filter(customer_id=customer_id)
+            queryset = queryset.filter(product__customer_branch__customer_id=customer_id)
+
+        product_id = self.request.query_params.get('product', None)
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
 
         status_filter = self.request.query_params.get('status', None)
         if status_filter:
@@ -1154,7 +1195,9 @@ class SuppliedItemListListCreateView(generics.ListCreateAPIView):
         if search:
             queryset = queryset.filter(
                 Q(list_number__icontains=search) |
-                Q(customer__name__icontains=search)
+                Q(product__product_number__icontains=search) |
+                Q(product__product_name__icontains=search) |
+                Q(product__customer_branch__customer__name__icontains=search)
             )
 
         return queryset.order_by('-created_at')
@@ -1173,7 +1216,9 @@ class SuppliedItemListDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         """クエリセットを取得"""
         return SuppliedItemList.objects.select_related(
-            'customer',
+            'product',
+            'product__customer_branch',
+            'product__customer_branch__customer',
             'created_by'
         ).prefetch_related(
             'items',
@@ -1287,7 +1332,9 @@ class SuppliedItemReceivingListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         """クエリセットを取得"""
         queryset = SuppliedItemReceiving.objects.select_related(
-            'supplied_item_list__customer',
+            'supplied_item_list__product',
+            'supplied_item_list__product__customer_branch',
+            'supplied_item_list__product__customer_branch__customer',
             'created_by'
         ).prefetch_related('items')
 
@@ -1315,7 +1362,9 @@ class SuppliedItemReceivingDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         """クエリセットを取得"""
         return SuppliedItemReceiving.objects.select_related(
-            'supplied_item_list__customer',
+            'supplied_item_list__product',
+            'supplied_item_list__product__customer_branch',
+            'supplied_item_list__product__customer_branch__customer',
             'created_by'
         ).prefetch_related(
             'items',
@@ -1530,7 +1579,7 @@ def import_supplied_item_list_csv(request, list_id):
 
     try:
         # CSVファイルを読み込む
-        decoded_file = csv_file.read().decode('utf-8-sig')
+        decoded_file = decode_csv_file(csv_file)
         io_string = io.StringIO(decoded_file)
         reader = csv.reader(io_string)
 
@@ -1621,9 +1670,9 @@ def import_supplied_item_list_csv(request, list_id):
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as e:
         return Response(
-            {"error": "CSVファイルの文字コードがUTF-8ではありません"},
+            {"error": "CSVファイルの文字コードが読み取れません。UTF-8またはShift-JISで保存されたCSVファイルをアップロードしてください。"},
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
@@ -1662,7 +1711,7 @@ def parse_supplied_item_csv(request):
 
     try:
         # CSVファイルを読み込む
-        decoded_file = csv_file.read().decode('utf-8-sig')
+        decoded_file = decode_csv_file(csv_file)
         io_string = io.StringIO(decoded_file)
         reader = csv.reader(io_string)
 
@@ -1783,9 +1832,9 @@ def parse_supplied_item_csv(request):
 
         return Response(response_data, status=status.HTTP_200_OK)
 
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as e:
         return Response(
-            {"error": "CSVファイルの文字コードがUTF-8ではありません"},
+            {"error": "CSVファイルの文字コードが読み取れません。UTF-8またはShift-JISで保存されたCSVファイルをアップロードしてください。"},
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
