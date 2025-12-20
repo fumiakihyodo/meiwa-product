@@ -557,8 +557,8 @@ class SuppliedItemListItemCreateSerializer(serializers.ModelSerializer):
 
 class SuppliedItemListListSerializer(serializers.ModelSerializer):
     """支給品リスト一覧シリアライザー"""
-    product_name = serializers.CharField(source='product.product_name', read_only=True)
-    product_number = serializers.CharField(source='product.product_number', read_only=True)
+    product_name = serializers.CharField(source='product.product_name', read_only=True, allow_null=True, default=None)
+    product_number = serializers.CharField(source='product.product_number', read_only=True, allow_null=True, default=None)
     total_items = serializers.IntegerField(read_only=True)
     total_quantity = serializers.IntegerField(read_only=True)
     received_items_count = serializers.IntegerField(read_only=True)
@@ -583,8 +583,8 @@ class SuppliedItemListListSerializer(serializers.ModelSerializer):
 
 class SuppliedItemListDetailSerializer(serializers.ModelSerializer):
     """支給品リスト詳細シリアライザー"""
-    product_name = serializers.CharField(source='product.product_name', read_only=True)
-    product_number = serializers.CharField(source='product.product_number', read_only=True)
+    product_name = serializers.CharField(source='product.product_name', read_only=True, allow_null=True, default=None)
+    product_number = serializers.CharField(source='product.product_number', read_only=True, allow_null=True, default=None)
     items = SuppliedItemListItemSerializer(many=True, read_only=True)
     total_items = serializers.IntegerField(read_only=True)
     total_quantity = serializers.IntegerField(read_only=True)

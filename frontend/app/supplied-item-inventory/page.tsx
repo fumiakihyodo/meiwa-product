@@ -165,7 +165,8 @@ export default function SuppliedItemInventoryPage() {
             headerName: '製品名',
             width: 200,
             valueGetter: (params: any) => {
-                const row = params.row as SuppliedItemList;
+                const row = params?.row as SuppliedItemList | undefined;
+                if (!row) return '';
                 if (row.product_number && row.product_name) {
                     return `${row.product_number} - ${row.product_name}`;
                 }
