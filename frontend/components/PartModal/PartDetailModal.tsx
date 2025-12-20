@@ -35,7 +35,7 @@ import {
 } from '@mui/icons-material';
 
 import { Part } from '@/types/purchases';
-import { Product } from '@/types/procuct'
+import { Product } from '@/types/product'
 import { SupplierBranch } from '@/types/supplier';
 import { purchasesApi } from '@/services/apiPurchases';
 import { productApi } from '@/services/apiProduct';
@@ -588,7 +588,7 @@ export const PartDetailModal: React.FC<PartDetailModalProps> = ({
                                             <Autocomplete
                                                 options={uniqueBranches}
                                                 getOptionLabel={(option) => option.supplier_name || ''}
-                                                getOptionKey={(option) => option.id} 
+                                                getOptionKey={(option) => option.id}
                                                 value={branches.find(b => b.id === editedPart.supplier_branch) || null}
                                                 onChange={(_, newValue) => handleBranchChange(newValue)}
                                                 disabled={saving}

@@ -20,7 +20,7 @@ import {
 } from '@mui/material';
 import { useForm, Controller } from 'react-hook-form';
 import { Part, PartCreateData, PriceHistoryCreateData } from '@/types/purchases';
-import { Product } from '@/types/procuct'
+import { Product } from '@/types/product'
 import { SupplierBranch } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
 import { productApi } from '@/services/apiProduct';
@@ -234,7 +234,7 @@ const PartFormModalComponent: React.FC<PartFormModalProps> = ({
             onClose();
         } catch (error) {
             console.error('Form Submit Error:', error);
-            
+
             if (error && typeof error === 'object' && 'response' in error) {
                 const errorResponse = error as { response?: { data?: Record<string, unknown> } };
                 if (errorResponse.response?.data) {
@@ -245,7 +245,7 @@ const PartFormModalComponent: React.FC<PartFormModalProps> = ({
                             return `${key}: ${valueStr}`;
                         })
                         .join('\n');
-                    
+
                     toast.error(`エラー: ${errorMessage}`);
                 } else {
                     toast.error(isDuplicateMode ? '部品の複製に失敗しました' : '部品の作成に失敗しました');
@@ -774,8 +774,8 @@ const PartFormModalComponent: React.FC<PartFormModalProps> = ({
                 </DialogContent>
 
                 <DialogActions sx={{ p: 2.5, gap: 1 }}>
-                    <Button 
-                        onClick={onClose} 
+                    <Button
+                        onClick={onClose}
                         disabled={loading}
                         size="large"
                         sx={{ borderRadius: 1.5, px: 3 }}

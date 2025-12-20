@@ -32,7 +32,7 @@ import {
     ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 import { PartModalType } from '@/types/business';
-import { Product } from '@/types/procuct'
+import { Product } from '@/types/product'
 import { Part, SuppliedItem } from '@/types/purchases'
 import { productApi } from '@/services/apiProduct';
 import { purchasesApi } from '@/services/apiPurchases';

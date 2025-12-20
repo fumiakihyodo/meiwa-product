@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { Save as SaveIcon, Close as CloseIcon } from '@mui/icons-material';
 import { SuppliedItem, SuppliedItemCreateData } from '@/types/purchases';
-import { Product } from '@/types/procuct';
+import { Product } from '@/types/product';
 import { purchasesApi } from '@/services/apiPurchases';
 import { productApi } from '@/services/apiProduct';
 import toast from 'react-hot-toast';

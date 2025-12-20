@@ -34,7 +34,7 @@ import {
 } from '@mui/icons-material';
 
 import { SuppliedItem, SuppliedItemUpdateData } from '@/types/purchases';
-import { Product } from '@/types/procuct';
+import { Product } from '@/types/product';
 import { purchasesApi } from '@/services/apiPurchases';
 import { productApi } from '@/services/apiProduct';
 import toast from 'react-hot-toast';

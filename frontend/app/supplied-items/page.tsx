@@ -37,7 +37,7 @@ import {
     ShoppingCart as ShoppingCartIcon,
 } from '@mui/icons-material';
 import { SuppliedItem } from '@/types/purchases';
-import { Product } from '@/types/procuct';
+import { Product } from '@/types/product';
 import { productApi } from '@/services/apiProduct';
 import { purchasesApi } from '@/services/apiPurchases';
 import { AuthGuard } from '@/components/AuthGuard';

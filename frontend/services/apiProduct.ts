@@ -5,7 +5,7 @@ import {
     Product,
     ProductCreateData,
     ProductUpdateData,
-} from '@/types/procuct';
+} from '@/types/product';
 
 import {
     PaginatedResponse,

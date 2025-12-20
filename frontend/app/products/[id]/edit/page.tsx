@@ -34,7 +34,7 @@ import {
     GridColDef,
     GridActionsCellItem,
 } from '@mui/x-data-grid';
-import { Product, ProductStatus, ProductCreateData, ProductUpdateData} from '@/types/procuct';
+import { Product, ProductStatus, ProductCreateData, ProductUpdateData } from '@/types/product';
 import { Part } from '@/types/purchases';
 import { Customer, CustomerBranch } from '@/types/customer';
 import { productApi } from '@/services/apiProduct';

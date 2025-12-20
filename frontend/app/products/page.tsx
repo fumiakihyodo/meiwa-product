@@ -38,7 +38,7 @@ import {
     Search as SearchIcon,
     FilterList as FilterListIcon,
 } from '@mui/icons-material';
-import { Product, ProductStatus } from '@/types/procuct';
+import { Product, ProductStatus } from '@/types/product';
 import { productApi } from '@/services/apiProduct';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';

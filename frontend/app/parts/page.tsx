@@ -38,7 +38,7 @@ import {
 } from '@mui/icons-material';
 import { PartModalType } from '@/types/business';
 import { Part } from '@/types/purchases';
-import { Product } from '@/types/procuct';
+import { Product } from '@/types/product';
 import { Supplier } from '@/types/supplier';
 import { productApi } from '@/services/apiProduct';
 import { supplierApi } from '@/services/apiSupplier';
