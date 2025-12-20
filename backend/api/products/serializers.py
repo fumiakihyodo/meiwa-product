@@ -31,8 +31,8 @@ class ProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'product_number', 'product_name', 'status',
-            'customer_branch', 'customer_branch_name', 'customer_name', 
+            'id', 'product_number', 'product_name', 'model_info', 'status',
+            'customer_branch', 'customer_branch_name', 'customer_name',
             'branch_name', 'parts_count',
             'created_at', 'updated_at', 'created_by_name'
         ]
@@ -79,8 +79,8 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'product_number', 'product_name', 'description',
-            'status', 'customer_branch', 'customer_branch_name', 
+            'id', 'product_number', 'product_name', 'model_info', 'description',
+            'status', 'customer_branch', 'customer_branch_name',
             'customer_name', 'branch_name', 'branch_type',
             'customer_branch_full_address', 'parts_count', 'parts',
             'created_at', 'updated_at', 'created_by', 'created_by_name'
@@ -100,7 +100,7 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'product_number', 'product_name', 'description', 'status', 'customer_branch'
+            'product_number', 'product_name', 'model_info', 'description', 'status', 'customer_branch'
         ]
         extra_kwargs = {
             'product_number': {'required': True},

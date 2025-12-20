@@ -433,4 +433,5 @@ export interface CSVImportCreateData {
     csv_file: File;
     register_unregistered: boolean;
     unregistered_items?: UnregisteredPartNumber[];
+    product_info?: string[];
 }

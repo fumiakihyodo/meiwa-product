@@ -33,6 +33,15 @@ class Product(models.Model):
         verbose_name='製品名称'
     )
 
+    # 機種情報
+    model_info = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        verbose_name='機種情報',
+        help_text='製品の機種情報（製品名）'
+    )
+
     # 詳細情報
     description = models.TextField(
         blank=True,
@@ -77,6 +86,7 @@ class Product(models.Model):
             models.Index(fields=['status']),
             models.Index(fields=['created_at']),
             models.Index(fields=['customer_branch']),
+            models.Index(fields=['model_info']),
         ]
 
     def __str__(self):

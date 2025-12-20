@@ -463,6 +463,9 @@ export const purchasesApi = {
         if (data.unregistered_items) {
             formData.append('unregistered_items', JSON.stringify(data.unregistered_items));
         }
+        if (data.product_info) {
+            formData.append('product_info', JSON.stringify(data.product_info));
+        }
         formData.append('csv_file', data.csv_file);
 
         const response = await apiClient.post<SuppliedItemList>(

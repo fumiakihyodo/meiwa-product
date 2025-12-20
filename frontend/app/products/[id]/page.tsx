@@ -510,7 +510,7 @@ export default function ProductDetailPage() {
                         <Paper sx={{ p: 3 }}>
                             <Box sx={{
                                 display: 'grid',
-                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(5, 1fr)' },
+                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
                                 gap: 3
                             }}>
                                 <Box>
@@ -539,12 +539,34 @@ export default function ProductDetailPage() {
                                         color={product.status === 'ACTIVE' ? 'success' : 'default'}
                                     />
                                 </Box>
+                            </Box>
+
+                            {product.model_info && (
+                                <>
+                                    <Divider sx={{ my: 2 }} />
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                            機種情報
+                                        </Typography>
+                                        <Typography variant="body1" fontWeight="medium">
+                                            {product.model_info}
+                                        </Typography>
+                                    </Box>
+                                </>
+                            )}
+
+                            <Divider sx={{ my: 2 }} />
+                            <Box sx={{
+                                display: 'grid',
+                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                                gap: 3
+                            }}>
                                 <Box>
                                     <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-                                        部品数 / 支給品数
+                                        部品数
                                     </Typography>
                                     <Typography variant="body1" fontWeight="medium">
-                                        {parts.length}件 / {suppliedItems.length}件
+                                        {parts.length}件
                                     </Typography>
                                 </Box>
                                 <Box>

@@ -12,6 +12,7 @@ export interface Product {
     id: number;
     product_number: string;
     product_name: string;
+    model_info?: string;
     description?: string;
     status: ProductStatus;
     parts_count?: number;
@@ -31,6 +32,7 @@ export interface ProductCreateData {
     customerbranch: number;
     product_number: string;
     product_name: string;
+    model_info?: string;
     description?: string;
     status?: ProductStatus;
     customer?: string;

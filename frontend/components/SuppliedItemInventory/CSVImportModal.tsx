@@ -145,6 +145,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
                 csv_file: csvFile,
                 register_unregistered: registerUnregistered,
                 unregistered_items: registerUnregistered ? parseResult.unregistered_part_numbers : undefined,
+                product_info: parseResult.product_info,
             });
 
             setActiveStep(3); // 完了ステップへ

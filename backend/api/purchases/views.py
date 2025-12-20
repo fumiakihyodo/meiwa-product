@@ -1858,6 +1858,7 @@ def create_supplied_item_list_from_csv(request):
         - csv_file: CSVファイル
         - register_unregistered: 未登録品番をマスターに登録するか (boolean)
         - unregistered_items: 未登録品番のリスト（register_unregistered=Trueの場合）
+        - product_info: CSV 27列目の機種情報（リスト）
     """
     try:
         product_id = request.data.get('product_id')
@@ -1865,6 +1866,7 @@ def create_supplied_item_list_from_csv(request):
         items_data = request.data.get('items', [])
         register_unregistered = request.data.get('register_unregistered', False)
         unregistered_items = request.data.get('unregistered_items', [])
+        product_info_list = request.data.get('product_info', [])
         csv_file = request.FILES.get('csv_file')
 
         # バリデーション
@@ -1895,20 +1897,39 @@ def create_supplied_item_list_from_csv(request):
             )
 
         with transaction.atomic():
+            # Productのmodel_infoを更新（機種情報がある場合）
+            if product_info_list and len(product_info_list) > 0:
+                # 複数の機種情報がある場合は最初のものを使用
+                model_info = product_info_list[0] if isinstance(product_info_list, list) else product_info_list
+                # Productのmodel_infoが空の場合のみ更新
+                if not product.model_info:
+                    product.model_info = model_info
+                    product.save(update_fields=['model_info'])
+                    logger.info(f"Product {product.id} model_info updated to: {model_info}")
+
             # 未登録品番をマスターに登録
             if register_unregistered and unregistered_items:
+                logger.info(f"Registering {len(unregistered_items)} unregistered items")
                 for item in unregistered_items:
-                    SuppliedItem.objects.get_or_create(
-                        item_number=item['item_number'],
-                        defaults={
-                            'product': product,
-                            'item_name': item.get('item_name', ''),
-                            'unit': item.get('unit', '個'),
-                            'standard_quantity': item.get('quantity', 1),
-                            'is_active': True,
-                            'created_by': request.user
-                        }
-                    )
+                    # itemが辞書であることを確認
+                    if isinstance(item, str):
+                        logger.error(f"Unexpected string item in unregistered_items: {item}")
+                        continue
+
+                    try:
+                        SuppliedItem.objects.get_or_create(
+                            item_number=item.get('item_number') if isinstance(item, dict) else item,
+                            defaults={
+                                'product': product,
+                                'item_name': item.get('item_name', '') if isinstance(item, dict) else '',
+                                'unit': item.get('unit', '個') if isinstance(item, dict) else '個',
+                                'standard_quantity': item.get('quantity', 1) if isinstance(item, dict) else 1,
+                                'is_active': True,
+                                'created_by': request.user
+                            }
+                        )
+                    except Exception as e:
+                        logger.error(f"Error creating SuppliedItem for {item}: {str(e)}")
 
             # SuppliedItemListを作成
             supplied_list = SuppliedItemList.objects.create(
