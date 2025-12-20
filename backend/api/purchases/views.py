@@ -2040,7 +2040,19 @@ def create_supplied_item_list_from_csv(request):
                 )
                 created_items.append(list_item)
 
-        # レスポンスを返す
+        # レスポンスを返す前に関連データをロード
+        supplied_list = SuppliedItemList.objects.select_related(
+            'product',
+            'product__customer_branch',
+            'product__customer_branch__customer',
+            'created_by'
+        ).prefetch_related(
+            'items',
+            'items__supplied_item',
+            'items__receiving_confirmed_by',
+            'items__count_confirmed_by'
+        ).get(pk=supplied_list.id)
+
         serializer = SuppliedItemListDetailSerializer(supplied_list)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 

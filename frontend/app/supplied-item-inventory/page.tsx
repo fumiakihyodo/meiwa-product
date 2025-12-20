@@ -166,7 +166,10 @@ export default function SuppliedItemInventoryPage() {
             width: 200,
             valueGetter: (params: any) => {
                 const row = params.row as SuppliedItemList;
-                return row.product_number ? `${row.product_number} - ${row.product_name}` : row.product_name;
+                if (row.product_number && row.product_name) {
+                    return `${row.product_number} - ${row.product_name}`;
+                }
+                return row.product_name || '';
             }
         },
         {
