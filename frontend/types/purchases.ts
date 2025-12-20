@@ -390,17 +390,6 @@ export interface ReceivingConfirmData {
     notes?: string;
 }
 
-// CSV解析結果
-export interface CSVParseResult {
-    items: CSVParsedItem[];
-    total_items: number;
-    unregistered_part_numbers: UnregisteredPartNumber[];
-    product_info: string[];
-    suggested_products: SuggestedProduct[];
-    issue_date?: string;
-    errors?: string[];
-}
-
 // CSV解析された品目
 export interface CSVParsedItem {
     item_number: string;
@@ -417,12 +406,37 @@ export interface UnregisteredPartNumber {
     unit: string;
 }
 
-// 推奨製品
+// 推奨製品（model_infoベース）
 export interface SuggestedProduct {
     id: number;
     product_number: string;
     product_name: string;
-    matched_keyword: string;
+    model_info: string;
+    match_type: 'exact' | 'partial';
+}
+
+// model_info グループ
+export interface ModelInfoGroup {
+    model_info: string;
+    items: CSVParsedItem[];
+    total_items: number;
+    unregistered_items: UnregisteredPartNumber[];
+    suggested_product: SuggestedProduct | null;
+}
+
+// model_info なしグループ
+export interface ItemsWithoutModelInfoGroup {
+    items: CSVParsedItem[];
+    total_items: number;
+    unregistered_items: UnregisteredPartNumber[];
+}
+
+// CSV解析結果
+export interface CSVParseResult {
+    model_info_groups: ModelInfoGroup[];
+    items_without_model_info: ItemsWithoutModelInfoGroup | null;
+    issue_date?: string;
+    errors?: string[] | null;
 }
 
 // CSV インポート作成データ

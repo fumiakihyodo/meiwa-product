@@ -1715,9 +1715,10 @@ def parse_supplied_item_csv(request):
         io_string = io.StringIO(decoded_file)
         reader = csv.reader(io_string)
 
-        items_by_part_number = {}
+        # model_info ごとにアイテムをグループ化
+        items_by_model_info = {}  # {model_info: {item_number: item_data}}
+        items_without_model_info = {}  # model_info が空のアイテム
         issue_date = None
-        product_info_set = set()
         errors = []
 
         for row_num, row in enumerate(reader, start=1):
@@ -1755,10 +1756,6 @@ def parse_supplied_item_csv(request):
                     except:
                         pass
 
-                # Product情報を収集
-                if product_info:
-                    product_info_set.add(product_info)
-
                 # 品番が空の場合はスキップ
                 if not item_number:
                     continue
@@ -1770,62 +1767,132 @@ def parse_supplied_item_csv(request):
                     errors.append(f"行{row_num}: 数量が不正です: {quantity_str}")
                     continue
 
-                # 同じ品番が存在する場合は数量を合計
-                if item_number in items_by_part_number:
-                    items_by_part_number[item_number]['quantity'] += quantity
+                item_data = {
+                    'item_number': item_number,
+                    'item_name': item_name,
+                    'quantity': quantity,
+                    'unit': unit or '個',
+                }
+
+                # model_info の有無でグループ分け
+                if product_info:
+                    # model_info がある場合
+                    if product_info not in items_by_model_info:
+                        items_by_model_info[product_info] = {}
+
+                    # 同じ品番が存在する場合は数量を合算
+                    if item_number in items_by_model_info[product_info]:
+                        items_by_model_info[product_info][item_number]['quantity'] += quantity
+                    else:
+                        items_by_model_info[product_info][item_number] = item_data
                 else:
-                    items_by_part_number[item_number] = {
-                        'item_number': item_number,
-                        'item_name': item_name,
-                        'quantity': quantity,
-                        'unit': unit or '個',
-                    }
+                    # model_info が空の場合
+                    if item_number in items_without_model_info:
+                        items_without_model_info[item_number]['quantity'] += quantity
+                    else:
+                        items_without_model_info[item_number] = item_data
 
             except Exception as e:
                 errors.append(f"行{row_num}: エラー - {str(e)}")
 
-        # マスターチェック: 未登録の品番を確認
-        all_item_numbers = list(items_by_part_number.keys())
-        registered_items = SuppliedItem.objects.filter(
-            item_number__in=all_item_numbers,
-            is_active=True
-        ).values_list('item_number', flat=True)
-
-        unregistered_part_numbers = [
-            {
-                'item_number': num,
-                'item_name': items_by_part_number[num]['item_name'],
-                'quantity': items_by_part_number[num]['quantity'],
-                'unit': items_by_part_number[num]['unit'],
-            }
-            for num in all_item_numbers if num not in registered_items
-        ]
-
-        # Product情報からマッチする製品を検索
+        # model_info ごとにグループデータを作成
         from api.products.models import Product
-        suggested_products = []
-        for product_info in product_info_set:
-            if product_info:
-                # product_numberまたはproduct_nameで検索
-                products = Product.objects.filter(
-                    Q(product_number__icontains=product_info) |
-                    Q(product_name__icontains=product_info),
+        model_info_groups = []
+
+        for model_info, items_dict in items_by_model_info.items():
+            items_list = list(items_dict.values())
+            all_item_numbers = list(items_dict.keys())
+
+            # マスターチェック: 未登録の品番を確認
+            registered_items = SuppliedItem.objects.filter(
+                item_number__in=all_item_numbers,
+                is_active=True
+            ).values_list('item_number', flat=True)
+
+            unregistered_items = [
+                {
+                    'item_number': num,
+                    'item_name': items_dict[num]['item_name'],
+                    'quantity': items_dict[num]['quantity'],
+                    'unit': items_dict[num]['unit'],
+                }
+                for num in all_item_numbers if num not in registered_items
+            ]
+
+            # model_info でマッチする製品を検索（model_info フィールドで完全一致優先）
+            suggested_product = None
+
+            # まず model_info フィールドで完全一致を検索
+            exact_match = Product.objects.filter(
+                model_info=model_info,
+                status='ACTIVE'
+            ).first()
+
+            if exact_match:
+                suggested_product = {
+                    'id': exact_match.id,
+                    'product_number': exact_match.product_number,
+                    'product_name': exact_match.product_name,
+                    'model_info': exact_match.model_info,
+                    'match_type': 'exact'
+                }
+            else:
+                # 完全一致がない場合は部分一致を検索
+                partial_match = Product.objects.filter(
+                    Q(product_number__icontains=model_info) |
+                    Q(product_name__icontains=model_info) |
+                    Q(model_info__icontains=model_info),
                     status='ACTIVE'
-                )[:5]  # 最大5件
-                for product in products:
-                    suggested_products.append({
-                        'id': product.id,
-                        'product_number': product.product_number,
-                        'product_name': product.product_name,
-                        'matched_keyword': product_info
-                    })
+                ).first()
+
+                if partial_match:
+                    suggested_product = {
+                        'id': partial_match.id,
+                        'product_number': partial_match.product_number,
+                        'product_name': partial_match.product_name,
+                        'model_info': partial_match.model_info or '',
+                        'match_type': 'partial'
+                    }
+
+            model_info_groups.append({
+                'model_info': model_info,
+                'items': items_list,
+                'total_items': len(items_list),
+                'unregistered_items': unregistered_items,
+                'suggested_product': suggested_product,
+            })
+
+        # model_info なしのグループ
+        items_without_model_info_group = None
+        if items_without_model_info:
+            items_list = list(items_without_model_info.values())
+            all_item_numbers = list(items_without_model_info.keys())
+
+            # マスターチェック
+            registered_items = SuppliedItem.objects.filter(
+                item_number__in=all_item_numbers,
+                is_active=True
+            ).values_list('item_number', flat=True)
+
+            unregistered_items = [
+                {
+                    'item_number': num,
+                    'item_name': items_without_model_info[num]['item_name'],
+                    'quantity': items_without_model_info[num]['quantity'],
+                    'unit': items_without_model_info[num]['unit'],
+                }
+                for num in all_item_numbers if num not in registered_items
+            ]
+
+            items_without_model_info_group = {
+                'items': items_list,
+                'total_items': len(items_list),
+                'unregistered_items': unregistered_items,
+            }
 
         response_data = {
-            'items': list(items_by_part_number.values()),
-            'total_items': len(items_by_part_number),
-            'unregistered_part_numbers': unregistered_part_numbers,
-            'product_info': list(product_info_set),
-            'suggested_products': suggested_products,
+            'model_info_groups': model_info_groups,
+            'items_without_model_info': items_without_model_info_group,
             'issue_date': issue_date,
             'errors': errors if errors else None,
         }
@@ -1861,12 +1928,25 @@ def create_supplied_item_list_from_csv(request):
         - product_info: CSV 27列目の機種情報（リスト）
     """
     try:
+        import json
+
+        # FormDataから送信されたデータを取得してパース
         product_id = request.data.get('product_id')
         issue_date = request.data.get('issue_date')
-        items_data = request.data.get('items', [])
-        register_unregistered = request.data.get('register_unregistered', False)
-        unregistered_items = request.data.get('unregistered_items', [])
-        product_info_list = request.data.get('product_info', [])
+
+        # JSON文字列をパース
+        items_data_str = request.data.get('items', '[]')
+        items_data = json.loads(items_data_str) if isinstance(items_data_str, str) else items_data_str
+
+        register_unregistered_str = request.data.get('register_unregistered', 'false')
+        register_unregistered = register_unregistered_str.lower() == 'true' if isinstance(register_unregistered_str, str) else bool(register_unregistered_str)
+
+        unregistered_items_str = request.data.get('unregistered_items')
+        unregistered_items = json.loads(unregistered_items_str) if unregistered_items_str and isinstance(unregistered_items_str, str) else (unregistered_items_str or [])
+
+        product_info_str = request.data.get('product_info')
+        product_info_list = json.loads(product_info_str) if product_info_str and isinstance(product_info_str, str) else (product_info_str or [])
+
         csv_file = request.FILES.get('csv_file')
 
         # バリデーション
