@@ -1808,8 +1808,8 @@ def parse_supplied_item_csv(request):
             if product_info:
                 # product_numberまたはproduct_nameで検索
                 products = Product.objects.filter(
-                    models.Q(product_number__icontains=product_info) |
-                    models.Q(product_name__icontains=product_info),
+                    Q(product_number__icontains=product_info) |
+                    Q(product_name__icontains=product_info),
                     status='ACTIVE'
                 )[:5]  # 最大5件
                 for product in products:
