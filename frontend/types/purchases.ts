@@ -209,6 +209,7 @@ export interface SuppliedItemList {
     product: number;
     product_name?: string;
     product_number?: string;
+    customer_name?: string;
     issue_date: string;
     delivery_date?: string;
     csv_file?: string;
@@ -263,6 +264,11 @@ export interface SuppliedItemListCreateData {
     items?: SuppliedItemListItemCreateData[];
 }
 
+// 取引先情報（製品より取得）
+export interface CustomerInfo {
+    customer_name?: string;
+}
+
 export type SuppliedItemListUpdateData = Partial<SuppliedItemListCreateData>;
 
 // 支給品リスト項目作成データ
@@ -284,14 +290,17 @@ export type ReceivingStatus = 'draft' | 'completed';
 // 支給品受入確認
 export interface SuppliedItemReceiving {
     id: number;
-    supplied_item_list: number;
+    supplied_item_list?: number | null;
+    product?: number | null;
     list_number?: string;
-    customer_name?: string;
+    product_number?: string;
+    product_name?: string;
     status: ReceivingStatus;
     status_display?: string;
     receiving_date: string;
     items?: SuppliedItemReceivingItem[];
     items_count?: number;
+    total_quantity?: number;
     notes?: string;
     created_at: string;
     updated_at: string;
@@ -303,8 +312,10 @@ export interface SuppliedItemReceiving {
 export interface SuppliedItemReceivingItem {
     id: number;
     receiving: number;
+    supplied_item?: number;
     list_item?: number;
     item_number: string;
+    item_name?: string;
     quantity_per_box: number;
     box_count: number;
     calculated_quantity: number;
@@ -315,7 +326,8 @@ export interface SuppliedItemReceivingItem {
 
 // 支給品受入確認作成データ
 export interface SuppliedItemReceivingCreateData {
-    supplied_item_list: number;
+    supplied_item_list?: number | null;
+    product?: number | null;
     status?: ReceivingStatus;
     receiving_date?: string;
     notes?: string;
@@ -326,8 +338,10 @@ export type SuppliedItemReceivingUpdateData = Partial<SuppliedItemReceivingCreat
 
 // 支給品受入確認項目作成データ
 export interface SuppliedItemReceivingItemCreateData {
+    supplied_item?: number;
     list_item?: number;
     item_number: string;
+    item_name?: string;
     quantity_per_box: number;
     box_count: number;
     notes?: string;
@@ -448,4 +462,65 @@ export interface CSVImportCreateData {
     register_unregistered: boolean;
     unregistered_items?: UnregisteredPartNumber[];
     product_info?: string[];
+}
+
+// ===== リストと受入れ数量の比較関連 =====
+
+// 比較結果の項目
+export interface ReceivingComparisonItem {
+    list_item_id: number;
+    item_number: string;
+    item_name: string;
+    list_quantity: number;
+    total_received: number;
+    is_sufficient: boolean;
+    difference: number;
+    receiving_confirmed: boolean;
+    count_confirmed: boolean;
+}
+
+// リスト未登録品番
+export interface UnregisteredReceivingItem {
+    item_number: string;
+    item_name: string;
+    total_received: number;
+    receivings?: {
+        receiving_id: number;
+        receiving_date: string | null;
+        quantity: number;
+    }[];
+}
+
+// 比較結果のサマリー
+export interface ReceivingComparisonSummary {
+    total_items: number;
+    sufficient_items: number;
+    confirmed_items: number;
+    unregistered_count: number;
+}
+
+// 比較API結果
+export interface ReceivingComparisonResult {
+    list_id: number;
+    list_number: string;
+    product_id: number;
+    comparison: ReceivingComparisonItem[];
+    unregistered_items: UnregisteredReceivingItem[];
+    summary: ReceivingComparisonSummary;
+}
+
+// 一括確認API結果
+export interface BulkConfirmReceivingResult {
+    message: string;
+    confirmed_count: number;
+    skipped_count: number;
+    list_status: SuppliedItemListStatus;
+}
+
+// リスト未登録品番取得API結果
+export interface UnregisteredItemsResult {
+    list_id: number;
+    list_number: string;
+    unregistered_items: UnregisteredReceivingItem[];
+    total_count: number;
 }

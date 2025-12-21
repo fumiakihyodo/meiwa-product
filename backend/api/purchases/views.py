@@ -1326,7 +1326,11 @@ class SuppliedItemListItemCountConfirmView(generics.UpdateAPIView):
 # ==================== 受入確認 Views ====================
 
 class SuppliedItemReceivingListCreateView(generics.ListCreateAPIView):
-    """支給品受入確認一覧取得・作成ビュー"""
+    """支給品受入確認一覧取得・作成ビュー
+
+    リスト登録前でも受入れ登録が可能。
+    productフィルタでリスト未紐付けの受入れ登録を取得可能。
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -1335,12 +1339,28 @@ class SuppliedItemReceivingListCreateView(generics.ListCreateAPIView):
             'supplied_item_list__product',
             'supplied_item_list__product__customer_branch',
             'supplied_item_list__product__customer_branch__customer',
+            'product',
+            'product__customer_branch',
+            'product__customer_branch__customer',
             'created_by'
-        ).prefetch_related('items')
+        ).prefetch_related('items', 'items__supplied_item')
 
         list_id = self.request.query_params.get('list', None)
         if list_id:
             queryset = queryset.filter(supplied_item_list_id=list_id)
+
+        # 製品でフィルタ（リスト経由またはproduct直接）
+        product_id = self.request.query_params.get('product', None)
+        if product_id:
+            queryset = queryset.filter(
+                Q(supplied_item_list__product_id=product_id) |
+                Q(product_id=product_id)
+            )
+
+        # リスト未紐付けのみ取得
+        unlinked = self.request.query_params.get('unlinked', None)
+        if unlinked and unlinked.lower() == 'true':
+            queryset = queryset.filter(supplied_item_list__isnull=True)
 
         status_filter = self.request.query_params.get('status', None)
         if status_filter:
@@ -1365,10 +1385,14 @@ class SuppliedItemReceivingDetailView(generics.RetrieveUpdateDestroyAPIView):
             'supplied_item_list__product',
             'supplied_item_list__product__customer_branch',
             'supplied_item_list__product__customer_branch__customer',
+            'product',
+            'product__customer_branch',
+            'product__customer_branch__customer',
             'created_by'
         ).prefetch_related(
             'items',
-            'items__list_item'
+            'items__list_item',
+            'items__supplied_item'
         )
 
     def get_serializer_class(self):
@@ -1423,6 +1447,228 @@ def complete_receiving(request, pk):
     except SuppliedItemReceiving.DoesNotExist:
         return Response(
             {"error": "受入確認が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def compare_receiving_with_list(request, list_id):
+    """リスト項目と受入れ数量を比較する
+
+    製品の完了済み受入れ登録（リスト紐付け・未紐付け含む）から、
+    品番ごとの受入れ数量合計を計算し、リスト項目と比較する。
+    """
+    try:
+        supplied_list = SuppliedItemList.objects.get(pk=list_id)
+
+        # リストに紐づく製品の全受入れ登録を取得（completedのみ）
+        product_id = supplied_list.product_id
+        all_receivings = SuppliedItemReceiving.objects.filter(
+            Q(supplied_item_list__product_id=product_id) |
+            Q(product_id=product_id),
+            status='completed'
+        ).prefetch_related('items')
+
+        # 品番ごとの受入れ数量を集計
+        received_quantities = {}
+        for receiving in all_receivings:
+            for item in receiving.items.all():
+                if item.item_number not in received_quantities:
+                    received_quantities[item.item_number] = {
+                        'item_number': item.item_number,
+                        'item_name': item.item_name or '',
+                        'total_received': 0,
+                        'receiving_ids': [],
+                    }
+                received_quantities[item.item_number]['total_received'] += item.calculated_quantity
+                if receiving.id not in received_quantities[item.item_number]['receiving_ids']:
+                    received_quantities[item.item_number]['receiving_ids'].append(receiving.id)
+
+        # リスト項目との比較
+        comparison_results = []
+        list_item_numbers = set()
+
+        for list_item in supplied_list.items.all():
+            list_item_numbers.add(list_item.item_number)
+            received_info = received_quantities.get(list_item.item_number, {})
+            total_received = received_info.get('total_received', 0)
+
+            comparison_results.append({
+                'list_item_id': list_item.id,
+                'item_number': list_item.item_number,
+                'item_name': list_item.item_name,
+                'list_quantity': list_item.quantity,
+                'total_received': total_received,
+                'is_sufficient': total_received >= list_item.quantity,
+                'difference': total_received - list_item.quantity,
+                'receiving_confirmed': list_item.receiving_confirmed,
+                'count_confirmed': list_item.count_confirmed,
+            })
+
+        # リストにない受入れ品番（リスト未登録品番）
+        unregistered_items = []
+        for item_number, info in received_quantities.items():
+            if item_number not in list_item_numbers:
+                unregistered_items.append({
+                    'item_number': info['item_number'],
+                    'item_name': info['item_name'],
+                    'total_received': info['total_received'],
+                })
+
+        # サマリー
+        total_items = len(comparison_results)
+        sufficient_items = sum(1 for r in comparison_results if r['is_sufficient'])
+        confirmed_items = sum(1 for r in comparison_results if r['receiving_confirmed'])
+
+        return Response({
+            'list_id': list_id,
+            'list_number': supplied_list.list_number,
+            'product_id': product_id,
+            'comparison': comparison_results,
+            'unregistered_items': unregistered_items,
+            'summary': {
+                'total_items': total_items,
+                'sufficient_items': sufficient_items,
+                'confirmed_items': confirmed_items,
+                'unregistered_count': len(unregistered_items),
+            }
+        }, status=status.HTTP_200_OK)
+
+    except SuppliedItemList.DoesNotExist:
+        return Response(
+            {"error": "リストが見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def bulk_confirm_receiving(request, list_id):
+    """受入れ数量が十分な項目を一括で受入確認済みにする
+
+    受入れ数量 >= リスト数量 の項目を一括で receiving_confirmed = True に設定。
+    exclude_item_ids パラメータで除外する項目を指定可能。
+    """
+    try:
+        supplied_list = SuppliedItemList.objects.get(pk=list_id)
+        exclude_item_ids = request.data.get('exclude_item_ids', [])
+
+        # リストに紐づく製品の全受入れ登録を取得（completedのみ）
+        product_id = supplied_list.product_id
+        all_receivings = SuppliedItemReceiving.objects.filter(
+            Q(supplied_item_list__product_id=product_id) |
+            Q(product_id=product_id),
+            status='completed'
+        ).prefetch_related('items')
+
+        # 品番ごとの受入れ数量を集計
+        received_quantities = {}
+        for receiving in all_receivings:
+            for item in receiving.items.all():
+                if item.item_number not in received_quantities:
+                    received_quantities[item.item_number] = 0
+                received_quantities[item.item_number] += item.calculated_quantity
+
+        confirmed_count = 0
+        skipped_count = 0
+
+        with transaction.atomic():
+            for list_item in supplied_list.items.all():
+                # 除外リストにある場合はスキップ
+                if list_item.id in exclude_item_ids:
+                    skipped_count += 1
+                    continue
+
+                # 既に確認済みの場合はスキップ
+                if list_item.receiving_confirmed:
+                    continue
+
+                total_received = received_quantities.get(list_item.item_number, 0)
+
+                # 受入れ数量がリスト数量以上の場合、確認済みに
+                if total_received >= list_item.quantity:
+                    list_item.receiving_confirmed = True
+                    list_item.receiving_confirmed_at = timezone.now()
+                    list_item.receiving_confirmed_by = request.user
+                    list_item.received_quantity = total_received
+                    list_item.save()
+                    confirmed_count += 1
+
+            # リストのステータス更新
+            if supplied_list.received_items_count == supplied_list.total_items:
+                supplied_list.status = 'pending_count'
+            else:
+                supplied_list.status = 'receiving'
+            supplied_list.save()
+
+        return Response({
+            'message': f'{confirmed_count}件の項目を受入確認済みにしました',
+            'confirmed_count': confirmed_count,
+            'skipped_count': skipped_count,
+            'list_status': supplied_list.status,
+        }, status=status.HTTP_200_OK)
+
+    except SuppliedItemList.DoesNotExist:
+        return Response(
+            {"error": "リストが見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_unregistered_receiving_items(request, list_id):
+    """リストにない受入れ品番を取得する
+
+    リストの製品に紐づく完了済み受入れ登録から、
+    リスト項目に存在しない品番を抽出する。
+    """
+    try:
+        supplied_list = SuppliedItemList.objects.get(pk=list_id)
+
+        # リスト項目の品番セット
+        list_item_numbers = set(
+            supplied_list.items.values_list('item_number', flat=True)
+        )
+
+        # 製品の全受入れ登録を取得（completedのみ）
+        product_id = supplied_list.product_id
+        all_receivings = SuppliedItemReceiving.objects.filter(
+            Q(supplied_item_list__product_id=product_id) |
+            Q(product_id=product_id),
+            status='completed'
+        ).prefetch_related('items')
+
+        # リストにない品番を集計
+        unregistered_items = {}
+        for receiving in all_receivings:
+            for item in receiving.items.all():
+                if item.item_number not in list_item_numbers:
+                    if item.item_number not in unregistered_items:
+                        unregistered_items[item.item_number] = {
+                            'item_number': item.item_number,
+                            'item_name': item.item_name or '',
+                            'total_received': 0,
+                            'receivings': [],
+                        }
+                    unregistered_items[item.item_number]['total_received'] += item.calculated_quantity
+                    unregistered_items[item.item_number]['receivings'].append({
+                        'receiving_id': receiving.id,
+                        'receiving_date': receiving.receiving_date.isoformat() if receiving.receiving_date else None,
+                        'quantity': item.calculated_quantity,
+                    })
+
+        return Response({
+            'list_id': list_id,
+            'list_number': supplied_list.list_number,
+            'unregistered_items': list(unregistered_items.values()),
+            'total_count': len(unregistered_items),
+        }, status=status.HTTP_200_OK)
+
+    except SuppliedItemList.DoesNotExist:
+        return Response(
+            {"error": "リストが見つかりません"},
             status=status.HTTP_404_NOT_FOUND
         )
 

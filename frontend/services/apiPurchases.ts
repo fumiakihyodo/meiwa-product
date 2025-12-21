@@ -33,6 +33,10 @@ import {
     // CSVインポート用
     CSVParseResult,
     CSVImportCreateData,
+    // 比較関連
+    ReceivingComparisonResult,
+    BulkConfirmReceivingResult,
+    UnregisteredItemsResult,
 } from '@/types/purchases';
 
 import {
@@ -398,6 +402,7 @@ export const purchasesApi = {
     // ===== 在庫管理 - 支給品リスト =====
     getSuppliedItemLists: async (params?: {
         customer?: number;
+        product?: number;
         status?: SuppliedItemListStatus;
         search?: string;
     }): Promise<SuppliedItemList[]> => {
@@ -535,7 +540,9 @@ export const purchasesApi = {
     // ===== 受入確認 =====
     getSuppliedItemReceivings: async (params?: {
         list?: number;
+        product?: number;
         status?: ReceivingStatus;
+        unlinked?: string;
     }): Promise<SuppliedItemReceiving[]> => {
         const response = await apiClient.get<PaginatedResponse<SuppliedItemReceiving>>('/purchases/supplied-item-receivings/', { params });
         return response.data.results;
@@ -594,5 +601,32 @@ export const purchasesApi = {
 
     deleteSuppliedItemInventory: async (id: number): Promise<void> => {
         await apiClient.delete(`/purchases/supplied-item-inventories/${id}/`);
+    },
+
+    // ===== リストと受入れ数量の比較 =====
+
+    // リスト項目と受入れ数量を比較
+    compareReceivingWithList: async (listId: number): Promise<ReceivingComparisonResult> => {
+        const response = await apiClient.get<ReceivingComparisonResult>(
+            `/purchases/supplied-item-lists/${listId}/compare-receiving/`
+        );
+        return response.data;
+    },
+
+    // 一括受入確認
+    bulkConfirmReceiving: async (listId: number, excludeItemIds?: number[]): Promise<BulkConfirmReceivingResult> => {
+        const response = await apiClient.post<BulkConfirmReceivingResult>(
+            `/purchases/supplied-item-lists/${listId}/bulk-confirm-receiving/`,
+            { exclude_item_ids: excludeItemIds || [] }
+        );
+        return response.data;
+    },
+
+    // リスト未登録の受入れ品番を取得
+    getUnregisteredReceivingItems: async (listId: number): Promise<UnregisteredItemsResult> => {
+        const response = await apiClient.get<UnregisteredItemsResult>(
+            `/purchases/supplied-item-lists/${listId}/unregistered-items/`
+        );
+        return response.data;
     },
 };

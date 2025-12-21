@@ -40,6 +40,10 @@ import {
     Clear as ClearIcon,
     CheckCircle as CheckCircleIcon,
     Inventory as InventoryIcon,
+    Compare as CompareIcon,
+    Warning as WarningIcon,
+    PlaylistAddCheck as BulkConfirmIcon,
+    ReportProblem as UnregisteredIcon,
 } from '@mui/icons-material';
 import MainLayout from '@/components/layout/MainLayout';
 import { purchasesApi } from '@/services/apiPurchases';
@@ -50,6 +54,9 @@ import {
     ReceivingInputRow,
     SuppliedItemReceivingCreateData,
     SuppliedItemReceiving,
+    ReceivingComparisonResult,
+    ReceivingComparisonItem,
+    UnregisteredReceivingItem,
 } from '@/types/purchases';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -127,6 +134,11 @@ export default function SuppliedItemListDetailPage() {
 
     // 在庫登録
     const [registeringInventory, setRegisteringInventory] = useState(false);
+
+    // 比較データ
+    const [comparisonData, setComparisonData] = useState<ReceivingComparisonResult | null>(null);
+    const [loadingComparison, setLoadingComparison] = useState(false);
+    const [bulkConfirming, setBulkConfirming] = useState(false);
 
     // データ取得
     const fetchData = useCallback(async () => {
@@ -305,6 +317,44 @@ export default function SuppliedItemListDetailPage() {
         }
     };
 
+    // 比較データ取得
+    const fetchComparisonData = useCallback(async () => {
+        setLoadingComparison(true);
+        try {
+            const data = await purchasesApi.compareReceivingWithList(listId);
+            setComparisonData(data);
+        } catch (err) {
+            console.error('比較データ取得エラー:', err);
+        } finally {
+            setLoadingComparison(false);
+        }
+    }, [listId]);
+
+    // タブ変更時に比較データを取得
+    useEffect(() => {
+        if (tabValue === 1 && !comparisonData && !loadingComparison) {
+            fetchComparisonData();
+        }
+    }, [tabValue, comparisonData, loadingComparison, fetchComparisonData]);
+
+    // 一括受入確認
+    const handleBulkConfirmReceiving = async () => {
+        setBulkConfirming(true);
+        setError(null);
+        try {
+            const result = await purchasesApi.bulkConfirmReceiving(listId);
+            setSuccessMessage(result.message);
+            fetchData();
+            fetchComparisonData();
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : '一括確認に失敗しました';
+            setError(errorMessage);
+            console.error(err);
+        } finally {
+            setBulkConfirming(false);
+        }
+    };
+
     // リスト項目カラム
     const itemColumns: GridColDef[] = [
         { field: 'item_number', headerName: '品番', width: 150 },
@@ -445,7 +495,7 @@ export default function SuppliedItemListDetailPage() {
                 {/* タブ */}
                 <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ mb: 2 }}>
                     <Tab label="リスト項目" />
-                    <Tab label="受入確認入力" disabled={list.status === 'completed'} />
+                    <Tab label="受入確認比較" icon={<CompareIcon />} iconPosition="start" />
                     <Tab label="在庫登録" disabled={!allCounted} />
                 </Tabs>
 
@@ -464,99 +514,157 @@ export default function SuppliedItemListDetailPage() {
                     </Paper>
                 </TabPanel>
 
-                {/* 受入確認入力タブ */}
+                {/* 受入確認比較タブ */}
                 <TabPanel value={tabValue} index={1}>
-                    <Card>
-                        <CardContent>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                                <Typography variant="h6">受入確認入力</Typography>
-                                {draftReceiving && (
-                                    <Chip label="一時保存あり" color="info" size="small" />
-                                )}
-                            </Box>
-                            <Alert severity="info" sx={{ mb: 2 }}>
-                                品番を入力し、入数と箱数を入力すると数量が自動計算されます。<br />
-                                入力が完了したら次の行が自動追加されます。休憩時は「一時保存」を押してください。
-                            </Alert>
+                    {loadingComparison ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                            <CircularProgress />
+                        </Box>
+                    ) : comparisonData ? (
+                        <Box>
+                            {/* サマリーカード */}
+                            <Grid container spacing={2} sx={{ mb: 3 }}>
+                                <Grid item xs={12} sm={6} md={3}>
+                                    <Card>
+                                        <CardContent>
+                                            <Typography variant="subtitle2" color="text.secondary">リスト項目数</Typography>
+                                            <Typography variant="h4">{comparisonData.summary.total_items}</Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={3}>
+                                    <Card sx={{ bgcolor: 'success.light' }}>
+                                        <CardContent>
+                                            <Typography variant="subtitle2">受入れ数量OK</Typography>
+                                            <Typography variant="h4">{comparisonData.summary.sufficient_items}</Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={3}>
+                                    <Card sx={{ bgcolor: 'info.light' }}>
+                                        <CardContent>
+                                            <Typography variant="subtitle2">確認済み</Typography>
+                                            <Typography variant="h4">{comparisonData.summary.confirmed_items}</Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={3}>
+                                    <Card sx={{ bgcolor: comparisonData.summary.unregistered_count > 0 ? 'warning.light' : 'grey.100' }}>
+                                        <CardContent>
+                                            <Typography variant="subtitle2">リスト未登録品番</Typography>
+                                            <Typography variant="h4">{comparisonData.summary.unregistered_count}</Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                            </Grid>
 
-                            {/* 入力フォーム */}
-                            <Box sx={{ mb: 2 }}>
-                                {receivingRows.map((row, index) => (
-                                    <Box key={row.id} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
-                                        <Typography sx={{ width: 30, textAlign: 'center' }}>{index + 1}</Typography>
-                                        <TextField
-                                            label="品番"
-                                            size="small"
-                                            value={row.item_number}
-                                            onChange={(e) => updateReceivingRow(row.id, 'item_number', e.target.value)}
-                                            sx={{ width: 150 }}
-                                        />
-                                        <TextField
-                                            label="入数"
-                                            size="small"
-                                            type="number"
-                                            value={row.quantity_per_box}
-                                            onChange={(e) => updateReceivingRow(row.id, 'quantity_per_box', parseInt(e.target.value) || '')}
-                                            sx={{ width: 100 }}
-                                        />
-                                        <Typography>×</Typography>
-                                        <TextField
-                                            label="箱数"
-                                            size="small"
-                                            type="number"
-                                            value={row.box_count}
-                                            onChange={(e) => updateReceivingRow(row.id, 'box_count', parseInt(e.target.value) || '')}
-                                            sx={{ width: 100 }}
-                                        />
-                                        <Typography>=</Typography>
-                                        <TextField
-                                            label="数量"
-                                            size="small"
-                                            value={row.calculated_quantity}
-                                            InputProps={{ readOnly: true }}
-                                            sx={{ width: 100 }}
-                                        />
-                                        <TextField
-                                            label="備考"
-                                            size="small"
-                                            value={row.notes || ''}
-                                            onChange={(e) => updateReceivingRow(row.id, 'notes', e.target.value)}
-                                            sx={{ flex: 1 }}
-                                        />
-                                        <IconButton
-                                            size="small"
-                                            onClick={() => removeReceivingRow(row.id)}
-                                            disabled={receivingRows.length <= 1}
-                                        >
-                                            <ClearIcon />
-                                        </IconButton>
-                                    </Box>
-                                ))}
-                            </Box>
-
-                            <Divider sx={{ my: 2 }} />
-
-                            {/* ボタン */}
-                            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                                <Button
-                                    variant="outlined"
-                                    startIcon={<SaveIcon />}
-                                    onClick={handleSaveDraft}
-                                    disabled={saving}
-                                >
-                                    一時保存
-                                </Button>
+                            {/* 一括確認ボタン */}
+                            <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
                                 <Button
                                     variant="contained"
-                                    startIcon={<CheckIcon />}
-                                    onClick={handleCompleteReceiving}
-                                    disabled={saving || receivingRows.filter(r => r.item_number).length === 0}
+                                    color="success"
+                                    startIcon={<BulkConfirmIcon />}
+                                    onClick={handleBulkConfirmReceiving}
+                                    disabled={bulkConfirming || comparisonData.summary.sufficient_items === 0}
                                 >
-                                    受入確認完了
+                                    {bulkConfirming ? <CircularProgress size={24} /> : '受入れ数OKの項目を一括確認'}
                                 </Button>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<RefreshIcon />}
+                                    onClick={fetchComparisonData}
+                                >
+                                    比較データを更新
+                                </Button>
+                                <Typography variant="body2" color="text.secondary">
+                                    受入れ数量がリスト数量以上の項目を一括で受入確認済みにできます
+                                </Typography>
                             </Box>
-                        </CardContent>
-                    </Card>
+
+                            {/* 比較表 */}
+                            <Typography variant="h6" sx={{ mb: 2 }}>リスト項目と受入れ数量の比較</Typography>
+                            <Paper sx={{ height: 350, mb: 3 }}>
+                                <DataGrid
+                                    rows={comparisonData.comparison}
+                                    getRowId={(row) => row.list_item_id}
+                                    columns={[
+                                        { field: 'item_number', headerName: '品番', width: 150 },
+                                        { field: 'item_name', headerName: '品名', width: 180 },
+                                        { field: 'list_quantity', headerName: 'リスト数量', width: 110, type: 'number' },
+                                        { field: 'total_received', headerName: '受入れ数量', width: 110, type: 'number' },
+                                        { field: 'difference', headerName: '差分', width: 90, type: 'number',
+                                            renderCell: (params) => (
+                                                <Typography color={params.value >= 0 ? 'success.main' : 'error.main'}>
+                                                    {params.value >= 0 ? `+${params.value}` : params.value}
+                                                </Typography>
+                                            )
+                                        },
+                                        { field: 'is_sufficient', headerName: '数量OK', width: 90,
+                                            renderCell: (params) => (
+                                                params.value ?
+                                                    <CheckCircleIcon color="success" /> :
+                                                    <WarningIcon color="warning" />
+                                            )
+                                        },
+                                        { field: 'receiving_confirmed', headerName: '受入確認', width: 100,
+                                            renderCell: (params) => (
+                                                params.value ?
+                                                    <Chip label="済" color="success" size="small" /> :
+                                                    <Chip label="未" color="default" size="small" />
+                                            )
+                                        },
+                                        { field: 'count_confirmed', headerName: '員数確認', width: 100,
+                                            renderCell: (params) => (
+                                                params.value ?
+                                                    <Chip label="済" color="success" size="small" /> :
+                                                    <Chip label="未" color="default" size="small" />
+                                            )
+                                        },
+                                    ]}
+                                    pageSizeOptions={[10, 25]}
+                                    initialState={{
+                                        pagination: { paginationModel: { pageSize: 10 } },
+                                    }}
+                                    disableRowSelectionOnClick
+                                />
+                            </Paper>
+
+                            {/* リスト未登録品番 */}
+                            {comparisonData.unregistered_items.length > 0 && (
+                                <Box>
+                                    <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <UnregisteredIcon color="warning" />
+                                        リスト未登録の受入れ品番
+                                    </Typography>
+                                    <Alert severity="warning" sx={{ mb: 2 }}>
+                                        以下の品番はリストに存在しませんが、受入れ登録されています。確認してください。
+                                    </Alert>
+                                    <Paper sx={{ height: 250 }}>
+                                        <DataGrid
+                                            rows={comparisonData.unregistered_items.map((item, idx) => ({
+                                                id: idx,
+                                                ...item
+                                            }))}
+                                            columns={[
+                                                { field: 'item_number', headerName: '品番', width: 150 },
+                                                { field: 'item_name', headerName: '品名', width: 200 },
+                                                { field: 'total_received', headerName: '受入れ数量', width: 120, type: 'number' },
+                                            ]}
+                                            pageSizeOptions={[5, 10]}
+                                            initialState={{
+                                                pagination: { paginationModel: { pageSize: 5 } },
+                                            }}
+                                            disableRowSelectionOnClick
+                                        />
+                                    </Paper>
+                                </Box>
+                            )}
+                        </Box>
+                    ) : (
+                        <Alert severity="info">
+                            比較データを読み込んでいます...
+                        </Alert>
+                    )}
                 </TabPanel>
 
                 {/* 在庫登録タブ */}

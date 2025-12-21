@@ -688,7 +688,7 @@ class SuppliedItemReceivingItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceivingItem
         fields = [
-            'id', 'receiving', 'list_item', 'item_number',
+            'id', 'receiving', 'supplied_item', 'list_item', 'item_number', 'item_name',
             'quantity_per_box', 'box_count', 'calculated_quantity',
             'notes', 'created_at', 'updated_at'
         ]
@@ -701,7 +701,7 @@ class SuppliedItemReceivingItemCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceivingItem
         fields = [
-            'id', 'list_item', 'item_number',
+            'id', 'supplied_item', 'list_item', 'item_number', 'item_name',
             'quantity_per_box', 'box_count', 'notes'
         ]
         read_only_fields = ['id']
@@ -714,10 +714,12 @@ class SuppliedItemReceivingItemCreateSerializer(serializers.ModelSerializer):
 
 class SuppliedItemReceivingListSerializer(serializers.ModelSerializer):
     """支給品受入確認一覧シリアライザー"""
-    list_number = serializers.CharField(source='supplied_item_list.list_number', read_only=True)
-    product_name = serializers.CharField(source='supplied_item_list.product.product_name', read_only=True)
+    list_number = serializers.SerializerMethodField()
+    product_name = serializers.SerializerMethodField()
+    product_number = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     items_count = serializers.IntegerField(source='items.count', read_only=True)
+    total_quantity = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(
         source='created_by.full_name',
         read_only=True,
@@ -727,18 +729,43 @@ class SuppliedItemReceivingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceiving
         fields = [
-            'id', 'supplied_item_list', 'list_number', 'product_name',
+            'id', 'supplied_item_list', 'product', 'list_number',
+            'product_number', 'product_name',
             'status', 'status_display', 'receiving_date', 'items_count',
-            'notes', 'created_at', 'updated_at', 'created_by_name'
+            'total_quantity', 'notes', 'created_at', 'updated_at', 'created_by_name'
         ]
+
+    def get_list_number(self, obj):
+        if obj.supplied_item_list:
+            return obj.supplied_item_list.list_number
+        return None
+
+    def get_product_name(self, obj):
+        if obj.supplied_item_list and obj.supplied_item_list.product:
+            return obj.supplied_item_list.product.product_name
+        if obj.product:
+            return obj.product.product_name
+        return None
+
+    def get_product_number(self, obj):
+        if obj.supplied_item_list and obj.supplied_item_list.product:
+            return obj.supplied_item_list.product.product_number
+        if obj.product:
+            return obj.product.product_number
+        return None
+
+    def get_total_quantity(self, obj):
+        return sum(item.calculated_quantity for item in obj.items.all())
 
 
 class SuppliedItemReceivingDetailSerializer(serializers.ModelSerializer):
     """支給品受入確認詳細シリアライザー"""
-    list_number = serializers.CharField(source='supplied_item_list.list_number', read_only=True)
-    product_name = serializers.CharField(source='supplied_item_list.product.product_name', read_only=True)
+    list_number = serializers.SerializerMethodField()
+    product_name = serializers.SerializerMethodField()
+    product_number = serializers.SerializerMethodField()
     items = SuppliedItemReceivingItemSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    total_quantity = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(
         source='created_by.full_name',
         read_only=True,
@@ -748,15 +775,42 @@ class SuppliedItemReceivingDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceiving
         fields = [
-            'id', 'supplied_item_list', 'list_number', 'product_name',
+            'id', 'supplied_item_list', 'product', 'list_number',
+            'product_number', 'product_name',
             'status', 'status_display', 'receiving_date', 'items',
-            'notes', 'created_at', 'updated_at', 'created_by', 'created_by_name'
+            'total_quantity', 'notes', 'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
 
+    def get_list_number(self, obj):
+        if obj.supplied_item_list:
+            return obj.supplied_item_list.list_number
+        return None
+
+    def get_product_name(self, obj):
+        if obj.supplied_item_list and obj.supplied_item_list.product:
+            return obj.supplied_item_list.product.product_name
+        if obj.product:
+            return obj.product.product_name
+        return None
+
+    def get_product_number(self, obj):
+        if obj.supplied_item_list and obj.supplied_item_list.product:
+            return obj.supplied_item_list.product.product_number
+        if obj.product:
+            return obj.product.product_number
+        return None
+
+    def get_total_quantity(self, obj):
+        return sum(item.calculated_quantity for item in obj.items.all())
+
 
 class SuppliedItemReceivingCreateSerializer(serializers.ModelSerializer):
-    """支給品受入確認作成シリアライザー（一時保存対応）"""
+    """支給品受入確認作成シリアライザー（一時保存対応）
+
+    リスト登録前でも受入れ登録が可能。
+    supplied_item_list または product のどちらかを指定する。
+    """
     items = SuppliedItemReceivingItemCreateSerializer(many=True, required=False)
     created_by = serializers.HiddenField(
         default=serializers.CurrentUserDefault()
@@ -765,13 +819,26 @@ class SuppliedItemReceivingCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceiving
         fields = [
-            'id', 'supplied_item_list', 'status', 'receiving_date',
+            'id', 'supplied_item_list', 'product', 'status', 'receiving_date',
             'notes', 'items', 'created_by'
         ]
         read_only_fields = ['id']
         extra_kwargs = {
-            'supplied_item_list': {'required': True},
+            'supplied_item_list': {'required': False},
+            'product': {'required': False},
         }
+
+    def validate(self, attrs):
+        supplied_item_list = attrs.get('supplied_item_list')
+        product = attrs.get('product')
+
+        # supplied_item_list または product のどちらかが必要
+        if not supplied_item_list and not product:
+            raise serializers.ValidationError(
+                "supplied_item_list または product のどちらかを指定してください"
+            )
+
+        return attrs
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])

@@ -1020,18 +1020,34 @@ class SuppliedItemListItem(models.Model):
 
 
 class SuppliedItemReceiving(models.Model):
-    """支給品受入確認モデル（一時保存対応）"""
+    """支給品受入確認モデル（一時保存対応）
+
+    リスト登録前でも受入れ登録が可能。
+    supplied_item_list がnullの場合は、リスト未紐付けの受入れ登録として扱う。
+    """
 
     class ReceivingStatus(models.TextChoices):
         DRAFT = 'draft', '一時保存'
         COMPLETED = 'completed', '完了'
 
-    # 支給品リスト
+    # 支給品リスト（任意 - リスト登録前でも受入れ可能）
     supplied_item_list = models.ForeignKey(
         'SuppliedItemList',
         on_delete=models.CASCADE,
         related_name='receivings',
-        verbose_name="支給品リスト"
+        verbose_name="支給品リスト",
+        null=True,
+        blank=True
+    )
+
+    # 製品（リスト未紐付け時に使用）
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.CASCADE,
+        related_name='supplied_item_receivings',
+        verbose_name="製品",
+        null=True,
+        blank=True
     )
 
     # ステータス
@@ -1079,12 +1095,17 @@ class SuppliedItemReceiving(models.Model):
         db_table = "supplied_item_receivings"
         indexes = [
             models.Index(fields=['supplied_item_list']),
+            models.Index(fields=['product']),
             models.Index(fields=['status']),
             models.Index(fields=['receiving_date']),
         ]
 
     def __str__(self):
-        return f"{self.supplied_item_list.list_number} - {self.receiving_date}"
+        if self.supplied_item_list:
+            return f"{self.supplied_item_list.list_number} - {self.receiving_date}"
+        elif self.product:
+            return f"{self.product.product_number} - {self.receiving_date}"
+        return f"受入確認 - {self.receiving_date}"
 
 
 class SuppliedItemReceivingItem(models.Model):
@@ -1096,6 +1117,16 @@ class SuppliedItemReceivingItem(models.Model):
         on_delete=models.CASCADE,
         related_name='items',
         verbose_name="受入確認"
+    )
+
+    # 支給品マスタ（任意 - マスタ登録済みの場合）
+    supplied_item = models.ForeignKey(
+        'SuppliedItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='receiving_items',
+        verbose_name="支給品マスタ"
     )
 
     # リスト項目（任意）
@@ -1112,6 +1143,14 @@ class SuppliedItemReceivingItem(models.Model):
     item_number = models.CharField(
         max_length=100,
         verbose_name="品番"
+    )
+
+    # 品名（マスタ未登録の場合にも対応）
+    item_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        verbose_name="品名"
     )
 
     # 入数
