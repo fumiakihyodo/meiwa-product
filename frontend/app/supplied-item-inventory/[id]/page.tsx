@@ -411,12 +411,20 @@ export default function SuppliedItemListDetailPage() {
                 <Paper sx={{ p: 2, mb: 3 }}>
                     <Grid container spacing={2}>
                         <Grid item xs={12} sm={6} md={3}>
+                            <Typography variant="caption" color="text.secondary">製品</Typography>
+                            <Typography>
+                                {list.product_number && list.product_name
+                                    ? `${list.product_number} - ${list.product_name}`
+                                    : list.product_name || '-'}
+                            </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
                             <Typography variant="caption" color="text.secondary">取引先</Typography>
-                            <Typography>{list.customer_name}</Typography>
+                            <Typography>{list.customer_name || '-'}</Typography>
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
                             <Typography variant="caption" color="text.secondary">納品予定日</Typography>
-                            <Typography>{list.delivery_date}</Typography>
+                            <Typography>{list.delivery_date || '-'}</Typography>
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
                             <Typography variant="caption" color="text.secondary">品番数 / 合計数量</Typography>

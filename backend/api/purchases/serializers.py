@@ -835,6 +835,11 @@ class SuppliedItemInventoryListSerializer(serializers.ModelSerializer):
         read_only=True
     )
     customer_name = serializers.SerializerMethodField()
+    list_number = serializers.CharField(
+        source='list_item.supplied_item_list.list_number',
+        read_only=True,
+        default=None
+    )
     created_by_name = serializers.CharField(
         source='created_by.full_name',
         read_only=True,
@@ -845,7 +850,7 @@ class SuppliedItemInventoryListSerializer(serializers.ModelSerializer):
         model = SuppliedItemInventory
         fields = [
             'id', 'supplied_item', 'item_number', 'item_name', 'unit',
-            'product_name', 'customer_name', 'list_item', 'quantity',
+            'product_name', 'customer_name', 'list_item', 'list_number', 'quantity',
             'lot_number', 'received_date', 'notes',
             'created_at', 'updated_at', 'created_by_name'
         ]
