@@ -24,7 +24,7 @@ import {
     PhoneAndroid as PhoneAndroidIcon,
     Business as BusinessIcon,
 } from '@mui/icons-material';
-import { SupplierContact, ContactResponsibility } from '@/types/business';
+import { SupplierContact, ContactResponsibility } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';

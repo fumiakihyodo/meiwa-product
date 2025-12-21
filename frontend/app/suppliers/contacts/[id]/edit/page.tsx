@@ -22,7 +22,7 @@ import {
     ArrowBack as ArrowBackIcon,
     Save as SaveIcon,
 } from '@mui/icons-material';
-import { SupplierBranch, SupplierContact, SupplierContactCreateData, SupplierContactUpdateData, ContactResponsibility } from '@/types/business';
+import { SupplierBranch, SupplierContact, SupplierContactCreateData, SupplierContactUpdateData, ContactResponsibility } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';

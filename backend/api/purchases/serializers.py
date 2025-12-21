@@ -559,6 +559,7 @@ class SuppliedItemListListSerializer(serializers.ModelSerializer):
     """支給品リスト一覧シリアライザー"""
     product_name = serializers.CharField(source='product.product_name', read_only=True, allow_null=True, default=None)
     product_number = serializers.CharField(source='product.product_number', read_only=True, allow_null=True, default=None)
+    customer_name = serializers.SerializerMethodField()
     total_items = serializers.IntegerField(read_only=True)
     total_quantity = serializers.IntegerField(read_only=True)
     received_items_count = serializers.IntegerField(read_only=True)
@@ -574,17 +575,27 @@ class SuppliedItemListListSerializer(serializers.ModelSerializer):
         model = SuppliedItemList
         fields = [
             'id', 'list_number', 'product', 'product_name', 'product_number',
-            'issue_date', 'delivery_date', 'status', 'status_display',
+            'customer_name', 'issue_date', 'delivery_date', 'status', 'status_display',
             'total_items', 'total_quantity', 'received_items_count',
             'count_confirmed_items_count', 'notes', 'created_at',
             'updated_at', 'created_by_name'
         ]
+
+    def get_customer_name(self, obj):
+        """顧客名を取得"""
+        try:
+            if obj.product and obj.product.customer_branch:
+                return obj.product.customer_branch.customer.company_name
+        except AttributeError:
+            pass
+        return None
 
 
 class SuppliedItemListDetailSerializer(serializers.ModelSerializer):
     """支給品リスト詳細シリアライザー"""
     product_name = serializers.CharField(source='product.product_name', read_only=True, allow_null=True, default=None)
     product_number = serializers.CharField(source='product.product_number', read_only=True, allow_null=True, default=None)
+    customer_name = serializers.SerializerMethodField()
     items = SuppliedItemListItemSerializer(many=True, read_only=True)
     total_items = serializers.IntegerField(read_only=True)
     total_quantity = serializers.IntegerField(read_only=True)
@@ -601,12 +612,21 @@ class SuppliedItemListDetailSerializer(serializers.ModelSerializer):
         model = SuppliedItemList
         fields = [
             'id', 'list_number', 'product', 'product_name', 'product_number',
-            'issue_date', 'delivery_date', 'csv_file', 'status', 'status_display',
+            'customer_name', 'issue_date', 'delivery_date', 'csv_file', 'status', 'status_display',
             'items', 'total_items', 'total_quantity', 'received_items_count',
             'count_confirmed_items_count', 'notes', 'created_at', 'updated_at',
             'created_by', 'created_by_name'
         ]
         read_only_fields = ['id', 'list_number', 'created_at', 'updated_at', 'created_by']
+
+    def get_customer_name(self, obj):
+        """顧客名を取得"""
+        try:
+            if obj.product and obj.product.customer_branch:
+                return obj.product.customer_branch.customer.company_name
+        except AttributeError:
+            pass
+        return None
 
 
 class SuppliedItemListCreateSerializer(serializers.ModelSerializer):
