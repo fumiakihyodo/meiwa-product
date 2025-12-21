@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -35,7 +35,6 @@ import {
 import {
     Upload as UploadIcon,
     CheckCircle,
-    Error as ErrorIcon,
     ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { purchasesApi } from '@/services/apiPurchases';
@@ -43,8 +42,9 @@ import { productApi } from '@/services/apiProduct';
 import type {
     CSVParseResult,
     ModelInfoGroup,
-    ItemsWithoutModelInfoGroup,
     SuppliedItemList,
+    CSVParsedItem,
+    UnregisteredPartNumber,
 } from '@/types/purchases';
 import type { Product } from '@/types/product';
 
@@ -59,7 +59,8 @@ interface ProductSelection {
     registerUnregistered: boolean;
 }
 
-const steps = ['CSVアップロード', '製品選択', '確認', '完了'];
+// ステップラベル（製品選択ステップは動的にスキップされる可能性あり）
+const ALL_STEPS = ['CSVアップロード', '製品選択', '確認', '完了'];
 
 export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportModalProps) {
     const [activeStep, setActiveStep] = useState(0);
@@ -76,6 +77,41 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
         productId: null,
         registerUnregistered: true,
     });
+
+    // 製品選択が必要なグループを判定するヘルパー関数
+    const groupNeedsSelection = (group: ModelInfoGroup): boolean => {
+        // 完全一致の推奨製品がある場合は選択不要
+        return !group.suggested_product || group.suggested_product.match_type !== 'exact';
+    };
+
+    // 製品選択ステップが必要かどうかを判定
+    const needsProductSelectionStep = useMemo(() => {
+        if (!parseResult) return true;
+
+        // model_info なしグループがある場合は選択が必要
+        if (parseResult.items_without_model_info && parseResult.items_without_model_info.items.length > 0) {
+            return true;
+        }
+
+        // 完全一致でないグループが1つでもあれば選択が必要
+        return parseResult.model_info_groups.some(group => groupNeedsSelection(group));
+    }, [parseResult]);
+
+    // 実際に表示するステップ
+    const steps = useMemo(() => {
+        if (needsProductSelectionStep) {
+            return ALL_STEPS;
+        }
+        // 製品選択ステップをスキップ
+        return ['CSVアップロード', '確認', '完了'];
+    }, [needsProductSelectionStep]);
+
+    // 論理的なステップから表示用のステップに変換
+    const getDisplayStep = (logicalStep: number): number => {
+        if (needsProductSelectionStep) return logicalStep;
+        // 製品選択ステップをスキップする場合、ステップ1以降は-1する
+        return logicalStep <= 0 ? logicalStep : logicalStep - 1;
+    };
 
     // 初期化
     React.useEffect(() => {
@@ -132,7 +168,19 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
             });
             setModelInfoSelections(initialSelections);
 
-            setActiveStep(1); // 次のステップへ
+            // 製品選択が必要かどうかを判定
+            const hasItemsWithoutModelInfo = result.items_without_model_info && result.items_without_model_info.items.length > 0;
+            const hasGroupsNeedingSelection = result.model_info_groups.some(
+                group => !group.suggested_product || group.suggested_product.match_type !== 'exact'
+            );
+            const needsSelection = hasItemsWithoutModelInfo || hasGroupsNeedingSelection;
+
+            if (needsSelection) {
+                setActiveStep(1); // 製品選択ステップへ
+            } else {
+                // 全て完全一致の場合は製品選択をスキップして確認ステップへ
+                setActiveStep(2);
+            }
         } catch (err: unknown) {
             if (err && typeof err === 'object' && 'response' in err) {
                 const error = err as { response?: { data?: { error?: string } } };
@@ -149,8 +197,11 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
     const handleProductConfirm = () => {
         if (!parseResult) return;
 
-        // すべてのグループで製品が選択されているか確認
+        // 選択が必要なグループで製品が選択されているか確認
         for (const group of parseResult.model_info_groups) {
+            // 完全一致のグループはスキップ
+            if (!groupNeedsSelection(group)) continue;
+
             if (!modelInfoSelections[group.model_info]?.productId) {
                 setError(`機種情報「${group.model_info}」の製品を選択してください`);
                 return;
@@ -175,39 +226,74 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
         setError(null);
 
         try {
-            // 各グループごとにリストを作成
-            const createdLists: SuppliedItemList[] = [];
+            // 同じ製品IDを選択したグループをマージして登録するためのマップ
+            const productGroupsMap: Map<number, {
+                items: CSVParsedItem[];
+                unregistered_items: UnregisteredPartNumber[];
+                registerUnregistered: boolean;
+                product_info: string[];
+            }> = new Map();
 
-            // model_info グループのリストを作成
+            // model_info グループを製品IDでグループ化
             for (const group of parseResult.model_info_groups) {
                 const selection = modelInfoSelections[group.model_info];
                 if (!selection?.productId) continue;
 
-                const result = await purchasesApi.createSuppliedItemListFromCsv({
-                    product_id: selection.productId,
-                    issue_date: parseResult.issue_date || new Date().toISOString().split('T')[0],
-                    items: group.items,
-                    csv_file: csvFile,
-                    register_unregistered: selection.registerUnregistered,
-                    unregistered_items: selection.registerUnregistered ? group.unregistered_items : undefined,
-                    product_info: [group.model_info],
-                });
-
-                createdLists.push(result);
+                const existingGroup = productGroupsMap.get(selection.productId);
+                if (existingGroup) {
+                    // 既存のグループにマージ
+                    existingGroup.items = [...existingGroup.items, ...group.items];
+                    existingGroup.unregistered_items = [
+                        ...existingGroup.unregistered_items,
+                        ...(group.unregistered_items || [])
+                    ];
+                    existingGroup.registerUnregistered = existingGroup.registerUnregistered || selection.registerUnregistered;
+                    existingGroup.product_info.push(group.model_info);
+                } else {
+                    // 新しいグループを作成
+                    productGroupsMap.set(selection.productId, {
+                        items: [...group.items],
+                        unregistered_items: [...(group.unregistered_items || [])],
+                        registerUnregistered: selection.registerUnregistered,
+                        product_info: [group.model_info],
+                    });
+                }
             }
 
-            // model_info なしグループのリストを作成
+            // model_info なしグループも同じ製品IDならマージ
             if (parseResult.items_without_model_info && noModelInfoSelection.productId) {
+                const existingGroup = productGroupsMap.get(noModelInfoSelection.productId);
+                if (existingGroup) {
+                    // 既存のグループにマージ
+                    existingGroup.items = [...existingGroup.items, ...parseResult.items_without_model_info.items];
+                    existingGroup.unregistered_items = [
+                        ...existingGroup.unregistered_items,
+                        ...(parseResult.items_without_model_info.unregistered_items || [])
+                    ];
+                    existingGroup.registerUnregistered = existingGroup.registerUnregistered || noModelInfoSelection.registerUnregistered;
+                    // product_info には空文字列を追加（機種情報なしを表す）
+                } else {
+                    // 新しいグループを作成
+                    productGroupsMap.set(noModelInfoSelection.productId, {
+                        items: [...parseResult.items_without_model_info.items],
+                        unregistered_items: [...(parseResult.items_without_model_info.unregistered_items || [])],
+                        registerUnregistered: noModelInfoSelection.registerUnregistered,
+                        product_info: [],
+                    });
+                }
+            }
+
+            // マージされたグループごとにリストを作成
+            const createdLists: SuppliedItemList[] = [];
+            for (const [productId, groupData] of productGroupsMap.entries()) {
                 const result = await purchasesApi.createSuppliedItemListFromCsv({
-                    product_id: noModelInfoSelection.productId,
+                    product_id: productId,
                     issue_date: parseResult.issue_date || new Date().toISOString().split('T')[0],
-                    items: parseResult.items_without_model_info.items,
+                    items: groupData.items,
                     csv_file: csvFile,
-                    register_unregistered: noModelInfoSelection.registerUnregistered,
-                    unregistered_items: noModelInfoSelection.registerUnregistered
-                        ? parseResult.items_without_model_info.unregistered_items
-                        : undefined,
-                    product_info: [],
+                    register_unregistered: groupData.registerUnregistered,
+                    unregistered_items: groupData.registerUnregistered ? groupData.unregistered_items : undefined,
+                    product_info: groupData.product_info,
                 });
 
                 createdLists.push(result);
@@ -254,7 +340,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
             <DialogTitle>支給品リスト CSVインポート</DialogTitle>
 
             <DialogContent>
-                <Stepper activeStep={activeStep} sx={{ mb: 4, mt: 2 }}>
+                <Stepper activeStep={getDisplayStep(activeStep)} sx={{ mb: 4, mt: 2 }}>
                     {steps.map((label) => (
                         <Step key={label}>
                             <StepLabel>{label}</StepLabel>
@@ -319,7 +405,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
                 {activeStep === 1 && parseResult && (
                     <Box>
                         <Typography variant="h6" gutterBottom>
-                            CSVから抽出された情報
+                            製品の選択
                         </Typography>
 
                         <Box sx={{ mb: 3 }}>
@@ -332,8 +418,37 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
                             </Typography>
                         </Box>
 
-                        {/* model_info グループごとの製品選択 */}
-                        {parseResult.model_info_groups.map((group, index) => (
+                        {/* 自動マッチング済みのグループがある場合の表示 */}
+                        {parseResult.model_info_groups.some(group => !groupNeedsSelection(group)) && (
+                            <Alert severity="success" sx={{ mb: 3 }}>
+                                <Typography variant="body2" gutterBottom>
+                                    <strong>自動マッチング済み:</strong>
+                                </Typography>
+                                <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                                    {parseResult.model_info_groups
+                                        .filter(group => !groupNeedsSelection(group))
+                                        .map(group => (
+                                            <li key={group.model_info}>
+                                                機種「{group.model_info}」 → {group.suggested_product?.product_number} - {group.suggested_product?.product_name}
+                                                （{group.total_items}品目）
+                                            </li>
+                                        ))
+                                    }
+                                </Box>
+                            </Alert>
+                        )}
+
+                        {/* 選択が必要なグループの説明 */}
+                        {(parseResult.model_info_groups.some(groupNeedsSelection) || parseResult.items_without_model_info) && (
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                                以下のグループは製品の選択が必要です。機種情報が空白または登録済み製品と一致しない項目があります。
+                            </Alert>
+                        )}
+
+                        {/* model_info グループごとの製品選択（選択が必要なグループのみ） */}
+                        {parseResult.model_info_groups
+                            .filter(groupNeedsSelection)
+                            .map((group, index) => (
                             <Accordion key={group.model_info} defaultExpanded={index === 0} sx={{ mb: 2 }}>
                                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -346,19 +461,18 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
                                             color="primary"
                                             variant="outlined"
                                         />
-                                        {group.suggested_product && (
+                                        {group.suggested_product && group.suggested_product.match_type === 'partial' && (
                                             <Chip
-                                                label={
-                                                    group.suggested_product.match_type === 'exact'
-                                                        ? '完全一致'
-                                                        : '推奨'
-                                                }
+                                                label="推奨"
                                                 size="small"
-                                                color={
-                                                    group.suggested_product.match_type === 'exact'
-                                                        ? 'success'
-                                                        : 'info'
-                                                }
+                                                color="info"
+                                            />
+                                        )}
+                                        {!group.suggested_product && (
+                                            <Chip
+                                                label="未登録"
+                                                size="small"
+                                                color="warning"
                                             />
                                         )}
                                     </Box>
@@ -385,16 +499,8 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
                                                         value={group.suggested_product.id}
                                                     >
                                                         <Chip
-                                                            label={
-                                                                group.suggested_product.match_type === 'exact'
-                                                                    ? '完全一致'
-                                                                    : '推奨'
-                                                            }
-                                                            color={
-                                                                group.suggested_product.match_type === 'exact'
-                                                                    ? 'success'
-                                                                    : 'primary'
-                                                            }
+                                                            label="推奨"
+                                                            color="primary"
                                                             size="small"
                                                             sx={{ mr: 1 }}
                                                         />
@@ -474,11 +580,11 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
 
                         {/* model_info なしグループ */}
                         {parseResult.items_without_model_info && (
-                            <Accordion defaultExpanded={parseResult.model_info_groups.length === 0} sx={{ mb: 2 }}>
+                            <Accordion defaultExpanded={parseResult.model_info_groups.filter(groupNeedsSelection).length === 0} sx={{ mb: 2 }}>
                                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                         <Typography variant="subtitle1" fontWeight="bold">
-                                            機種情報なし
+                                            機種情報なし（空白）
                                         </Typography>
                                         <Chip
                                             label={`${parseResult.items_without_model_info.total_items}品目`}
@@ -548,55 +654,116 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
                     <Box>
                         <Alert severity="info" sx={{ mb: 3 }}>
                             以下の内容で支給品リストを作成します。
+                            {(() => {
+                                // マージ後のリスト数を計算
+                                const productIds = new Set<number>();
+                                parseResult.model_info_groups.forEach(group => {
+                                    const productId = modelInfoSelections[group.model_info]?.productId;
+                                    if (productId) productIds.add(productId);
+                                });
+                                if (parseResult.items_without_model_info && noModelInfoSelection.productId) {
+                                    productIds.add(noModelInfoSelection.productId);
+                                }
+                                const originalCount = parseResult.model_info_groups.length + (parseResult.items_without_model_info ? 1 : 0);
+                                const mergedCount = productIds.size;
+                                if (mergedCount < originalCount) {
+                                    return (
+                                        <Typography variant="body2" sx={{ mt: 1 }}>
+                                            ※ 同じ製品を選択したグループはまとめて1つのリストとして登録されます。
+                                        </Typography>
+                                    );
+                                }
+                                return null;
+                            })()}
                         </Alert>
 
-                        {/* model_info グループごとの確認 */}
-                        {parseResult.model_info_groups.map((group) => {
-                            const selection = modelInfoSelections[group.model_info];
-                            const selectedProduct = getProductById(selection?.productId || null);
+                        {/* マージされる製品ごとの確認 */}
+                        {(() => {
+                            // 製品IDでグループ化してマージ結果をプレビュー
+                            const productGroupsPreview: Map<number, {
+                                product: Product | undefined;
+                                modelInfos: string[];
+                                hasNoModelInfo: boolean;
+                                totalItems: number;
+                                totalUnregistered: number;
+                                willRegisterUnregistered: boolean;
+                            }> = new Map();
 
-                            return (
-                                <Paper key={group.model_info} sx={{ p: 2, mb: 2 }}>
-                                    <Typography variant="subtitle2" gutterBottom color="primary">
-                                        機種: {group.model_info}
+                            parseResult.model_info_groups.forEach(group => {
+                                const selection = modelInfoSelections[group.model_info];
+                                if (!selection?.productId) return;
+
+                                const existing = productGroupsPreview.get(selection.productId);
+                                if (existing) {
+                                    existing.modelInfos.push(group.model_info);
+                                    existing.totalItems += group.total_items;
+                                    existing.totalUnregistered += (group.unregistered_items?.length || 0);
+                                    existing.willRegisterUnregistered = existing.willRegisterUnregistered || selection.registerUnregistered;
+                                } else {
+                                    productGroupsPreview.set(selection.productId, {
+                                        product: getProductById(selection.productId),
+                                        modelInfos: [group.model_info],
+                                        hasNoModelInfo: false,
+                                        totalItems: group.total_items,
+                                        totalUnregistered: group.unregistered_items?.length || 0,
+                                        willRegisterUnregistered: selection.registerUnregistered,
+                                    });
+                                }
+                            });
+
+                            if (parseResult.items_without_model_info && noModelInfoSelection.productId) {
+                                const existing = productGroupsPreview.get(noModelInfoSelection.productId);
+                                if (existing) {
+                                    existing.hasNoModelInfo = true;
+                                    existing.totalItems += parseResult.items_without_model_info.total_items;
+                                    existing.totalUnregistered += (parseResult.items_without_model_info.unregistered_items?.length || 0);
+                                    existing.willRegisterUnregistered = existing.willRegisterUnregistered || noModelInfoSelection.registerUnregistered;
+                                } else {
+                                    productGroupsPreview.set(noModelInfoSelection.productId, {
+                                        product: getProductById(noModelInfoSelection.productId),
+                                        modelInfos: [],
+                                        hasNoModelInfo: true,
+                                        totalItems: parseResult.items_without_model_info.total_items,
+                                        totalUnregistered: parseResult.items_without_model_info.unregistered_items?.length || 0,
+                                        willRegisterUnregistered: noModelInfoSelection.registerUnregistered,
+                                    });
+                                }
+                            }
+
+                            return Array.from(productGroupsPreview.entries()).map(([productId, data]) => (
+                                <Paper key={productId} sx={{ p: 2, mb: 2 }}>
+                                    <Typography variant="subtitle1" fontWeight="bold" gutterBottom color="primary">
+                                        リスト: {data.product?.product_number} - {data.product?.product_name}
                                     </Typography>
-                                    <Typography variant="body2">
-                                        製品: {selectedProduct?.product_number} - {selectedProduct?.product_name}
-                                    </Typography>
-                                    <Typography variant="body2">品目数: {group.total_items}件</Typography>
-                                    {group.unregistered_items && group.unregistered_items.length > 0 && (
-                                        <Typography variant="body2" color="warning.main">
-                                            未登録品番: {group.unregistered_items.length}件
-                                            {selection?.registerUnregistered && ' (自動登録されます)'}
+                                    <Box sx={{ pl: 2 }}>
+                                        <Typography variant="body2" gutterBottom>
+                                            <strong>品目数:</strong> {data.totalItems}件
                                         </Typography>
-                                    )}
+                                        <Typography variant="body2" gutterBottom>
+                                            <strong>含まれる機種情報:</strong>
+                                        </Typography>
+                                        <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                                            {data.modelInfos.map(modelInfo => (
+                                                <li key={modelInfo}>
+                                                    <Typography variant="body2">{modelInfo}</Typography>
+                                                </li>
+                                            ))}
+                                            {data.hasNoModelInfo && (
+                                                <li>
+                                                    <Typography variant="body2" color="warning.main">機種情報なし（空白）</Typography>
+                                                </li>
+                                            )}
+                                        </Box>
+                                        {data.totalUnregistered > 0 && (
+                                            <Typography variant="body2" color="warning.main" sx={{ mt: 1 }}>
+                                                未登録品番: {data.totalUnregistered}件
+                                                {data.willRegisterUnregistered && ' (自動登録されます)'}
+                                            </Typography>
+                                        )}
+                                    </Box>
                                 </Paper>
-                            );
-                        })}
-
-                        {/* model_info なしグループの確認 */}
-                        {parseResult.items_without_model_info && noModelInfoSelection.productId && (
-                            <Paper sx={{ p: 2, mb: 2 }}>
-                                <Typography variant="subtitle2" gutterBottom color="warning.main">
-                                    機種情報なし
-                                </Typography>
-                                <Typography variant="body2">
-                                    製品: {getProductById(noModelInfoSelection.productId)?.product_number} -{' '}
-                                    {getProductById(noModelInfoSelection.productId)?.product_name}
-                                </Typography>
-                                <Typography variant="body2">
-                                    品目数: {parseResult.items_without_model_info.total_items}件
-                                </Typography>
-                                {parseResult.items_without_model_info.unregistered_items &&
-                                    parseResult.items_without_model_info.unregistered_items.length > 0 && (
-                                        <Typography variant="body2" color="warning.main">
-                                            未登録品番:{' '}
-                                            {parseResult.items_without_model_info.unregistered_items.length}件
-                                            {noModelInfoSelection.registerUnregistered && ' (自動登録されます)'}
-                                        </Typography>
-                                    )}
-                            </Paper>
-                        )}
+                            ));
+                        })()}
 
                         <Paper sx={{ p: 2 }}>
                             <Typography variant="subtitle2" gutterBottom>
@@ -605,8 +772,17 @@ export default function CSVImportModal({ open, onClose, onSuccess }: CSVImportMo
                             <Typography variant="body2">発行日: {parseResult.issue_date}</Typography>
                             <Typography variant="body2">
                                 作成リスト数:{' '}
-                                {parseResult.model_info_groups.length +
-                                    (parseResult.items_without_model_info ? 1 : 0)}
+                                {(() => {
+                                    const productIds = new Set<number>();
+                                    parseResult.model_info_groups.forEach(group => {
+                                        const productId = modelInfoSelections[group.model_info]?.productId;
+                                        if (productId) productIds.add(productId);
+                                    });
+                                    if (parseResult.items_without_model_info && noModelInfoSelection.productId) {
+                                        productIds.add(noModelInfoSelection.productId);
+                                    }
+                                    return productIds.size;
+                                })()}
                                 件
                             </Typography>
                         </Paper>
