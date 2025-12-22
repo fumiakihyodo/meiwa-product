@@ -246,6 +246,11 @@ export default function SuppliedItemInventoryPage() {
         });
     };
 
+    // 受入れ入力行の追加
+    const addReceivingRow = () => {
+        setReceivingRows(rows => [...rows, createEmptyReceivingRow()]);
+    };
+
     // 品番から品名を自動取得
     const lookupItemName = async (rowId: string, itemNumber: string) => {
         if (!itemNumber.trim()) return;
@@ -289,6 +294,61 @@ export default function SuppliedItemInventoryPage() {
         }
     };
 
+    // Enterキーで次のフィールドに移動
+    const handleInputKeyDown = (
+        e: React.KeyboardEvent<HTMLDivElement>,
+        rowId: string,
+        fieldName: string
+    ) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const fieldOrder = ['item_number', 'item_name', 'quantity_per_box', 'box_count', 'notes'];
+            const currentIndex = fieldOrder.indexOf(fieldName);
+            const rowIndex = receivingRows.findIndex(row => row.id === rowId);
+
+            // 品番フィールドでEnterを押したら品名検索も実行
+            if (fieldName === 'item_number') {
+                const row = receivingRows.find(r => r.id === rowId);
+                if (row && row.item_number) {
+                    lookupItemName(rowId, row.item_number);
+                }
+            }
+
+            // 次のフィールドまたは次の行の最初のフィールドにフォーカス
+            let nextField: HTMLElement | null = null;
+
+            if (currentIndex < fieldOrder.length - 1) {
+                // 同じ行の次のフィールド
+                nextField = document.querySelector(
+                    `[data-row-id="${rowId}"][data-field="${fieldOrder[currentIndex + 1]}"] input`
+                ) as HTMLElement;
+            } else if (rowIndex < receivingRows.length - 1) {
+                // 次の行の最初のフィールド
+                const nextRowId = receivingRows[rowIndex + 1].id;
+                nextField = document.querySelector(
+                    `[data-row-id="${nextRowId}"][data-field="${fieldOrder[0]}"] input`
+                ) as HTMLElement;
+            } else {
+                // 最後の行の最後のフィールド → 新しい行を追加して最初のフィールドにフォーカス
+                addReceivingRow();
+                setTimeout(() => {
+                    const newRow = receivingRows[receivingRows.length - 1];
+                    // 新しい行のIDは追加後に変わるため、最後の行を探す
+                    const inputs = document.querySelectorAll('[data-field="item_number"] input');
+                    const lastInput = inputs[inputs.length - 1] as HTMLElement;
+                    if (lastInput) {
+                        lastInput.focus();
+                    }
+                }, 100);
+                return;
+            }
+
+            if (nextField) {
+                nextField.focus();
+            }
+        }
+    };
+
     // 受入れ登録を保存・完了
     const handleSaveReceiving = async (asDraft: boolean = false) => {
         if (!receivingProductId) {
@@ -320,14 +380,15 @@ export default function SuppliedItemInventoryPage() {
                 notes: row.notes,
             }));
 
+            // 作成時は常にdraftで作成し、完了の場合はcompleteReceivingで完了処理を行う
             const receiving = await purchasesApi.createSuppliedItemReceiving({
                 product: receivingProductId,
-                status: asDraft ? 'draft' : 'completed',
+                status: 'draft',
                 items,
             });
 
             if (!asDraft) {
-                // 完了の場合
+                // 完了の場合: completeReceivingで完了処理を行う
                 await purchasesApi.completeReceiving(receiving.id);
                 setReceivingSuccess(`${validRows.length}件の受入れ登録を完了しました`);
                 setTimeout(() => {
@@ -653,6 +714,9 @@ export default function SuppliedItemInventoryPage() {
                                         value={row.item_number}
                                         onChange={(e) => updateReceivingRow(row.id, 'item_number', e.target.value)}
                                         onBlur={() => lookupItemName(row.id, row.item_number)}
+                                        onKeyDown={(e) => handleInputKeyDown(e, row.id, 'item_number')}
+                                        data-row-id={row.id}
+                                        data-field="item_number"
                                         sx={{ width: 150 }}
                                     />
                                     <TextField
@@ -660,9 +724,12 @@ export default function SuppliedItemInventoryPage() {
                                         size="small"
                                         value={row.item_name}
                                         onChange={(e) => updateReceivingRow(row.id, 'item_name', e.target.value)}
+                                        onKeyDown={(e) => handleInputKeyDown(e, row.id, 'item_name')}
                                         error={row.item_not_found}
                                         helperText={row.item_not_found ? '登録がありません' : ''}
                                         disabled={row.is_loading}
+                                        data-row-id={row.id}
+                                        data-field="item_name"
                                         InputProps={{
                                             endAdornment: row.is_loading ? (
                                                 <InputAdornment position="end">
@@ -678,6 +745,9 @@ export default function SuppliedItemInventoryPage() {
                                         type="number"
                                         value={row.quantity_per_box}
                                         onChange={(e) => updateReceivingRow(row.id, 'quantity_per_box', parseInt(e.target.value) || '')}
+                                        onKeyDown={(e) => handleInputKeyDown(e, row.id, 'quantity_per_box')}
+                                        data-row-id={row.id}
+                                        data-field="quantity_per_box"
                                         sx={{ width: 100 }}
                                     />
                                     <Typography>×</Typography>
@@ -687,6 +757,9 @@ export default function SuppliedItemInventoryPage() {
                                         type="number"
                                         value={row.box_count}
                                         onChange={(e) => updateReceivingRow(row.id, 'box_count', parseInt(e.target.value) || '')}
+                                        onKeyDown={(e) => handleInputKeyDown(e, row.id, 'box_count')}
+                                        data-row-id={row.id}
+                                        data-field="box_count"
                                         sx={{ width: 100 }}
                                     />
                                     <Typography>=</Typography>
@@ -696,12 +769,16 @@ export default function SuppliedItemInventoryPage() {
                                         value={row.calculated_quantity}
                                         InputProps={{ readOnly: true }}
                                         sx={{ width: 100 }}
+                                        tabIndex={-1}
                                     />
                                     <TextField
                                         label="備考"
                                         size="small"
                                         value={row.notes}
                                         onChange={(e) => updateReceivingRow(row.id, 'notes', e.target.value)}
+                                        onKeyDown={(e) => handleInputKeyDown(e, row.id, 'notes')}
+                                        data-row-id={row.id}
+                                        data-field="notes"
                                         sx={{ flex: 1, minWidth: 100 }}
                                     />
                                     <IconButton
@@ -716,7 +793,7 @@ export default function SuppliedItemInventoryPage() {
                         </Paper>
 
                         <Typography variant="body2" color="text.secondary">
-                            入力が完了すると次の行が自動追加されます。品番を入力してフォーカスを外すと品名が自動補完されます。
+                            Enterキーで次のフィールドに移動します。品番を入力すると品名が自動補完されます。
                         </Typography>
                     </DialogContent>
                     <DialogActions>
