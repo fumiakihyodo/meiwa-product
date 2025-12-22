@@ -1431,13 +1431,14 @@ def complete_receiving(request, pk):
             receiving.status = 'completed'
             receiving.save()
 
-            # リストのステータスも更新
+            # リストのステータスも更新（リストに紐付いている場合のみ）
             supplied_list = receiving.supplied_item_list
-            if supplied_list.received_items_count == supplied_list.total_items:
-                supplied_list.status = 'pending_count'
-            else:
-                supplied_list.status = 'receiving'
-            supplied_list.save()
+            if supplied_list:
+                if supplied_list.received_items_count == supplied_list.total_items:
+                    supplied_list.status = 'pending_count'
+                else:
+                    supplied_list.status = 'receiving'
+                supplied_list.save()
 
         return Response(
             SuppliedItemReceivingDetailSerializer(receiving).data,
@@ -2312,3 +2313,70 @@ def create_supplied_item_list_from_csv(request):
 
 # timezoneインポートを追加
 from django.utils import timezone
+
+
+# ==================== 品番検索API ====================
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def lookup_item_by_number(request):
+    """品番から支給品情報を検索する
+
+    クエリパラメータ:
+    - item_number: 品番（必須）
+    - product_id: 製品ID（任意、指定すると製品に紐づく支給品を優先検索）
+
+    レスポンス:
+    - found: true/false
+    - item_number: 品番
+    - item_name: 品名（見つかった場合）
+    - supplied_item_id: 支給品ID（見つかった場合）
+    - product_id: 製品ID（見つかった場合）
+    """
+    item_number = request.query_params.get('item_number', '').strip()
+    product_id = request.query_params.get('product_id')
+
+    if not item_number:
+        return Response(
+            {"error": "品番を指定してください"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 検索クエリを構築
+    queryset = SuppliedItem.objects.filter(
+        item_number=item_number,
+        is_active=True
+    )
+
+    # 製品IDが指定されている場合、その製品に紐づく支給品を優先
+    if product_id:
+        product_specific = queryset.filter(product_id=product_id).first()
+        if product_specific:
+            return Response({
+                "found": True,
+                "item_number": product_specific.item_number,
+                "item_name": product_specific.item_name,
+                "supplied_item_id": product_specific.id,
+                "product_id": product_specific.product_id,
+            }, status=status.HTTP_200_OK)
+
+    # 製品に関係なく最初に見つかった支給品を返す
+    supplied_item = queryset.first()
+
+    if supplied_item:
+        return Response({
+            "found": True,
+            "item_number": supplied_item.item_number,
+            "item_name": supplied_item.item_name,
+            "supplied_item_id": supplied_item.id,
+            "product_id": supplied_item.product_id,
+        }, status=status.HTTP_200_OK)
+
+    # 見つからなかった場合
+    return Response({
+        "found": False,
+        "item_number": item_number,
+        "item_name": None,
+        "supplied_item_id": None,
+        "product_id": None,
+    }, status=status.HTTP_200_OK)

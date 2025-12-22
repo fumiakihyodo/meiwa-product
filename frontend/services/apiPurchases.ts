@@ -629,4 +629,20 @@ export const purchasesApi = {
         );
         return response.data;
     },
+
+    // 品番から支給品情報を検索
+    lookupItemByNumber: async (itemNumber: string, productId?: number): Promise<{
+        found: boolean;
+        item_number: string;
+        item_name: string | null;
+        supplied_item_id: number | null;
+        product_id: number | null;
+    }> => {
+        const params: { item_number: string; product_id?: number } = { item_number: itemNumber };
+        if (productId) {
+            params.product_id = productId;
+        }
+        const response = await apiClient.get('/purchases/lookup-item/', { params });
+        return response.data;
+    },
 };

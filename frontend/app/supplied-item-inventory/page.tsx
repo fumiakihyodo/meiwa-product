@@ -68,6 +68,8 @@ interface ReceivingInputRow {
     box_count: number | '';
     calculated_quantity: number;
     notes: string;
+    item_not_found: boolean; // 品番がマスタに登録されていない場合true
+    is_loading: boolean; // 品番検索中フラグ
 }
 
 // 空の受入入力行を作成
@@ -79,6 +81,8 @@ const createEmptyReceivingRow = (): ReceivingInputRow => ({
     box_count: '',
     calculated_quantity: 0,
     notes: '',
+    item_not_found: false,
+    is_loading: false,
 });
 
 // ステータス表示用のChip
@@ -240,6 +244,49 @@ export default function SuppliedItemInventoryPage() {
             if (rows.length <= 1) return rows;
             return rows.filter(row => row.id !== id);
         });
+    };
+
+    // 品番から品名を自動取得
+    const lookupItemName = async (rowId: string, itemNumber: string) => {
+        if (!itemNumber.trim()) return;
+
+        // ローディング状態を設定
+        setReceivingRows(rows => rows.map(row =>
+            row.id === rowId ? { ...row, is_loading: true } : row
+        ));
+
+        try {
+            const result = await purchasesApi.lookupItemByNumber(
+                itemNumber.trim(),
+                receivingProductId ? Number(receivingProductId) : undefined
+            );
+
+            setReceivingRows(rows => rows.map(row => {
+                if (row.id !== rowId) return row;
+
+                if (result.found && result.item_name) {
+                    // 品名が見つかった場合は自動設定
+                    return {
+                        ...row,
+                        item_name: result.item_name,
+                        item_not_found: false,
+                        is_loading: false,
+                    };
+                } else {
+                    // 品名が見つからなかった場合は警告フラグを設定
+                    return {
+                        ...row,
+                        item_not_found: true,
+                        is_loading: false,
+                    };
+                }
+            }));
+        } catch (error) {
+            console.error('品番検索エラー:', error);
+            setReceivingRows(rows => rows.map(row =>
+                row.id === rowId ? { ...row, is_loading: false } : row
+            ));
+        }
     };
 
     // 受入れ登録を保存・完了
@@ -605,6 +652,7 @@ export default function SuppliedItemInventoryPage() {
                                         size="small"
                                         value={row.item_number}
                                         onChange={(e) => updateReceivingRow(row.id, 'item_number', e.target.value)}
+                                        onBlur={() => lookupItemName(row.id, row.item_number)}
                                         sx={{ width: 150 }}
                                     />
                                     <TextField
@@ -612,7 +660,17 @@ export default function SuppliedItemInventoryPage() {
                                         size="small"
                                         value={row.item_name}
                                         onChange={(e) => updateReceivingRow(row.id, 'item_name', e.target.value)}
-                                        sx={{ width: 150 }}
+                                        error={row.item_not_found}
+                                        helperText={row.item_not_found ? '登録がありません' : ''}
+                                        disabled={row.is_loading}
+                                        InputProps={{
+                                            endAdornment: row.is_loading ? (
+                                                <InputAdornment position="end">
+                                                    <CircularProgress size={16} />
+                                                </InputAdornment>
+                                            ) : undefined,
+                                        }}
+                                        sx={{ width: 180 }}
                                     />
                                     <TextField
                                         label="入数"
@@ -658,7 +716,7 @@ export default function SuppliedItemInventoryPage() {
                         </Paper>
 
                         <Typography variant="body2" color="text.secondary">
-                            入力が完了すると次の行が自動追加されます。
+                            入力が完了すると次の行が自動追加されます。品番を入力してフォーカスを外すと品名が自動補完されます。
                         </Typography>
                     </DialogContent>
                     <DialogActions>
