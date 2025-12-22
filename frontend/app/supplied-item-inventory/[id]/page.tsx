@@ -10,18 +10,11 @@ import {
     Grid,
     Chip,
     IconButton,
-    Tooltip,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
     Alert,
     CircularProgress,
     Tabs,
     Tab,
-    TextField,
     Checkbox,
-    Divider,
     Card,
     CardContent,
     LinearProgress,
@@ -34,9 +27,6 @@ import {
 import {
     ArrowBack as BackIcon,
     Refresh as RefreshIcon,
-    Add as AddIcon,
-    Save as SaveIcon,
-    Check as CheckIcon,
     Clear as ClearIcon,
     CheckCircle as CheckCircleIcon,
     Inventory as InventoryIcon,
@@ -51,14 +41,8 @@ import {
     SuppliedItemList,
     SuppliedItemListItem,
     SuppliedItemListStatus,
-    ReceivingInputRow,
-    SuppliedItemReceivingCreateData,
-    SuppliedItemReceiving,
     ReceivingComparisonResult,
-    ReceivingComparisonItem,
-    UnregisteredReceivingItem,
 } from '@/types/purchases';
-import { v4 as uuidv4 } from 'uuid';
 
 // タブパネル
 interface TabPanelProps {
@@ -100,16 +84,6 @@ const StatusChip: React.FC<{ status: SuppliedItemListStatus; statusDisplay?: str
     );
 };
 
-// 空の受入入力行を作成
-const createEmptyRow = (): ReceivingInputRow => ({
-    id: uuidv4(),
-    item_number: '',
-    quantity_per_box: '',
-    box_count: '',
-    calculated_quantity: 0,
-    notes: '',
-});
-
 export default function SuppliedItemListDetailPage() {
     const params = useParams();
     const router = useRouter();
@@ -121,13 +95,8 @@ export default function SuppliedItemListDetailPage() {
     // データ
     const [list, setList] = useState<SuppliedItemList | null>(null);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-    // 受入確認フォーム
-    const [receivingRows, setReceivingRows] = useState<ReceivingInputRow[]>([createEmptyRow()]);
-    const [draftReceiving, setDraftReceiving] = useState<SuppliedItemReceiving | null>(null);
 
     // 員数確認
     const [countConfirmLoading, setCountConfirmLoading] = useState<{ [key: number]: boolean }>({});
@@ -145,28 +114,8 @@ export default function SuppliedItemListDetailPage() {
         setLoading(true);
         setError(null);
         try {
-            const [listData, receivingsData] = await Promise.all([
-                purchasesApi.getSuppliedItemList(listId),
-                purchasesApi.getSuppliedItemReceivings({ list: listId, status: 'draft' }),
-            ]);
+            const listData = await purchasesApi.getSuppliedItemList(listId);
             setList(listData);
-
-            // 一時保存があれば復元
-            if (receivingsData.length > 0) {
-                const draft = receivingsData[0];
-                setDraftReceiving(draft);
-                if (draft.items && draft.items.length > 0) {
-                    setReceivingRows(draft.items.map(item => ({
-                        id: uuidv4(),
-                        item_number: item.item_number,
-                        quantity_per_box: item.quantity_per_box,
-                        box_count: item.box_count,
-                        calculated_quantity: item.calculated_quantity,
-                        list_item_id: item.list_item || undefined,
-                        notes: item.notes || '',
-                    })));
-                }
-            }
         } catch (err) {
             setError('データの取得に失敗しました');
             console.error(err);
@@ -178,113 +127,6 @@ export default function SuppliedItemListDetailPage() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
-
-    // 受入入力行の更新
-    const updateReceivingRow = (id: string, field: keyof ReceivingInputRow, value: string | number) => {
-        setReceivingRows(rows => {
-            const newRows = rows.map(row => {
-                if (row.id !== id) return row;
-
-                const updatedRow = { ...row, [field]: value };
-
-                // 数量を自動計算
-                const qtyPerBox = typeof updatedRow.quantity_per_box === 'number' ? updatedRow.quantity_per_box : 0;
-                const boxCount = typeof updatedRow.box_count === 'number' ? updatedRow.box_count : 0;
-                updatedRow.calculated_quantity = qtyPerBox * boxCount;
-
-                // リスト項目との紐付け
-                if (field === 'item_number' && list?.items) {
-                    const matchedItem = list.items.find(item => item.item_number === value);
-                    if (matchedItem) {
-                        updatedRow.list_item_id = matchedItem.id;
-                    }
-                }
-
-                return updatedRow;
-            });
-
-            // 最後の行に入力があったら新しい行を追加
-            const lastRow = newRows[newRows.length - 1];
-            if (lastRow.item_number && lastRow.quantity_per_box && lastRow.box_count) {
-                newRows.push(createEmptyRow());
-            }
-
-            return newRows;
-        });
-    };
-
-    // 行の削除
-    const removeReceivingRow = (id: string) => {
-        setReceivingRows(rows => {
-            if (rows.length <= 1) return rows;
-            return rows.filter(row => row.id !== id);
-        });
-    };
-
-    // 一時保存
-    const handleSaveDraft = async () => {
-        setSaving(true);
-        setError(null);
-        try {
-            const validRows = receivingRows.filter(row =>
-                row.item_number &&
-                typeof row.quantity_per_box === 'number' &&
-                typeof row.box_count === 'number'
-            );
-
-            const data: SuppliedItemReceivingCreateData = {
-                supplied_item_list: listId,
-                status: 'draft',
-                items: validRows.map(row => ({
-                    list_item: row.list_item_id,
-                    item_number: row.item_number,
-                    quantity_per_box: row.quantity_per_box as number,
-                    box_count: row.box_count as number,
-                    notes: row.notes,
-                })),
-            };
-
-            if (draftReceiving) {
-                await purchasesApi.updateSuppliedItemReceiving(draftReceiving.id, data);
-            } else {
-                const created = await purchasesApi.createSuppliedItemReceiving(data);
-                setDraftReceiving(created);
-            }
-
-            setSuccessMessage('一時保存しました');
-            setTimeout(() => setSuccessMessage(null), 3000);
-        } catch (err) {
-            setError('保存に失敗しました');
-            console.error(err);
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    // 受入確認完了
-    const handleCompleteReceiving = async () => {
-        if (!draftReceiving) {
-            // まず保存してから完了
-            await handleSaveDraft();
-        }
-
-        setSaving(true);
-        setError(null);
-        try {
-            if (draftReceiving) {
-                await purchasesApi.completeReceiving(draftReceiving.id);
-                setSuccessMessage('受入確認が完了しました');
-                setDraftReceiving(null);
-                setReceivingRows([createEmptyRow()]);
-                fetchData();
-            }
-        } catch (err) {
-            setError('受入確認の完了に失敗しました');
-            console.error(err);
-        } finally {
-            setSaving(false);
-        }
-    };
 
     // 員数確認
     const handleCountConfirm = async (itemId: number, confirmed: boolean) => {
@@ -433,7 +275,6 @@ export default function SuppliedItemListDetailPage() {
     const totalItems = list.total_items || 0;
     const receivedCount = list.received_items_count || 0;
     const countedCount = list.count_confirmed_items_count || 0;
-    const allReceived = receivedCount === totalItems && totalItems > 0;
     const allCounted = countedCount === totalItems && totalItems > 0;
 
     return (

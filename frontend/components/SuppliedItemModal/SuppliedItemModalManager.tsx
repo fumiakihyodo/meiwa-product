@@ -41,20 +41,16 @@ export const SuppliedItemModalManager: React.FC<SuppliedItemModalManagerProps> =
 }) => {
     const [currentModal, setCurrentModal] = useState<ModalType>(initialModal);
     const [currentSuppliedItem, setCurrentSuppliedItem] = useState<SuppliedItem | null>(null);
-    const [loadingSuppliedItem, setLoadingSuppliedItem] = useState(false);
 
     // suppliedItemIdから支給品情報を取得
     const fetchSuppliedItem = useCallback(async () => {
         if (!suppliedItemId) return;
 
-        setLoadingSuppliedItem(true);
         try {
             const data = await purchasesApi.getSuppliedItem(suppliedItemId);
             setCurrentSuppliedItem(data);
         } catch (error) {
             console.error('支給品情報の取得に失敗しました:', error);
-        } finally {
-            setLoadingSuppliedItem(false);
         }
     }, [suppliedItemId]);
 

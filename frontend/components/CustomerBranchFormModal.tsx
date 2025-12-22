@@ -52,9 +52,10 @@ export const CustomerBranchFormModal: React.FC<CustomerBranchFormModalProps> = (
     const [errors, setErrors] = useState<Record<string, string>>({});
 
     const handleChange = (field: keyof CustomerBranchCreateData) => (
-        event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | any
+        event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
     ) => {
-        const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+        const target = event.target as HTMLInputElement;
+        const value = target.type === 'checkbox' ? target.checked : target.value;
         setFormData(prev => ({
             ...prev,
             [field]: value,
@@ -98,17 +99,21 @@ export const CustomerBranchFormModal: React.FC<CustomerBranchFormModalProps> = (
             toast.success('拠点を登録しました');
             onSuccess(createdBranch);
             handleClose();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to create branch:', error);
-            if (error.response?.data) {
-                const apiErrors = error.response.data;
-                const newErrors: Record<string, string> = {};
-                Object.keys(apiErrors).forEach(key => {
-                    newErrors[key] = Array.isArray(apiErrors[key]) 
-                        ? apiErrors[key][0] 
-                        : apiErrors[key];
-                });
-                setErrors(newErrors);
+            if (error && typeof error === 'object' && 'response' in error) {
+                const axiosError = error as { response?: { data?: Record<string, string | string[]> } };
+                if (axiosError.response?.data) {
+                    const apiErrors = axiosError.response.data;
+                    const newErrors: Record<string, string> = {};
+                    Object.keys(apiErrors).forEach(key => {
+                        const errorValue = apiErrors[key];
+                        newErrors[key] = Array.isArray(errorValue)
+                            ? errorValue[0]
+                            : errorValue;
+                    });
+                    setErrors(newErrors);
+                }
             }
             toast.error('拠点の登録に失敗しました');
         } finally {

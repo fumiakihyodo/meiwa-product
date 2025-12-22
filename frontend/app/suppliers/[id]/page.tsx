@@ -34,7 +34,6 @@ import {
     Business as BusinessIcon,
     Inventory as InventoryIcon,
     Visibility as VisibilityIcon,
-    ContentCopy as CopyIcon,
     AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
 import { Part } from '@/types/purchases';
@@ -234,13 +233,6 @@ export default function SupplierDetailPage() {
     const handleOpenBranchEditModal = useCallback((branch: SupplierBranch) => {
         setEditBranch(branch);
         setDuplicateBranch(null);
-        setBranchFormModalOpen(true);
-    }, []);
-
-    // 拠点複製モーダルを開く
-    const handleOpenBranchDuplicateModal = useCallback((branch: SupplierBranch) => {
-        setEditBranch(null);
-        setDuplicateBranch(branch);
         setBranchFormModalOpen(true);
     }, []);
 

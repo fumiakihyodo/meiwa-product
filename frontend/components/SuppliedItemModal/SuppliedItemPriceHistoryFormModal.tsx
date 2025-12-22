@@ -1,7 +1,7 @@
 // components/SuppliedItemModal/SuppliedItemPriceHistoryFormModal.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import {
     Dialog,

@@ -145,9 +145,13 @@ export const SuppliedItemFormModal: React.FC<SuppliedItemFormModalProps> = ({
             await purchasesApi.createSuppliedItem(formData);
             toast.success('支給品を登録しました');
             onSuccess();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('SuppliedItem create error:', error);
-            const errorMessage = error.response?.data?.message || '支給品の登録に失敗しました';
+            let errorMessage = '支給品の登録に失敗しました';
+            if (error && typeof error === 'object' && 'response' in error) {
+                const axiosError = error as { response?: { data?: { message?: string } } };
+                errorMessage = axiosError.response?.data?.message || errorMessage;
+            }
             toast.error(errorMessage);
         } finally {
             setSaving(false);

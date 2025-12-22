@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
     Box,
@@ -60,13 +60,7 @@ export default function IPRestrictionsPage() {
     const [newDescription, setNewDescription] = useState('');
     const [ipRestrictionEnabled, setIpRestrictionEnabled] = useState(false);
 
-    useEffect(() => {
-        fetchUser();
-        fetchAllowedIPs();
-        fetchIPRestrictionSettings();
-    }, [userId]);
-
-    const fetchUser = async () => {
+    const fetchUser = useCallback(async () => {
         try {
             const data = await userApi.getUser(userId.toString());
             setUser(data);
@@ -74,9 +68,9 @@ export default function IPRestrictionsPage() {
             console.error('Failed to fetch user:', error);
             toast.error('ユーザー情報の取得に失敗しました');
         }
-    };
+    }, [userId]);
 
-    const fetchAllowedIPs = async () => {
+    const fetchAllowedIPs = useCallback(async () => {
         setLoading(true);
         try {
             const data = await ipRestrictionApi.getAllowedIPs(userId);
@@ -87,16 +81,22 @@ export default function IPRestrictionsPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [userId]);
 
-    const fetchIPRestrictionSettings = async () => {
+    const fetchIPRestrictionSettings = useCallback(async () => {
         try {
             const data = await ipRestrictionApi.getIPRestrictionSettings(userId);
             setIpRestrictionEnabled(data.ip_restriction_enabled);
         } catch (error) {
             console.error('Failed to fetch IP restriction settings:', error);
         }
-    };
+    }, [userId]);
+
+    useEffect(() => {
+        fetchUser();
+        fetchAllowedIPs();
+        fetchIPRestrictionSettings();
+    }, [fetchUser, fetchAllowedIPs, fetchIPRestrictionSettings]);
 
     const handleAddIP = async () => {
         if (!newIPAddress) {

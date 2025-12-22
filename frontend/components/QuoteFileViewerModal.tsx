@@ -1,7 +1,7 @@
 // components/QuoteFileViewerModal.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -48,20 +48,7 @@ export const QuoteFileViewerModal: React.FC<QuoteFileViewerModalProps> = ({
     const extension = getFileExtension(fileName);
     const isPdf = extension === 'pdf';
 
-    useEffect(() => {
-        if (open) {
-            loadFile();
-        }
-        
-        return () => {
-            // クリーンアップ
-            if (fileUrl) {
-                URL.revokeObjectURL(fileUrl);
-            }
-        };
-    }, [open, priceHistoryId]);
-
-    const loadFile = async () => {
+    const loadFile = useCallback(async () => {
         console.log('[QuoteFileViewerModal] Loading file:', { priceHistoryId, fileName, isSuppliedItem });
         setLoading(true);
         setError(null);
@@ -83,7 +70,23 @@ export const QuoteFileViewerModal: React.FC<QuoteFileViewerModalProps> = ({
         } finally {
             setLoading(false);
         }
-    };
+    }, [priceHistoryId, fileName, isSuppliedItem]);
+
+    useEffect(() => {
+        if (open) {
+            loadFile();
+        }
+
+        return () => {
+            // クリーンアップ
+            setFileUrl(prevUrl => {
+                if (prevUrl) {
+                    URL.revokeObjectURL(prevUrl);
+                }
+                return null;
+            });
+        };
+    }, [open, loadFile]);
 
     const handleDownload = async () => {
         console.log('[QuoteFileViewerModal] Download clicked');

@@ -176,9 +176,13 @@ export default function SuppliedItemsPage() {
             setDeleteDialogOpen(false);
             setSelectedSuppliedItem(null);
             fetchSuppliedItems();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('支給品削除エラー:', error);
-            const errorMessage = error.response?.data?.error || '支給品の削除に失敗しました';
+            let errorMessage = '支給品の削除に失敗しました';
+            if (error && typeof error === 'object' && 'response' in error) {
+                const axiosError = error as { response?: { data?: { error?: string } } };
+                errorMessage = axiosError.response?.data?.error || errorMessage;
+            }
             toast.error(errorMessage);
         }
     }, [selectedSuppliedItem, fetchSuppliedItems]);

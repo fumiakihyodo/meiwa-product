@@ -12,7 +12,6 @@ import {
     InputLabel,
     Select,
     MenuItem,
-    Chip,
     IconButton,
     Tooltip,
     Dialog,
@@ -31,16 +30,13 @@ import {
     GridRenderCellParams,
 } from '@mui/x-data-grid';
 import {
-    Add as AddIcon,
     Search as SearchIcon,
     Refresh as RefreshIcon,
     Visibility as ViewIcon,
-    Edit as EditIcon,
     Delete as DeleteIcon,
     Upload as UploadIcon,
     CheckCircle as CheckCircleIcon,
     HourglassEmpty as PendingIcon,
-    PlayArrow as InProgressIcon,
     Clear as ClearIcon,
     LocalShipping as ReceivingIcon,
 } from '@mui/icons-material';
@@ -52,8 +48,6 @@ import {
     SuppliedItemList,
     SuppliedItemListStatus,
     SuppliedItemInventory,
-    CSVParseResult,
-    SuppliedItemReceiving,
     SuppliedItemReceivingItemCreateData,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
@@ -84,30 +78,6 @@ const createEmptyReceivingRow = (): ReceivingInputRow => ({
     item_not_found: false,
     is_loading: false,
 });
-
-// ステータス表示用のChip
-const StatusChip: React.FC<{ status: SuppliedItemListStatus; statusDisplay?: string }> = ({ status, statusDisplay }) => {
-    const getStatusColor = (status: SuppliedItemListStatus): 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' => {
-        switch (status) {
-            case 'draft': return 'default';
-            case 'pending_receiving': return 'warning';
-            case 'receiving': return 'info';
-            case 'pending_count': return 'warning';
-            case 'counting': return 'info';
-            case 'completed': return 'success';
-            case 'cancelled': return 'error';
-            default: return 'default';
-        }
-    };
-
-    return (
-        <Chip
-            label={statusDisplay || status}
-            color={getStatusColor(status)}
-            size="small"
-        />
-    );
-};
 
 // タブパネル
 interface TabPanelProps {
@@ -332,7 +302,6 @@ export default function SuppliedItemInventoryPage() {
                 // 最後の行の最後のフィールド → 新しい行を追加して最初のフィールドにフォーカス
                 addReceivingRow();
                 setTimeout(() => {
-                    const newRow = receivingRows[receivingRows.length - 1];
                     // 新しい行のIDは追加後に変わるため、最後の行を探す
                     const inputs = document.querySelectorAll('[data-field="item_number"] input');
                     const lastInput = inputs[inputs.length - 1] as HTMLElement;
@@ -431,7 +400,6 @@ export default function SuppliedItemInventoryPage() {
                 const total = params.row.total_items || 0;
                 const received = params.row.received_items_count || 0;
                 const counted = params.row.count_confirmed_items_count || 0;
-                const receivedPercent = total > 0 ? (received / total) * 100 : 0;
                 const countedPercent = total > 0 ? (counted / total) * 100 : 0;
 
                 return (
@@ -639,7 +607,7 @@ export default function SuppliedItemInventoryPage() {
                 <CSVImportModal
                     open={csvImportDialogOpen}
                     onClose={() => setCsvImportDialogOpen(false)}
-                    onSuccess={(list) => {
+                    onSuccess={() => {
                         setCsvImportDialogOpen(false);
                         fetchData();
                     }}

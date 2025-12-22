@@ -295,7 +295,14 @@ export const ipRestrictionApi = {
     },
 
     // Add new allowed IP
-    addAllowedIP: async (ipAddress: string, description?: string, userId?: number): Promise<any> => {
+    addAllowedIP: async (ipAddress: string, description?: string, userId?: number): Promise<{
+        id: number;
+        ip_address: string;
+        description: string;
+        is_active: boolean;
+        is_first_login_ip: boolean;
+        created_at: string;
+    }> => {
         const response = await apiClient.post('accounts/allowed-ips/', {
             ip_address: ipAddress,
             description: description || '',
@@ -305,7 +312,14 @@ export const ipRestrictionApi = {
     },
 
     // Update allowed IP
-    updateAllowedIP: async (id: number, data: { description?: string; is_active?: boolean }): Promise<any> => {
+    updateAllowedIP: async (id: number, data: { description?: string; is_active?: boolean }): Promise<{
+        id: number;
+        ip_address: string;
+        description: string;
+        is_active: boolean;
+        is_first_login_ip: boolean;
+        created_at: string;
+    }> => {
         const response = await apiClient.put(`accounts/allowed-ips/${id}/`, data);
         return response.data;
     },

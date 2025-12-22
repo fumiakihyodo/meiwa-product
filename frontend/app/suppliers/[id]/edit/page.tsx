@@ -1,7 +1,7 @@
 // app/suppliers/[id]/edit/page.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import {
@@ -57,13 +57,7 @@ export default function SupplierFormPage() {
         },
     });
 
-    useEffect(() => {
-        if (isEdit) {
-            fetchSupplier();
-        }
-    }, [isEdit]);
-
-    const fetchSupplier = async () => {
+    const fetchSupplier = useCallback(async () => {
         try {
             const data = await supplierApi.getSupplier(Number(params.id));
             setSupplier(data);
@@ -74,13 +68,19 @@ export default function SupplierFormPage() {
                 notes: data.notes || '',
                 is_active: data.is_active,
             });
-        } catch (error) {
+        } catch {
             toast.error('サプライヤー情報の取得に失敗しました');
             router.push('/suppliers');
         } finally {
             setLoading(false);
         }
-    };
+    }, [params.id, reset, router]);
+
+    useEffect(() => {
+        if (isEdit) {
+            fetchSupplier();
+        }
+    }, [isEdit, fetchSupplier]);
 
     const onSubmit = async (data: SupplierFormData) => {
         try {
