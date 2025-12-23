@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from django.http import FileResponse, Http404, HttpResponse
-from django.db.models import Count, Q, Prefetch
+from django.db.models import Count, Q, Prefetch, Sum, F, Case, When, IntegerField
 from django.db import transaction
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
@@ -1165,7 +1165,10 @@ def download_supplied_item_quote_file(request, pk):
 # ==================== 在庫管理 Views ====================
 
 class SuppliedItemListListCreateView(generics.ListCreateAPIView):
-    """支給品リスト一覧取得・作成ビュー"""
+    """支給品リスト一覧取得・作成ビュー
+
+    最適化: アノテーションでカウントを事前計算し、N+1問題を解消
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -1175,7 +1178,23 @@ class SuppliedItemListListCreateView(generics.ListCreateAPIView):
             'product__customer_branch',
             'product__customer_branch__customer',
             'created_by'
-        ).prefetch_related('items')
+        ).annotate(
+            # 項目数と確認済み数をアノテーションで計算（N+1問題の解消）
+            total_items_count=Count('items'),
+            total_quantity_sum=Sum('items__quantity'),
+            received_items_annotated=Count(
+                Case(
+                    When(items__receiving_confirmed=True, then=1),
+                    output_field=IntegerField()
+                )
+            ),
+            count_confirmed_items_annotated=Count(
+                Case(
+                    When(items__count_confirmed=True, then=1),
+                    output_field=IntegerField()
+                )
+            )
+        )
 
         # フィルタリング
         customer_id = self.request.query_params.get('customer', None)
@@ -1459,38 +1478,44 @@ def compare_receiving_with_list(request, list_id):
 
     製品の完了済み受入れ登録（リスト紐付け・未紐付け含む）から、
     品番ごとの受入れ数量合計を計算し、リスト項目と比較する。
+
+    最適化: データベースレベルで集計を行い、N+1問題を解消
     """
     try:
-        supplied_list = SuppliedItemList.objects.get(pk=list_id)
-
-        # リストに紐づく製品の全受入れ登録を取得（completedのみ）
+        supplied_list = SuppliedItemList.objects.select_related('product').get(pk=list_id)
         product_id = supplied_list.product_id
-        all_receivings = SuppliedItemReceiving.objects.filter(
-            Q(supplied_item_list__product_id=product_id) |
-            Q(product_id=product_id),
-            status='completed'
-        ).prefetch_related('items')
 
-        # 品番ごとの受入れ数量を集計
-        received_quantities = {}
-        for receiving in all_receivings:
-            for item in receiving.items.all():
-                if item.item_number not in received_quantities:
-                    received_quantities[item.item_number] = {
-                        'item_number': item.item_number,
-                        'item_name': item.item_name or '',
-                        'total_received': 0,
-                        'receiving_ids': [],
-                    }
-                received_quantities[item.item_number]['total_received'] += item.calculated_quantity
-                if receiving.id not in received_quantities[item.item_number]['receiving_ids']:
-                    received_quantities[item.item_number]['receiving_ids'].append(receiving.id)
+        # データベースレベルで品番ごとの受入れ数量を集計（N+1問題の解消）
+        receiving_aggregation = SuppliedItemReceivingItem.objects.filter(
+            receiving__status='completed'
+        ).filter(
+            Q(receiving__supplied_item_list__product_id=product_id) |
+            Q(receiving__product_id=product_id)
+        ).values('item_number').annotate(
+            total_received=Sum('calculated_quantity'),
+            item_name_first=F('item_name')
+        )
+
+        # 辞書に変換（高速ルックアップ用）
+        received_quantities = {
+            item['item_number']: {
+                'total_received': item['total_received'] or 0,
+                'item_name': item['item_name_first'] or ''
+            }
+            for item in receiving_aggregation
+        }
+
+        # リスト項目を一括取得（prefetch不要、単一クエリ）
+        list_items = list(supplied_list.items.only(
+            'id', 'item_number', 'item_name', 'quantity',
+            'receiving_confirmed', 'count_confirmed'
+        ))
 
         # リスト項目との比較
         comparison_results = []
         list_item_numbers = set()
 
-        for list_item in supplied_list.items.all():
+        for list_item in list_items:
             list_item_numbers.add(list_item.item_number)
             received_info = received_quantities.get(list_item.item_number, {})
             total_received = received_info.get('total_received', 0)
@@ -1508,16 +1533,17 @@ def compare_receiving_with_list(request, list_id):
             })
 
         # リストにない受入れ品番（リスト未登録品番）
-        unregistered_items = []
-        for item_number, info in received_quantities.items():
-            if item_number not in list_item_numbers:
-                unregistered_items.append({
-                    'item_number': info['item_number'],
-                    'item_name': info['item_name'],
-                    'total_received': info['total_received'],
-                })
+        unregistered_items = [
+            {
+                'item_number': item_number,
+                'item_name': info['item_name'],
+                'total_received': info['total_received'],
+            }
+            for item_number, info in received_quantities.items()
+            if item_number not in list_item_numbers
+        ]
 
-        # サマリー
+        # サマリー（Pythonで高速計算）
         total_items = len(comparison_results)
         sufficient_items = sum(1 for r in comparison_results if r['is_sufficient'])
         confirmed_items = sum(1 for r in comparison_results if r['receiving_confirmed'])
@@ -1550,32 +1576,42 @@ def bulk_confirm_receiving(request, list_id):
 
     受入れ数量 >= リスト数量 の項目を一括で receiving_confirmed = True に設定。
     exclude_item_ids パラメータで除外する項目を指定可能。
+
+    最適化: データベースレベルで集計を行い、bulk_updateで一括更新
     """
     try:
         supplied_list = SuppliedItemList.objects.get(pk=list_id)
-        exclude_item_ids = request.data.get('exclude_item_ids', [])
-
-        # リストに紐づく製品の全受入れ登録を取得（completedのみ）
+        exclude_item_ids = set(request.data.get('exclude_item_ids', []))
         product_id = supplied_list.product_id
-        all_receivings = SuppliedItemReceiving.objects.filter(
-            Q(supplied_item_list__product_id=product_id) |
-            Q(product_id=product_id),
-            status='completed'
-        ).prefetch_related('items')
 
-        # 品番ごとの受入れ数量を集計
-        received_quantities = {}
-        for receiving in all_receivings:
-            for item in receiving.items.all():
-                if item.item_number not in received_quantities:
-                    received_quantities[item.item_number] = 0
-                received_quantities[item.item_number] += item.calculated_quantity
+        # データベースレベルで品番ごとの受入れ数量を集計
+        receiving_aggregation = SuppliedItemReceivingItem.objects.filter(
+            receiving__status='completed'
+        ).filter(
+            Q(receiving__supplied_item_list__product_id=product_id) |
+            Q(receiving__product_id=product_id)
+        ).values('item_number').annotate(
+            total_received=Sum('calculated_quantity')
+        )
 
+        received_quantities = {
+            item['item_number']: item['total_received'] or 0
+            for item in receiving_aggregation
+        }
+
+        # 更新対象の項目を収集
+        items_to_update = []
         confirmed_count = 0
         skipped_count = 0
+        now = timezone.now()
+
+        list_items = list(supplied_list.items.only(
+            'id', 'item_number', 'quantity', 'receiving_confirmed',
+            'receiving_confirmed_at', 'receiving_confirmed_by', 'received_quantity'
+        ))
 
         with transaction.atomic():
-            for list_item in supplied_list.items.all():
+            for list_item in list_items:
                 # 除外リストにある場合はスキップ
                 if list_item.id in exclude_item_ids:
                     skipped_count += 1
@@ -1590,18 +1626,29 @@ def bulk_confirm_receiving(request, list_id):
                 # 受入れ数量がリスト数量以上の場合、確認済みに
                 if total_received >= list_item.quantity:
                     list_item.receiving_confirmed = True
-                    list_item.receiving_confirmed_at = timezone.now()
+                    list_item.receiving_confirmed_at = now
                     list_item.receiving_confirmed_by = request.user
                     list_item.received_quantity = total_received
-                    list_item.save()
+                    items_to_update.append(list_item)
                     confirmed_count += 1
 
-            # リストのステータス更新
-            if supplied_list.received_items_count == supplied_list.total_items:
+            # bulk_updateで一括更新
+            if items_to_update:
+                SuppliedItemListItem.objects.bulk_update(
+                    items_to_update,
+                    ['receiving_confirmed', 'receiving_confirmed_at',
+                     'receiving_confirmed_by', 'received_quantity']
+                )
+
+            # リストのステータス更新（DBから再取得してカウント）
+            received_count = supplied_list.items.filter(receiving_confirmed=True).count()
+            total_count = supplied_list.items.count()
+
+            if received_count == total_count:
                 supplied_list.status = 'pending_count'
             else:
                 supplied_list.status = 'receiving'
-            supplied_list.save()
+            supplied_list.save(update_fields=['status', 'updated_at'])
 
         return Response({
             'message': f'{confirmed_count}件の項目を受入確認済みにしました',
@@ -1624,46 +1671,45 @@ def get_unregistered_receiving_items(request, list_id):
 
     リストの製品に紐づく完了済み受入れ登録から、
     リスト項目に存在しない品番を抽出する。
+
+    最適化: データベースレベルで集計を行い、N+1問題を解消
     """
     try:
         supplied_list = SuppliedItemList.objects.get(pk=list_id)
+        product_id = supplied_list.product_id
 
-        # リスト項目の品番セット
+        # リスト項目の品番セット（単一クエリで取得）
         list_item_numbers = set(
             supplied_list.items.values_list('item_number', flat=True)
         )
 
-        # 製品の全受入れ登録を取得（completedのみ）
-        product_id = supplied_list.product_id
-        all_receivings = SuppliedItemReceiving.objects.filter(
-            Q(supplied_item_list__product_id=product_id) |
-            Q(product_id=product_id),
-            status='completed'
-        ).prefetch_related('items')
+        # データベースレベルで品番ごとの受入れ数量を集計
+        receiving_items = SuppliedItemReceivingItem.objects.filter(
+            receiving__status='completed'
+        ).filter(
+            Q(receiving__supplied_item_list__product_id=product_id) |
+            Q(receiving__product_id=product_id)
+        ).exclude(
+            item_number__in=list_item_numbers
+        ).values('item_number').annotate(
+            total_received=Sum('calculated_quantity'),
+            item_name_first=F('item_name')
+        )
 
-        # リストにない品番を集計
-        unregistered_items = {}
-        for receiving in all_receivings:
-            for item in receiving.items.all():
-                if item.item_number not in list_item_numbers:
-                    if item.item_number not in unregistered_items:
-                        unregistered_items[item.item_number] = {
-                            'item_number': item.item_number,
-                            'item_name': item.item_name or '',
-                            'total_received': 0,
-                            'receivings': [],
-                        }
-                    unregistered_items[item.item_number]['total_received'] += item.calculated_quantity
-                    unregistered_items[item.item_number]['receivings'].append({
-                        'receiving_id': receiving.id,
-                        'receiving_date': receiving.receiving_date.isoformat() if receiving.receiving_date else None,
-                        'quantity': item.calculated_quantity,
-                    })
+        # 結果をリストに変換
+        unregistered_items = [
+            {
+                'item_number': item['item_number'],
+                'item_name': item['item_name_first'] or '',
+                'total_received': item['total_received'] or 0,
+            }
+            for item in receiving_items
+        ]
 
         return Response({
             'list_id': list_id,
             'list_number': supplied_list.list_number,
-            'unregistered_items': list(unregistered_items.values()),
+            'unregistered_items': unregistered_items,
             'total_count': len(unregistered_items),
         }, status=status.HTTP_200_OK)
 
@@ -1672,6 +1718,142 @@ def get_unregistered_receiving_items(request, list_id):
             {"error": "リストが見つかりません"},
             status=status.HTTP_404_NOT_FOUND
         )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_receiving_summary_for_list(request, list_id):
+    """リストの受入状況サマリーを取得する
+
+    リストの予定数量と実際の受入数量の差異をサマリーとして返す。
+    フロントエンドのリスト一覧ページでの差異表示に使用。
+    """
+    try:
+        supplied_list = SuppliedItemList.objects.get(pk=list_id)
+        product_id = supplied_list.product_id
+
+        # リスト項目の合計数量を取得
+        list_totals = supplied_list.items.aggregate(
+            total_list_quantity=Sum('quantity'),
+            total_items=Count('id')
+        )
+
+        # 受入数量の集計（データベースレベル）
+        receiving_totals = SuppliedItemReceivingItem.objects.filter(
+            receiving__status='completed'
+        ).filter(
+            Q(receiving__supplied_item_list__product_id=product_id) |
+            Q(receiving__product_id=product_id)
+        ).aggregate(
+            total_received_quantity=Sum('calculated_quantity')
+        )
+
+        total_list_quantity = list_totals['total_list_quantity'] or 0
+        total_received = receiving_totals['total_received_quantity'] or 0
+        difference = total_received - total_list_quantity
+
+        return Response({
+            'list_id': list_id,
+            'list_number': supplied_list.list_number,
+            'total_list_quantity': total_list_quantity,
+            'total_received_quantity': total_received,
+            'difference': difference,
+            'is_sufficient': total_received >= total_list_quantity,
+            'has_shortage': difference < 0,
+            'has_excess': difference > 0,
+        }, status=status.HTTP_200_OK)
+
+    except SuppliedItemList.DoesNotExist:
+        return Response(
+            {"error": "リストが見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_receiving_summaries_bulk(request):
+    """複数リストの受入状況サマリーを一括取得する
+
+    リスト一覧ページで効率的に差異を表示するためのバルクエンドポイント。
+    """
+    list_ids = request.query_params.getlist('list_ids[]')
+    if not list_ids:
+        list_ids_str = request.query_params.get('list_ids', '')
+        if list_ids_str:
+            list_ids = [int(id.strip()) for id in list_ids_str.split(',') if id.strip()]
+
+    if not list_ids:
+        return Response(
+            {"error": "list_ids パラメータが必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # リストを取得
+    lists = SuppliedItemList.objects.filter(id__in=list_ids).values(
+        'id', 'list_number', 'product_id'
+    )
+    list_map = {l['id']: l for l in lists}
+
+    # 各リストの製品IDを収集
+    product_ids = set(l['product_id'] for l in lists)
+
+    # リスト項目の合計数量を集計
+    list_item_totals = SuppliedItemListItem.objects.filter(
+        supplied_item_list_id__in=list_ids
+    ).values('supplied_item_list_id').annotate(
+        total_list_quantity=Sum('quantity')
+    )
+    list_quantity_map = {
+        item['supplied_item_list_id']: item['total_list_quantity'] or 0
+        for item in list_item_totals
+    }
+
+    # 製品ごとの受入総数を集計
+    receiving_totals = SuppliedItemReceivingItem.objects.filter(
+        receiving__status='completed'
+    ).filter(
+        Q(receiving__supplied_item_list__product_id__in=product_ids) |
+        Q(receiving__product_id__in=product_ids)
+    ).values(
+        product_id=Case(
+            When(receiving__product_id__isnull=False, then=F('receiving__product_id')),
+            default=F('receiving__supplied_item_list__product_id'),
+        )
+    ).annotate(
+        total_received=Sum('calculated_quantity')
+    )
+    product_received_map = {
+        item['product_id']: item['total_received'] or 0
+        for item in receiving_totals
+    }
+
+    # 結果を構築
+    results = []
+    for list_id in list_ids:
+        list_id = int(list_id)
+        if list_id not in list_map:
+            continue
+
+        list_info = list_map[list_id]
+        total_list_quantity = list_quantity_map.get(list_id, 0)
+        total_received = product_received_map.get(list_info['product_id'], 0)
+        difference = total_received - total_list_quantity
+
+        results.append({
+            'list_id': list_id,
+            'list_number': list_info['list_number'],
+            'total_list_quantity': total_list_quantity,
+            'total_received_quantity': total_received,
+            'difference': difference,
+            'is_sufficient': total_received >= total_list_quantity,
+            'has_shortage': difference < 0,
+            'has_excess': difference > 0,
+        })
+
+    return Response({
+        'summaries': results
+    }, status=status.HTTP_200_OK)
 
 
 # ==================== 在庫 Views ====================
@@ -1753,7 +1935,10 @@ class SuppliedItemInventoryDetailView(generics.RetrieveUpdateDestroyAPIView):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def register_inventory_from_list(request, list_id):
-    """リストから在庫を一括登録する"""
+    """リストから在庫を一括登録する
+
+    最適化: bulk_create()で一括INSERT、必要なフィールドのみ取得
+    """
     try:
         supplied_list = SuppliedItemList.objects.get(pk=list_id)
 
@@ -1765,23 +1950,37 @@ def register_inventory_from_list(request, list_id):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        created_inventories = []
         with transaction.atomic():
-            for item in supplied_list.items.filter(count_confirmed=True):
-                # 支給品マスタに紐付いている場合のみ在庫登録
-                if item.supplied_item:
-                    inventory = SuppliedItemInventory.objects.create(
-                        supplied_item=item.supplied_item,
-                        list_item=item,
-                        quantity=item.received_quantity or item.quantity,
-                        received_date=supplied_list.delivery_date,
-                        created_by=request.user
-                    )
-                    created_inventories.append(inventory)
+            # 支給品マスタに紐付いている項目のみ取得（必要なフィールドのみ）
+            items_with_supplied_item = list(
+                supplied_list.items.filter(
+                    count_confirmed=True,
+                    supplied_item__isnull=False
+                ).select_related('supplied_item').only(
+                    'id', 'supplied_item_id', 'received_quantity', 'quantity'
+                )
+            )
+
+            # 在庫オブジェクトを事前に構築
+            inventory_objects = [
+                SuppliedItemInventory(
+                    supplied_item=item.supplied_item,
+                    list_item=item,
+                    quantity=item.received_quantity or item.quantity,
+                    received_date=supplied_list.delivery_date,
+                    created_by=request.user
+                )
+                for item in items_with_supplied_item
+            ]
+
+            # bulk_createで一括INSERT
+            created_inventories = SuppliedItemInventory.objects.bulk_create(
+                inventory_objects
+            )
 
             # リストステータスを完了に
             supplied_list.status = 'completed'
-            supplied_list.save()
+            supplied_list.save(update_fields=['status', 'updated_at'])
 
         return Response(
             {

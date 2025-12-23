@@ -524,3 +524,15 @@ export interface UnregisteredItemsResult {
     unregistered_items: UnregisteredReceivingItem[];
     total_count: number;
 }
+
+// 受入状況サマリー
+export interface ReceivingSummary {
+    list_id: number;
+    list_number: string;
+    total_list_quantity: number;
+    total_received_quantity: number;
+    difference: number;
+    is_sufficient: boolean;
+    has_shortage: boolean;
+    has_excess: boolean;
+}

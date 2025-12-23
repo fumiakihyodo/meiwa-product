@@ -84,6 +84,8 @@ urlpatterns = [
     path('supplied-item-lists/<int:list_id>/compare-receiving/', views.compare_receiving_with_list, name='compare_receiving_with_list'),
     path('supplied-item-lists/<int:list_id>/bulk-confirm-receiving/', views.bulk_confirm_receiving, name='bulk_confirm_receiving'),
     path('supplied-item-lists/<int:list_id>/unregistered-items/', views.get_unregistered_receiving_items, name='get_unregistered_receiving_items'),
+    path('supplied-item-lists/<int:list_id>/receiving-summary/', views.get_receiving_summary_for_list, name='get_receiving_summary_for_list'),
+    path('supplied-item-lists/receiving-summaries/', views.get_receiving_summaries_bulk, name='get_receiving_summaries_bulk'),
 
     # 在庫
     path('supplied-item-inventories/', SuppliedItemInventoryListCreateView.as_view(), name='supplied_item_inventory_list_create'),

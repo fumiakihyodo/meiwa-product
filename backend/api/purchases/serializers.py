@@ -556,14 +556,18 @@ class SuppliedItemListItemCreateSerializer(serializers.ModelSerializer):
 
 
 class SuppliedItemListListSerializer(serializers.ModelSerializer):
-    """支給品リスト一覧シリアライザー"""
+    """支給品リスト一覧シリアライザー
+
+    パフォーマンス最適化: アノテーションフィールドを使用
+    """
     product_name = serializers.CharField(source='product.product_name', read_only=True, allow_null=True, default=None)
     product_number = serializers.CharField(source='product.product_number', read_only=True, allow_null=True, default=None)
     customer_name = serializers.SerializerMethodField()
-    total_items = serializers.IntegerField(read_only=True)
-    total_quantity = serializers.IntegerField(read_only=True)
-    received_items_count = serializers.IntegerField(read_only=True)
-    count_confirmed_items_count = serializers.IntegerField(read_only=True)
+    # アノテーションから取得（N+1問題の解消）
+    total_items = serializers.SerializerMethodField()
+    total_quantity = serializers.SerializerMethodField()
+    received_items_count = serializers.SerializerMethodField()
+    count_confirmed_items_count = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     created_by_name = serializers.CharField(
         source='created_by.full_name',
@@ -589,6 +593,30 @@ class SuppliedItemListListSerializer(serializers.ModelSerializer):
         except AttributeError:
             pass
         return None
+
+    def get_total_items(self, obj):
+        """項目数を取得（アノテーション優先）"""
+        if hasattr(obj, 'total_items_count'):
+            return obj.total_items_count
+        return obj.total_items
+
+    def get_total_quantity(self, obj):
+        """合計数量を取得（アノテーション優先）"""
+        if hasattr(obj, 'total_quantity_sum'):
+            return obj.total_quantity_sum or 0
+        return obj.total_quantity
+
+    def get_received_items_count(self, obj):
+        """受入確認済み数を取得（アノテーション優先）"""
+        if hasattr(obj, 'received_items_annotated'):
+            return obj.received_items_annotated
+        return obj.received_items_count
+
+    def get_count_confirmed_items_count(self, obj):
+        """員数確認済み数を取得（アノテーション優先）"""
+        if hasattr(obj, 'count_confirmed_items_annotated'):
+            return obj.count_confirmed_items_annotated
+        return obj.count_confirmed_items_count
 
 
 class SuppliedItemListDetailSerializer(serializers.ModelSerializer):

@@ -1006,6 +1006,9 @@ class SuppliedItemListItem(models.Model):
             models.Index(fields=['item_number']),
             models.Index(fields=['receiving_confirmed']),
             models.Index(fields=['count_confirmed']),
+            # パフォーマンス最適化: 在庫登録・確認クエリ用の複合インデックス
+            models.Index(fields=['supplied_item_list', 'count_confirmed']),
+            models.Index(fields=['supplied_item_list', 'receiving_confirmed']),
         ]
 
     def __str__(self):
@@ -1098,6 +1101,9 @@ class SuppliedItemReceiving(models.Model):
             models.Index(fields=['product']),
             models.Index(fields=['status']),
             models.Index(fields=['receiving_date']),
+            # パフォーマンス最適化: 受入比較クエリ用の複合インデックス
+            models.Index(fields=['product', 'status']),
+            models.Index(fields=['supplied_item_list', 'status']),
         ]
 
     def __str__(self):
@@ -1194,6 +1200,8 @@ class SuppliedItemReceivingItem(models.Model):
         indexes = [
             models.Index(fields=['receiving']),
             models.Index(fields=['item_number']),
+            # パフォーマンス最適化: 品番別集計クエリ用の複合インデックス
+            models.Index(fields=['receiving', 'item_number']),
         ]
 
     def __str__(self):

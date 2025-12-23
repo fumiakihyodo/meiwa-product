@@ -37,6 +37,7 @@ import {
     ReceivingComparisonResult,
     BulkConfirmReceivingResult,
     UnregisteredItemsResult,
+    ReceivingSummary,
 } from '@/types/purchases';
 
 import {
@@ -626,6 +627,23 @@ export const purchasesApi = {
     getUnregisteredReceivingItems: async (listId: number): Promise<UnregisteredItemsResult> => {
         const response = await apiClient.get<UnregisteredItemsResult>(
             `/purchases/supplied-item-lists/${listId}/unregistered-items/`
+        );
+        return response.data;
+    },
+
+    // 受入状況サマリーを取得（単一リスト）
+    getReceivingSummary: async (listId: number): Promise<ReceivingSummary> => {
+        const response = await apiClient.get<ReceivingSummary>(
+            `/purchases/supplied-item-lists/${listId}/receiving-summary/`
+        );
+        return response.data;
+    },
+
+    // 受入状況サマリーを一括取得（複数リスト）
+    getReceivingSummariesBulk: async (listIds: number[]): Promise<{ summaries: ReceivingSummary[] }> => {
+        const response = await apiClient.get<{ summaries: ReceivingSummary[] }>(
+            '/purchases/supplied-item-lists/receiving-summaries/',
+            { params: { list_ids: listIds.join(',') } }
         );
         return response.data;
     },

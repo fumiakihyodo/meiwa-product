@@ -49,6 +49,7 @@ import {
     SuppliedItemListStatus,
     SuppliedItemInventory,
     SuppliedItemReceivingItemCreateData,
+    ReceivingSummary,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
 import { v4 as uuidv4 } from 'uuid';
@@ -125,6 +126,10 @@ export default function SuppliedItemInventoryPage() {
     const [receivingError, setReceivingError] = useState<string | null>(null);
     const [receivingSuccess, setReceivingSuccess] = useState<string | null>(null);
 
+    // 受入状況サマリー関連
+    const [receivingSummaries, setReceivingSummaries] = useState<Record<number, ReceivingSummary>>({});
+    const [loadingSummaries, setLoadingSummaries] = useState(false);
+
     // データ取得
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -141,6 +146,24 @@ export default function SuppliedItemInventoryPage() {
             setLists(listsData);
             setProducts(productsData);
             setInventories(inventoriesData);
+
+            // 受入状況サマリーを取得
+            if (listsData.length > 0) {
+                setLoadingSummaries(true);
+                try {
+                    const listIds = listsData.map(l => l.id);
+                    const summariesResult = await purchasesApi.getReceivingSummariesBulk(listIds);
+                    const summariesMap: Record<number, ReceivingSummary> = {};
+                    summariesResult.summaries.forEach(s => {
+                        summariesMap[s.list_id] = s;
+                    });
+                    setReceivingSummaries(summariesMap);
+                } catch (err) {
+                    console.error('受入状況サマリー取得エラー:', err);
+                } finally {
+                    setLoadingSummaries(false);
+                }
+            }
         } catch (error) {
             console.error('データ取得エラー:', error);
         } finally {
@@ -417,6 +440,46 @@ export default function SuppliedItemInventoryPage() {
             },
         },
         { field: 'total_items', headerName: '品番数', width: 90, type: 'number' },
+        {
+            field: 'receiving_status',
+            headerName: '受入状況',
+            width: 180,
+            renderCell: (params: GridRenderCellParams<SuppliedItemList>) => {
+                const summary = receivingSummaries[params.row.id];
+                if (loadingSummaries) {
+                    return <CircularProgress size={16} />;
+                }
+                if (!summary) {
+                    return <Typography variant="caption" color="text.secondary">-</Typography>;
+                }
+
+                const { total_list_quantity, total_received_quantity, difference, has_shortage, has_excess } = summary;
+
+                // 差異がある場合は赤色で表示
+                const differenceColor = has_shortage ? 'error.main' : (has_excess ? 'warning.main' : 'success.main');
+                const differenceText = difference > 0 ? `+${difference}` : difference.toString();
+
+                return (
+                    <Box sx={{ width: '100%' }}>
+                        <Typography variant="caption" component="div">
+                            予定: {total_list_quantity} / 受入: {total_received_quantity}
+                        </Typography>
+                        <Typography
+                            variant="caption"
+                            component="div"
+                            sx={{
+                                color: differenceColor,
+                                fontWeight: difference !== 0 ? 'bold' : 'normal'
+                            }}
+                        >
+                            差異: {differenceText}
+                            {has_shortage && ' (欠品)'}
+                            {has_excess && ' (過剰)'}
+                        </Typography>
+                    </Box>
+                );
+            },
+        },
         {
             field: 'actions',
             headerName: '操作',
