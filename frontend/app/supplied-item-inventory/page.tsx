@@ -48,8 +48,10 @@ import {
     SuppliedItemList,
     SuppliedItemListStatus,
     SuppliedItemInventory,
+    SuppliedItemReceiving,
     SuppliedItemReceivingItemCreateData,
     ReceivingSummary,
+    ReceivingStatus,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
 import { v4 as uuidv4 } from 'uuid';
@@ -107,11 +109,13 @@ export default function SuppliedItemInventoryPage() {
     // リスト一覧関連
     const [lists, setLists] = useState<SuppliedItemList[]>([]);
     const [inventories, setInventories] = useState<SuppliedItemInventory[]>([]);
+    const [receivings, setReceivings] = useState<SuppliedItemReceiving[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchText, setSearchText] = useState('');
     const [statusFilter, setStatusFilter] = useState<SuppliedItemListStatus | ''>('');
     const [productFilter, setProductFilter] = useState<number | ''>('');
+    const [receivingStatusFilter, setReceivingStatusFilter] = useState<ReceivingStatus | ''>('');
 
     // ダイアログ関連
     const [csvImportDialogOpen, setCsvImportDialogOpen] = useState(false);
@@ -134,7 +138,7 @@ export default function SuppliedItemInventoryPage() {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [listsData, productsData, inventoriesData] = await Promise.all([
+            const [listsData, productsData, inventoriesData, receivingsData] = await Promise.all([
                 purchasesApi.getSuppliedItemLists({
                     search: searchText || undefined,
                     status: statusFilter || undefined,
@@ -142,10 +146,14 @@ export default function SuppliedItemInventoryPage() {
                 }),
                 productApi.getProducts(),
                 purchasesApi.getSuppliedItemInventories(),
+                purchasesApi.getSuppliedItemReceivings({
+                    status: receivingStatusFilter || undefined,
+                }),
             ]);
             setLists(listsData);
             setProducts(productsData);
             setInventories(inventoriesData);
+            setReceivings(receivingsData);
 
             // 受入状況サマリーを取得
             if (listsData.length > 0) {
@@ -169,7 +177,7 @@ export default function SuppliedItemInventoryPage() {
         } finally {
             setLoading(false);
         }
-    }, [searchText, statusFilter, productFilter]);
+    }, [searchText, statusFilter, productFilter, receivingStatusFilter]);
 
     useEffect(() => {
         fetchData();
@@ -545,6 +553,144 @@ export default function SuppliedItemInventoryPage() {
         { field: 'list_number', headerName: 'リスト番号', width: 150 },
     ];
 
+    // 受入れ一覧カラム
+    const receivingColumns: GridColDef[] = [
+        {
+            field: 'receiving_date',
+            headerName: '受入日時',
+            width: 160,
+            renderCell: (params: GridRenderCellParams<SuppliedItemReceiving>) => {
+                const date = new Date(params.row.receiving_date);
+                return date.toLocaleString('ja-JP', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
+            },
+        },
+        {
+            field: 'product_name',
+            headerName: '製品',
+            width: 200,
+            renderCell: (params: GridRenderCellParams<SuppliedItemReceiving>) => {
+                const row = params.row;
+                if (row.product_number && row.product_name) {
+                    return `${row.product_number} - ${row.product_name}`;
+                }
+                return row.product_name || '-';
+            },
+        },
+        {
+            field: 'status',
+            headerName: 'ステータス',
+            width: 120,
+            renderCell: (params: GridRenderCellParams<SuppliedItemReceiving>) => {
+                const status = params.row.status;
+                const isDraft = status === 'draft';
+                return (
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.5,
+                            color: isDraft ? 'warning.main' : 'success.main',
+                        }}
+                    >
+                        {isDraft ? <PendingIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
+                        {params.row.status_display || (isDraft ? '一時保存' : '完了')}
+                    </Box>
+                );
+            },
+        },
+        {
+            field: 'list_number',
+            headerName: 'リスト番号',
+            width: 150,
+            renderCell: (params: GridRenderCellParams<SuppliedItemReceiving>) => {
+                return params.row.list_number || '未紐付け';
+            },
+        },
+        {
+            field: 'items_count',
+            headerName: '項目数',
+            width: 80,
+            type: 'number',
+        },
+        {
+            field: 'total_quantity',
+            headerName: '合計数量',
+            width: 100,
+            type: 'number',
+        },
+        {
+            field: 'created_by_name',
+            headerName: '登録者',
+            width: 120,
+        },
+        {
+            field: 'actions',
+            headerName: '操作',
+            width: 120,
+            sortable: false,
+            renderCell: (params: GridRenderCellParams<SuppliedItemReceiving>) => (
+                <Box>
+                    <Tooltip title="詳細確認">
+                        <IconButton
+                            size="small"
+                            onClick={() => handleViewReceiving(params.row)}
+                        >
+                            <ViewIcon />
+                        </IconButton>
+                    </Tooltip>
+                    <Tooltip title="削除">
+                        <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteReceiving(params.row)}
+                        >
+                            <DeleteIcon />
+                        </IconButton>
+                    </Tooltip>
+                </Box>
+            ),
+        },
+    ];
+
+    // 受入れ詳細表示
+    const [viewReceivingDialogOpen, setViewReceivingDialogOpen] = useState(false);
+    const [selectedReceiving, setSelectedReceiving] = useState<SuppliedItemReceiving | null>(null);
+    const [deleteReceivingDialogOpen, setDeleteReceivingDialogOpen] = useState(false);
+
+    const handleViewReceiving = async (receiving: SuppliedItemReceiving) => {
+        try {
+            // 詳細（items含む）を取得
+            const detail = await purchasesApi.getSuppliedItemReceiving(receiving.id);
+            setSelectedReceiving(detail);
+            setViewReceivingDialogOpen(true);
+        } catch (error) {
+            console.error('受入れ詳細取得エラー:', error);
+        }
+    };
+
+    const handleDeleteReceiving = (receiving: SuppliedItemReceiving) => {
+        setSelectedReceiving(receiving);
+        setDeleteReceivingDialogOpen(true);
+    };
+
+    const confirmDeleteReceiving = async () => {
+        if (!selectedReceiving) return;
+        try {
+            await purchasesApi.deleteSuppliedItemReceiving(selectedReceiving.id);
+            setDeleteReceivingDialogOpen(false);
+            setSelectedReceiving(null);
+            fetchData();
+        } catch (error) {
+            console.error('受入れ削除エラー:', error);
+        }
+    };
+
     return (
         <MainLayout>
             <Box sx={{ p: 3 }}>
@@ -580,6 +726,7 @@ export default function SuppliedItemInventoryPage() {
 
                 <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ mb: 2 }}>
                     <Tab label="支給品リスト" />
+                    <Tab label="受入れ一覧" />
                     <Tab label="在庫一覧" />
                 </Tabs>
 
@@ -651,6 +798,40 @@ export default function SuppliedItemInventoryPage() {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={1}>
+                    {/* 受入れ一覧フィルター */}
+                    <Paper sx={{ p: 2, mb: 2 }}>
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                            <FormControl size="small" sx={{ minWidth: 150 }}>
+                                <InputLabel>ステータス</InputLabel>
+                                <Select
+                                    value={receivingStatusFilter}
+                                    label="ステータス"
+                                    onChange={(e) => setReceivingStatusFilter(e.target.value as ReceivingStatus | '')}
+                                >
+                                    <MenuItem value="">すべて</MenuItem>
+                                    <MenuItem value="draft">一時保存</MenuItem>
+                                    <MenuItem value="completed">完了</MenuItem>
+                                </Select>
+                            </FormControl>
+                        </Box>
+                    </Paper>
+
+                    {/* 受入れ一覧 */}
+                    <Paper sx={{ height: 500 }}>
+                        <DataGrid
+                            rows={receivings}
+                            columns={receivingColumns}
+                            loading={loading}
+                            pageSizeOptions={[10, 25, 50]}
+                            initialState={{
+                                pagination: { paginationModel: { pageSize: 10 } },
+                            }}
+                            disableRowSelectionOnClick
+                        />
+                    </Paper>
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={2}>
                     {/* 在庫一覧 */}
                     <Paper sx={{ height: 500 }}>
                         <DataGrid
@@ -687,6 +868,155 @@ export default function SuppliedItemInventoryPage() {
                     <DialogActions>
                         <Button onClick={() => setDeleteDialogOpen(false)}>キャンセル</Button>
                         <Button variant="contained" color="error" onClick={handleDelete}>
+                            削除
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* 受入れ詳細表示ダイアログ */}
+                <Dialog
+                    open={viewReceivingDialogOpen}
+                    onClose={() => setViewReceivingDialogOpen(false)}
+                    maxWidth="md"
+                    fullWidth
+                >
+                    <DialogTitle>
+                        受入れ詳細
+                        {selectedReceiving && (
+                            <Typography variant="body2" color="text.secondary">
+                                受入日時: {new Date(selectedReceiving.receiving_date).toLocaleString('ja-JP')}
+                            </Typography>
+                        )}
+                    </DialogTitle>
+                    <DialogContent>
+                        {selectedReceiving && (
+                            <Box>
+                                <Box sx={{ mb: 2 }}>
+                                    <Typography variant="subtitle2" color="text.secondary">
+                                        製品
+                                    </Typography>
+                                    <Typography>
+                                        {selectedReceiving.product_number
+                                            ? `${selectedReceiving.product_number} - ${selectedReceiving.product_name}`
+                                            : selectedReceiving.product_name || '-'}
+                                    </Typography>
+                                </Box>
+                                <Box sx={{ mb: 2 }}>
+                                    <Typography variant="subtitle2" color="text.secondary">
+                                        ステータス
+                                    </Typography>
+                                    <Box sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 0.5,
+                                        color: selectedReceiving.status === 'draft' ? 'warning.main' : 'success.main',
+                                    }}>
+                                        {selectedReceiving.status === 'draft'
+                                            ? <PendingIcon fontSize="small" />
+                                            : <CheckCircleIcon fontSize="small" />}
+                                        {selectedReceiving.status_display || (selectedReceiving.status === 'draft' ? '一時保存' : '完了')}
+                                    </Box>
+                                </Box>
+                                {selectedReceiving.list_number && (
+                                    <Box sx={{ mb: 2 }}>
+                                        <Typography variant="subtitle2" color="text.secondary">
+                                            リスト番号
+                                        </Typography>
+                                        <Typography>{selectedReceiving.list_number}</Typography>
+                                    </Box>
+                                )}
+                                <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+                                    受入れ項目 ({selectedReceiving.items?.length || 0}件)
+                                </Typography>
+                                <Paper sx={{ p: 2 }}>
+                                    {selectedReceiving.items && selectedReceiving.items.length > 0 ? (
+                                        <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <Box component="thead">
+                                                <Box component="tr" sx={{ borderBottom: '2px solid', borderColor: 'divider' }}>
+                                                    <Box component="th" sx={{ p: 1, textAlign: 'left' }}>品番</Box>
+                                                    <Box component="th" sx={{ p: 1, textAlign: 'left' }}>品名</Box>
+                                                    <Box component="th" sx={{ p: 1, textAlign: 'right' }}>入数</Box>
+                                                    <Box component="th" sx={{ p: 1, textAlign: 'center' }}>×</Box>
+                                                    <Box component="th" sx={{ p: 1, textAlign: 'right' }}>箱数</Box>
+                                                    <Box component="th" sx={{ p: 1, textAlign: 'center' }}>=</Box>
+                                                    <Box component="th" sx={{ p: 1, textAlign: 'right' }}>数量</Box>
+                                                    <Box component="th" sx={{ p: 1, textAlign: 'left' }}>備考</Box>
+                                                </Box>
+                                            </Box>
+                                            <Box component="tbody">
+                                                {selectedReceiving.items.map((item, index) => (
+                                                    <Box
+                                                        component="tr"
+                                                        key={item.id}
+                                                        sx={{
+                                                            borderBottom: '1px solid',
+                                                            borderColor: 'divider',
+                                                            '&:hover': { bgcolor: 'action.hover' }
+                                                        }}
+                                                    >
+                                                        <Box component="td" sx={{ p: 1 }}>{item.item_number}</Box>
+                                                        <Box component="td" sx={{ p: 1 }}>{item.item_name || '-'}</Box>
+                                                        <Box component="td" sx={{ p: 1, textAlign: 'right' }}>{item.quantity_per_box}</Box>
+                                                        <Box component="td" sx={{ p: 1, textAlign: 'center' }}>×</Box>
+                                                        <Box component="td" sx={{ p: 1, textAlign: 'right' }}>{item.box_count}</Box>
+                                                        <Box component="td" sx={{ p: 1, textAlign: 'center' }}>=</Box>
+                                                        <Box component="td" sx={{ p: 1, textAlign: 'right', fontWeight: 'bold' }}>
+                                                            {item.calculated_quantity}
+                                                        </Box>
+                                                        <Box component="td" sx={{ p: 1 }}>{item.notes || '-'}</Box>
+                                                    </Box>
+                                                ))}
+                                            </Box>
+                                            <Box component="tfoot">
+                                                <Box component="tr" sx={{ bgcolor: 'action.selected' }}>
+                                                    <Box component="td" colSpan={6} sx={{ p: 1, textAlign: 'right', fontWeight: 'bold' }}>
+                                                        合計:
+                                                    </Box>
+                                                    <Box component="td" sx={{ p: 1, textAlign: 'right', fontWeight: 'bold' }}>
+                                                        {selectedReceiving.items.reduce((sum, item) => sum + item.calculated_quantity, 0)}
+                                                    </Box>
+                                                    <Box component="td" sx={{ p: 1 }}></Box>
+                                                </Box>
+                                            </Box>
+                                        </Box>
+                                    ) : (
+                                        <Typography color="text.secondary">項目がありません</Typography>
+                                    )}
+                                </Paper>
+                            </Box>
+                        )}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setViewReceivingDialogOpen(false)}>
+                            閉じる
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* 受入れ削除確認ダイアログ */}
+                <Dialog open={deleteReceivingDialogOpen} onClose={() => setDeleteReceivingDialogOpen(false)}>
+                    <DialogTitle>受入れ削除確認</DialogTitle>
+                    <DialogContent>
+                        <Typography>
+                            この受入れ登録を削除してもよろしいですか？
+                        </Typography>
+                        {selectedReceiving && (
+                            <Box sx={{ mt: 2 }}>
+                                <Typography variant="body2" color="text.secondary">
+                                    受入日時: {new Date(selectedReceiving.receiving_date).toLocaleString('ja-JP')}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    製品: {selectedReceiving.product_name || '-'}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    項目数: {selectedReceiving.items_count || 0}件
+                                </Typography>
+                            </Box>
+                        )}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setDeleteReceivingDialogOpen(false)}>キャンセル</Button>
+                        <Button variant="contained" color="error" onClick={confirmDeleteReceiving}>
                             削除
                         </Button>
                     </DialogActions>
