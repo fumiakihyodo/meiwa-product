@@ -2,13 +2,10 @@
 'use client';
 
 import React from 'react';
-import { Inter } from 'next/font/google';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/context/AuthContext';
 import { theme } from './theme';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export default function RootLayout({
   children,
@@ -22,7 +19,7 @@ export default function RootLayout({
         <meta name="description" content="ユーザーアカウント管理システム" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
-      <body className={inter.className}>
+      <body style={{ fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <AuthProvider>

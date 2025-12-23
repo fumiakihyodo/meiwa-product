@@ -1,6 +1,28 @@
-// app/parts/[id]/prices/new/page.tsx
+// app/customers/branches/new/page.tsx
 'use client';
 
-import PriceFormPage from '../[id]/edit/page';
+import { Suspense } from 'react';
+import { Box, CircularProgress } from '@mui/material';
+import CustomerBranchFormPage from '../[id]/edit/page';
+import { AuthGuard } from '@/components/AuthGuard';
+import { Sidebar } from '@/components/Sidebar';
 
-export default PriceFormPage;
+function LoadingFallback() {
+    return (
+        <AuthGuard>
+            <Sidebar>
+                <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+                    <CircularProgress />
+                </Box>
+            </Sidebar>
+        </AuthGuard>
+    );
+}
+
+export default function NewCustomerBranchPage() {
+    return (
+        <Suspense fallback={<LoadingFallback />}>
+            <CustomerBranchFormPage />
+        </Suspense>
+    );
+}
