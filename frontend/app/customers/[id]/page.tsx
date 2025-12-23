@@ -35,7 +35,7 @@ import {
     Phone as PhoneIcon,
 } from '@mui/icons-material';
 import { Customer, CustomerBranch } from '@/types/customer';
-import { Product } from '@/types/business';
+import { Product } from '@/types/product';
 import { customerApi } from '@/services/apiCustomer';
 import { productApi } from '@/services/apiProduct';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -66,8 +66,9 @@ export default function CustomerDetailPage() {
     }, [params.id]);
 
     const fetchProducts = useCallback(async () => {
+        if (!params.id) return;
         try {
-            const data = await productApi.getProducts({ customer: params.id.toString() });
+            const data = await productApi.getProducts({ customer: String(params.id) });
             setProducts(data);
         } catch (error) {
             console.error(error);

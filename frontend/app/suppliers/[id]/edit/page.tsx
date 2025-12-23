@@ -20,7 +20,7 @@ import {
     ArrowBack as ArrowBackIcon,
     Save as SaveIcon,
 } from '@mui/icons-material';
-import { Supplier, SupplierCreateData, SupplierUpdateData } from '@/types/business';
+import { Supplier, SupplierCreateData, SupplierUpdateData } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';

@@ -54,7 +54,7 @@ export default function ProductFormPage() {
     const [parts, setParts] = useState<Part[]>([]);
     const [partsLoading, setPartsLoading] = useState(false);
     const [partModalOpen, setPartModalOpen] = useState(false);
-    const [editingPart, setEditingPart] = useState<Part | null>(null);
+    const [, setEditingPart] = useState<Part | null>(null);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [customersLoading, setCustomersLoading] = useState(true);
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -536,7 +536,6 @@ export default function ProductFormPage() {
                         onClose={() => setPartModalOpen(false)}
                         onSuccess={handlePartModalSuccess}
                         productId={Number(params.id)}
-                        editPart={editingPart}
                     />
                 </Box>
             </Sidebar>

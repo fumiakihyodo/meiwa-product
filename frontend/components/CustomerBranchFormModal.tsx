@@ -17,6 +17,7 @@ import {
     FormControlLabel,
     Switch,
     Box,
+    SelectChangeEvent,
 } from '@mui/material';
 import { BranchType, CustomerBranchCreateData, CustomerBranch } from '@/types/customer';
 import { customerBranchApi } from '@/services/apiCustomer';
@@ -59,6 +60,21 @@ export const CustomerBranchFormModal: React.FC<CustomerBranchFormModalProps> = (
         setFormData(prev => ({
             ...prev,
             [field]: value,
+        }));
+        if (errors[field]) {
+            setErrors(prev => ({
+                ...prev,
+                [field]: '',
+            }));
+        }
+    };
+
+    const handleSelectChange = (field: keyof CustomerBranchCreateData) => (
+        event: SelectChangeEvent<BranchType>
+    ) => {
+        setFormData(prev => ({
+            ...prev,
+            [field]: event.target.value,
         }));
         if (errors[field]) {
             setErrors(prev => ({
@@ -199,7 +215,7 @@ export const CustomerBranchFormModal: React.FC<CustomerBranchFormModalProps> = (
                                 <InputLabel>拠点種別</InputLabel>
                                 <Select
                                     value={formData.branch_type}
-                                    onChange={handleChange('branch_type')}
+                                    onChange={handleSelectChange('branch_type')}
                                     label="拠点種別"
                                 >
                                     {Object.values(BranchType).map((type) => (

@@ -310,7 +310,7 @@ export default function BulkImportPage() {
                                             <TableBody>
                                                 {result.created_items.map((item, index) => (
                                                     <TableRow key={index}>
-                                                        <TableCell>{item.row}</TableCell>
+                                                        <TableCell>{String(item.row ?? '')}</TableCell>
                                                         <TableCell>
                                                             <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
                                                                 {JSON.stringify(item, null, 2)}
