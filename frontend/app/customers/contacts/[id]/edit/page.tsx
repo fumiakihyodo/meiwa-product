@@ -1,7 +1,7 @@
 // app/customers/contacts/[id]/edit/page.tsx (または app/customers/contacts/new/page.tsx)
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import {
@@ -25,7 +25,7 @@ import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';
 import toast from 'react-hot-toast';
 
-export default function CustomerContactFormPage() {
+function CustomerContactFormContent() {
     const params = useParams();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -325,5 +325,21 @@ export default function CustomerContactFormPage() {
                 </Box>
             </Sidebar>
         </AuthGuard>
+    );
+}
+
+export default function CustomerContactFormPage() {
+    return (
+        <Suspense fallback={
+            <AuthGuard>
+                <Sidebar>
+                    <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+                        <CircularProgress />
+                    </Box>
+                </Sidebar>
+            </AuthGuard>
+        }>
+            <CustomerContactFormContent />
+        </Suspense>
     );
 }
