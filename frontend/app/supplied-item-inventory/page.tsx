@@ -500,15 +500,14 @@ export default function SuppliedItemInventoryPage() {
                             <ViewIcon />
                         </IconButton>
                     </Tooltip>
-                    <Tooltip title="受け入れ登録（準備中）">
-                        <span>
-                            <IconButton
-                                size="small"
-                                disabled
-                            >
-                                <CheckCircleIcon />
-                            </IconButton>
-                        </span>
+                    <Tooltip title="受入登録">
+                        <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => router.push(`/supplied-item-inventory/${params.row.id}?tab=receiving`)}
+                        >
+                            <ReceivingIcon />
+                        </IconButton>
                     </Tooltip>
                     <Tooltip title="員数確認（準備中）">
                         <span>

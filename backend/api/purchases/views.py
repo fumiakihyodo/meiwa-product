@@ -1419,6 +1419,90 @@ class SuppliedItemReceivingDetailView(generics.RetrieveUpdateDestroyAPIView):
             return SuppliedItemReceivingUpdateSerializer
         return SuppliedItemReceivingDetailSerializer
 
+    def destroy(self, request, *args, **kwargs):
+        """受入確認の削除時にリスト項目のステータスを再計算する
+
+        削除された受入れ登録の品番について、残りの受入れ数量を再計算し、
+        リスト数量を満たさなくなった項目のreceiving_confirmedをリセットする。
+        """
+        receiving = self.get_object()
+
+        # 削除前に必要な情報を収集
+        product_id = receiving.product_id or (
+            receiving.supplied_item_list.product_id if receiving.supplied_item_list else None
+        )
+        affected_item_numbers = set(item.item_number for item in receiving.items.all())
+        supplied_list = receiving.supplied_item_list
+
+        with transaction.atomic():
+            # 受入れ登録を削除
+            self.perform_destroy(receiving)
+
+            # 製品IDがある場合のみ、関連するリスト項目のステータスを再計算
+            if product_id and affected_item_numbers:
+                # 削除後の品番ごとの受入れ数量を再計算
+                remaining_quantities = SuppliedItemReceivingItem.objects.filter(
+                    receiving__status='completed'
+                ).filter(
+                    Q(receiving__supplied_item_list__product_id=product_id) |
+                    Q(receiving__product_id=product_id)
+                ).filter(
+                    item_number__in=affected_item_numbers
+                ).values('item_number').annotate(
+                    total_received=Sum('calculated_quantity')
+                )
+
+                remaining_qty_map = {
+                    item['item_number']: item['total_received'] or 0
+                    for item in remaining_quantities
+                }
+
+                # 影響を受けるすべてのリスト項目を取得して更新
+                affected_list_items = SuppliedItemListItem.objects.filter(
+                    supplied_item_list__product_id=product_id,
+                    item_number__in=affected_item_numbers
+                )
+
+                items_to_update = []
+                for list_item in affected_list_items:
+                    total_received = remaining_qty_map.get(list_item.item_number, 0)
+
+                    # 受入れ数量がリスト数量を満たさなくなった場合はステータスをリセット
+                    if total_received < list_item.quantity and list_item.receiving_confirmed:
+                        list_item.receiving_confirmed = False
+                        list_item.receiving_confirmed_at = None
+                        list_item.receiving_confirmed_by = None
+                        list_item.received_quantity = total_received if total_received > 0 else None
+                        list_item.quantity_per_box = None
+                        list_item.box_count = None
+                        items_to_update.append(list_item)
+                    elif total_received != (list_item.received_quantity or 0):
+                        # 数量のみ更新
+                        list_item.received_quantity = total_received if total_received > 0 else None
+                        items_to_update.append(list_item)
+
+                # 一括更新
+                if items_to_update:
+                    SuppliedItemListItem.objects.bulk_update(
+                        items_to_update,
+                        ['receiving_confirmed', 'receiving_confirmed_at', 'receiving_confirmed_by',
+                         'received_quantity', 'quantity_per_box', 'box_count']
+                    )
+
+                # リストのステータスも必要に応じて更新
+                if supplied_list:
+                    # 受入確認済みの項目数を再計算
+                    received_count = supplied_list.items.filter(receiving_confirmed=True).count()
+                    total_items = supplied_list.items.count()
+
+                    if received_count == 0:
+                        supplied_list.status = 'pending_receiving'
+                    elif received_count < total_items:
+                        supplied_list.status = 'receiving'
+                    supplied_list.save()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])

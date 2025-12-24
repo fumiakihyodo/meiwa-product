@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
     Box,
     Typography,
@@ -116,13 +116,19 @@ const StatusChip: React.FC<{ status: SuppliedItemListStatus; statusDisplay?: str
     );
 };
 
-export default function SuppliedItemListDetailPage() {
+function SuppliedItemListDetailContent() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const listId = Number(params.id);
 
+    // URLパラメータからタブを決定（tab=receivingの場合は受入確認比較タブ）
+    const tabParam = searchParams.get('tab');
+    const initialTab = tabParam === 'receiving' ? 1 : 0;
+    const shouldOpenReceivingForm = tabParam === 'receiving';
+
     // タブ状態
-    const [tabValue, setTabValue] = useState(0);
+    const [tabValue, setTabValue] = useState(initialTab);
 
     // データ
     const [list, setList] = useState<SuppliedItemList | null>(null);
@@ -144,7 +150,7 @@ export default function SuppliedItemListDetailPage() {
     // 受入れ登録
     const [receivingRows, setReceivingRows] = useState<ReceivingInputRow[]>([createEmptyReceivingRow()]);
     const [savingReceiving, setSavingReceiving] = useState(false);
-    const [showReceivingForm, setShowReceivingForm] = useState(false);
+    const [showReceivingForm, setShowReceivingForm] = useState(shouldOpenReceivingForm);
 
     // データ取得
     const fetchData = useCallback(async () => {
@@ -895,5 +901,17 @@ export default function SuppliedItemListDetailPage() {
                     </Card>
                 </TabPanel>
         </Box>
+    );
+}
+
+export default function SuppliedItemListDetailPage() {
+    return (
+        <Suspense fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                <CircularProgress />
+            </Box>
+        }>
+            <SuppliedItemListDetailContent />
+        </Suspense>
     );
 }
