@@ -39,6 +39,8 @@ import {
     HourglassEmpty as PendingIcon,
     Clear as ClearIcon,
     LocalShipping as ReceivingIcon,
+    Star as StarIcon,
+    StarBorder as StarBorderIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { purchasesApi } from '@/services/apiPurchases';
@@ -55,6 +57,26 @@ import {
 } from '@/types/purchases';
 import { Product } from '@/types/product';
 import { v4 as uuidv4 } from 'uuid';
+
+// localStorage キー
+const DEFAULT_PRODUCT_KEY = 'supplied_item_inventory_default_product';
+
+// デフォルト製品をlocalStorageから取得
+const getDefaultProductId = (): number | null => {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem(DEFAULT_PRODUCT_KEY);
+    return stored ? parseInt(stored, 10) : null;
+};
+
+// デフォルト製品をlocalStorageに保存
+const setDefaultProductId = (productId: number | null) => {
+    if (typeof window === 'undefined') return;
+    if (productId !== null) {
+        localStorage.setItem(DEFAULT_PRODUCT_KEY, productId.toString());
+    } else {
+        localStorage.removeItem(DEFAULT_PRODUCT_KEY);
+    }
+};
 
 // 受入れ入力行の型
 interface ReceivingInputRow {
@@ -199,10 +221,30 @@ export default function SuppliedItemInventoryPage() {
     // 受入れ登録モーダルを開く
     const handleOpenReceivingModal = () => {
         setReceivingModalOpen(true);
-        setReceivingProductId('');
+        // デフォルト製品があれば設定
+        const defaultId = getDefaultProductId();
+        if (defaultId && products.some(p => p.id === defaultId)) {
+            setReceivingProductId(defaultId);
+        } else {
+            setReceivingProductId('');
+        }
         setReceivingRows([createEmptyReceivingRow()]);
         setReceivingError(null);
         setReceivingSuccess(null);
+    };
+
+    // デフォルト製品を設定/解除
+    const handleToggleDefaultProduct = (productId: number) => {
+        const currentDefault = getDefaultProductId();
+        if (currentDefault === productId) {
+            // 既にデフォルトならば解除
+            setDefaultProductId(null);
+        } else {
+            // デフォルトに設定
+            setDefaultProductId(productId);
+        }
+        // UIを更新するためにre-render
+        setReceivingProductId(receivingProductId);
     };
 
     // 受入れ登録モーダルを閉じる
@@ -296,6 +338,7 @@ export default function SuppliedItemInventoryPage() {
     };
 
     // Enterキーで次のフィールドに移動
+    // 品名は自動補完されるためスキップし、品番 → 入数 → 箱数 → 備考 の順に移動
     const handleInputKeyDown = (
         e: React.KeyboardEvent<HTMLDivElement>,
         rowId: string,
@@ -303,7 +346,8 @@ export default function SuppliedItemInventoryPage() {
     ) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            const fieldOrder = ['item_number', 'item_name', 'quantity_per_box', 'box_count', 'notes'];
+            // 品名(item_name)は自動補完されるためスキップ
+            const fieldOrder = ['item_number', 'quantity_per_box', 'box_count', 'notes'];
             const currentIndex = fieldOrder.indexOf(fieldName);
             const rowIndex = receivingRows.findIndex(row => row.id === rowId);
 
@@ -315,32 +359,44 @@ export default function SuppliedItemInventoryPage() {
                 }
             }
 
+            // 品名フィールドでEnterを押した場合は入数に移動
+            if (fieldName === 'item_name') {
+                const nextField = document.querySelector(
+                    `[data-row-id="${rowId}"][data-field="quantity_per_box"] input`
+                ) as HTMLElement;
+                if (nextField) {
+                    nextField.focus();
+                }
+                return;
+            }
+
             // 次のフィールドまたは次の行の最初のフィールドにフォーカス
             let nextField: HTMLElement | null = null;
 
-            if (currentIndex < fieldOrder.length - 1) {
+            if (currentIndex >= 0 && currentIndex < fieldOrder.length - 1) {
                 // 同じ行の次のフィールド
                 nextField = document.querySelector(
                     `[data-row-id="${rowId}"][data-field="${fieldOrder[currentIndex + 1]}"] input`
                 ) as HTMLElement;
-            } else if (rowIndex < receivingRows.length - 1) {
-                // 次の行の最初のフィールド
-                const nextRowId = receivingRows[rowIndex + 1].id;
-                nextField = document.querySelector(
-                    `[data-row-id="${nextRowId}"][data-field="${fieldOrder[0]}"] input`
-                ) as HTMLElement;
-            } else {
-                // 最後の行の最後のフィールド → 新しい行を追加して最初のフィールドにフォーカス
-                addReceivingRow();
-                setTimeout(() => {
-                    // 新しい行のIDは追加後に変わるため、最後の行を探す
-                    const inputs = document.querySelectorAll('[data-field="item_number"] input');
-                    const lastInput = inputs[inputs.length - 1] as HTMLElement;
-                    if (lastInput) {
-                        lastInput.focus();
-                    }
-                }, 100);
-                return;
+            } else if (currentIndex === fieldOrder.length - 1 || fieldName === 'notes') {
+                // 最後のフィールド（備考）から次の行へ
+                if (rowIndex < receivingRows.length - 1) {
+                    const nextRowId = receivingRows[rowIndex + 1].id;
+                    nextField = document.querySelector(
+                        `[data-row-id="${nextRowId}"][data-field="${fieldOrder[0]}"] input`
+                    ) as HTMLElement;
+                } else {
+                    // 最後の行の最後のフィールド → 新しい行を追加して最初のフィールドにフォーカス
+                    addReceivingRow();
+                    setTimeout(() => {
+                        const inputs = document.querySelectorAll('[data-field="item_number"] input');
+                        const lastInput = inputs[inputs.length - 1] as HTMLElement;
+                        if (lastInput) {
+                            lastInput.focus();
+                        }
+                    }, 100);
+                    return;
+                }
             }
 
             if (nextField) {
@@ -1046,20 +1102,57 @@ export default function SuppliedItemInventoryPage() {
                         )}
 
                         {/* 製品選択 */}
-                        <FormControl fullWidth sx={{ mb: 3, mt: 1 }}>
-                            <InputLabel>製品を選択 *</InputLabel>
-                            <Select
-                                value={receivingProductId}
-                                label="製品を選択 *"
-                                onChange={(e) => setReceivingProductId(e.target.value as number)}
-                            >
-                                {products.map((p) => (
-                                    <MenuItem key={p.id} value={p.id}>
-                                        {p.product_number} - {p.product_name}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
+                        <Box sx={{ mb: 3, mt: 1 }}>
+                            <FormControl fullWidth>
+                                <InputLabel>製品を選択 *</InputLabel>
+                                <Select
+                                    value={receivingProductId}
+                                    label="製品を選択 *"
+                                    onChange={(e) => setReceivingProductId(e.target.value as number)}
+                                    renderValue={(selected) => {
+                                        const product = products.find(p => p.id === selected);
+                                        if (!product) return '';
+                                        const isDefault = getDefaultProductId() === product.id;
+                                        return (
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
+                                                {product.product_number} - {product.product_name}
+                                            </Box>
+                                        );
+                                    }}
+                                >
+                                    {products.map((p) => {
+                                        const isDefault = getDefaultProductId() === p.id;
+                                        return (
+                                            <MenuItem key={p.id} value={p.id}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                                    <Tooltip title={isDefault ? 'デフォルト解除' : 'デフォルトに設定'}>
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleToggleDefaultProduct(p.id);
+                                                            }}
+                                                            sx={{ p: 0.5 }}
+                                                        >
+                                                            {isDefault ? (
+                                                                <StarIcon sx={{ color: 'warning.main' }} />
+                                                            ) : (
+                                                                <StarBorderIcon sx={{ color: 'action.disabled' }} />
+                                                            )}
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <span>{p.product_number} - {p.product_name}</span>
+                                                </Box>
+                                            </MenuItem>
+                                        );
+                                    })}
+                                </Select>
+                            </FormControl>
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                ★をクリックするとデフォルト製品に設定できます
+                            </Typography>
+                        </Box>
 
                         {/* 受入れ入力フォーム */}
                         <Typography variant="subtitle2" sx={{ mb: 1 }}>受入れ項目</Typography>

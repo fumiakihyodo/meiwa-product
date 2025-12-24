@@ -321,6 +321,7 @@ function SuppliedItemListDetailContent() {
     };
 
     // Enterキーで次のフィールドに移動
+    // 品名は自動補完されるためスキップし、品番 → 入数 → 箱数 → 備考 の順に移動
     const handleInputKeyDown = (
         e: React.KeyboardEvent<HTMLDivElement>,
         rowId: string,
@@ -328,7 +329,8 @@ function SuppliedItemListDetailContent() {
     ) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            const fieldOrder = ['item_number', 'item_name', 'quantity_per_box', 'box_count', 'notes'];
+            // 品名(item_name)は自動補完されるためスキップ
+            const fieldOrder = ['item_number', 'quantity_per_box', 'box_count', 'notes'];
             const currentIndex = fieldOrder.indexOf(fieldName);
             const rowIndex = receivingRows.findIndex(row => row.id === rowId);
 
@@ -340,28 +342,44 @@ function SuppliedItemListDetailContent() {
                 }
             }
 
+            // 品名フィールドでEnterを押した場合は入数に移動
+            if (fieldName === 'item_name') {
+                const nextField = document.querySelector(
+                    `[data-row-id="${rowId}"][data-field="quantity_per_box"] input`
+                ) as HTMLElement;
+                if (nextField) {
+                    nextField.focus();
+                }
+                return;
+            }
+
             // 次のフィールドまたは次の行の最初のフィールドにフォーカス
             let nextField: HTMLElement | null = null;
 
-            if (currentIndex < fieldOrder.length - 1) {
+            if (currentIndex >= 0 && currentIndex < fieldOrder.length - 1) {
+                // 同じ行の次のフィールド
                 nextField = document.querySelector(
                     `[data-row-id="${rowId}"][data-field="${fieldOrder[currentIndex + 1]}"] input`
                 ) as HTMLElement;
-            } else if (rowIndex < receivingRows.length - 1) {
-                const nextRowId = receivingRows[rowIndex + 1].id;
-                nextField = document.querySelector(
-                    `[data-row-id="${nextRowId}"][data-field="${fieldOrder[0]}"] input`
-                ) as HTMLElement;
-            } else {
-                addReceivingRow();
-                setTimeout(() => {
-                    const inputs = document.querySelectorAll('[data-field="item_number"] input');
-                    const lastInput = inputs[inputs.length - 1] as HTMLElement;
-                    if (lastInput) {
-                        lastInput.focus();
-                    }
-                }, 100);
-                return;
+            } else if (currentIndex === fieldOrder.length - 1 || fieldName === 'notes') {
+                // 最後のフィールド（備考）から次の行へ
+                if (rowIndex < receivingRows.length - 1) {
+                    const nextRowId = receivingRows[rowIndex + 1].id;
+                    nextField = document.querySelector(
+                        `[data-row-id="${nextRowId}"][data-field="${fieldOrder[0]}"] input`
+                    ) as HTMLElement;
+                } else {
+                    // 最後の行の最後のフィールド → 新しい行を追加して最初のフィールドにフォーカス
+                    addReceivingRow();
+                    setTimeout(() => {
+                        const inputs = document.querySelectorAll('[data-field="item_number"] input');
+                        const lastInput = inputs[inputs.length - 1] as HTMLElement;
+                        if (lastInput) {
+                            lastInput.focus();
+                        }
+                    }, 100);
+                    return;
+                }
             }
 
             if (nextField) {
