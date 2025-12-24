@@ -18,6 +18,9 @@ import {
     Card,
     CardContent,
     LinearProgress,
+    TextField,
+    InputAdornment,
+    Divider,
 } from '@mui/material';
 import {
     DataGrid,
@@ -34,15 +37,44 @@ import {
     Warning as WarningIcon,
     PlaylistAddCheck as BulkConfirmIcon,
     ReportProblem as UnregisteredIcon,
+    LocalShipping as ReceivingIcon,
+    Add as AddIcon,
 } from '@mui/icons-material';
-import MainLayout from '@/components/layout/MainLayout';
+import { v4 as uuidv4 } from 'uuid';
 import { purchasesApi } from '@/services/apiPurchases';
 import {
     SuppliedItemList,
     SuppliedItemListItem,
     SuppliedItemListStatus,
     ReceivingComparisonResult,
+    SuppliedItemReceivingItemCreateData,
 } from '@/types/purchases';
+
+// 受入れ入力行の型
+interface ReceivingInputRow {
+    id: string;
+    item_number: string;
+    item_name: string;
+    quantity_per_box: number | '';
+    box_count: number | '';
+    calculated_quantity: number;
+    notes: string;
+    item_not_found: boolean;
+    is_loading: boolean;
+}
+
+// 空の受入入力行を作成
+const createEmptyReceivingRow = (): ReceivingInputRow => ({
+    id: uuidv4(),
+    item_number: '',
+    item_name: '',
+    quantity_per_box: '',
+    box_count: '',
+    calculated_quantity: 0,
+    notes: '',
+    item_not_found: false,
+    is_loading: false,
+});
 
 // タブパネル
 interface TabPanelProps {
@@ -108,6 +140,11 @@ export default function SuppliedItemListDetailPage() {
     const [comparisonData, setComparisonData] = useState<ReceivingComparisonResult | null>(null);
     const [loadingComparison, setLoadingComparison] = useState(false);
     const [bulkConfirming, setBulkConfirming] = useState(false);
+
+    // 受入れ登録
+    const [receivingRows, setReceivingRows] = useState<ReceivingInputRow[]>([createEmptyReceivingRow()]);
+    const [savingReceiving, setSavingReceiving] = useState(false);
+    const [showReceivingForm, setShowReceivingForm] = useState(false);
 
     // データ取得
     const fetchData = useCallback(async () => {
@@ -197,6 +234,195 @@ export default function SuppliedItemListDetailPage() {
         }
     };
 
+    // 受入れ入力行の更新
+    const updateReceivingRow = (id: string, field: keyof ReceivingInputRow, value: string | number) => {
+        setReceivingRows(rows => {
+            const newRows = rows.map(row => {
+                if (row.id !== id) return row;
+
+                const updatedRow = { ...row, [field]: value };
+
+                // 数量を自動計算
+                const qtyPerBox = typeof updatedRow.quantity_per_box === 'number' ? updatedRow.quantity_per_box : 0;
+                const boxCount = typeof updatedRow.box_count === 'number' ? updatedRow.box_count : 0;
+                updatedRow.calculated_quantity = qtyPerBox * boxCount;
+
+                return updatedRow;
+            });
+
+            // 最後の行に入力があったら新しい行を追加
+            const lastRow = newRows[newRows.length - 1];
+            if (lastRow.item_number && lastRow.quantity_per_box && lastRow.box_count) {
+                newRows.push(createEmptyReceivingRow());
+            }
+
+            return newRows;
+        });
+    };
+
+    // 受入れ入力行の削除
+    const removeReceivingRow = (id: string) => {
+        setReceivingRows(rows => {
+            if (rows.length <= 1) return rows;
+            return rows.filter(row => row.id !== id);
+        });
+    };
+
+    // 受入れ入力行の追加
+    const addReceivingRow = () => {
+        setReceivingRows(rows => [...rows, createEmptyReceivingRow()]);
+    };
+
+    // 品番から品名を自動取得
+    const lookupItemName = async (rowId: string, itemNumber: string) => {
+        if (!itemNumber.trim() || !list) return;
+
+        // ローディング状態を設定
+        setReceivingRows(rows => rows.map(row =>
+            row.id === rowId ? { ...row, is_loading: true } : row
+        ));
+
+        try {
+            const result = await purchasesApi.lookupItemByNumber(
+                itemNumber.trim(),
+                list.product
+            );
+
+            setReceivingRows(rows => rows.map(row => {
+                if (row.id !== rowId) return row;
+
+                if (result.found && result.item_name) {
+                    return {
+                        ...row,
+                        item_name: result.item_name,
+                        item_not_found: false,
+                        is_loading: false,
+                    };
+                } else {
+                    return {
+                        ...row,
+                        item_not_found: true,
+                        is_loading: false,
+                    };
+                }
+            }));
+        } catch (error) {
+            console.error('品番検索エラー:', error);
+            setReceivingRows(rows => rows.map(row =>
+                row.id === rowId ? { ...row, is_loading: false } : row
+            ));
+        }
+    };
+
+    // Enterキーで次のフィールドに移動
+    const handleInputKeyDown = (
+        e: React.KeyboardEvent<HTMLDivElement>,
+        rowId: string,
+        fieldName: string
+    ) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const fieldOrder = ['item_number', 'item_name', 'quantity_per_box', 'box_count', 'notes'];
+            const currentIndex = fieldOrder.indexOf(fieldName);
+            const rowIndex = receivingRows.findIndex(row => row.id === rowId);
+
+            // 品番フィールドでEnterを押したら品名検索も実行
+            if (fieldName === 'item_number') {
+                const row = receivingRows.find(r => r.id === rowId);
+                if (row && row.item_number) {
+                    lookupItemName(rowId, row.item_number);
+                }
+            }
+
+            // 次のフィールドまたは次の行の最初のフィールドにフォーカス
+            let nextField: HTMLElement | null = null;
+
+            if (currentIndex < fieldOrder.length - 1) {
+                nextField = document.querySelector(
+                    `[data-row-id="${rowId}"][data-field="${fieldOrder[currentIndex + 1]}"] input`
+                ) as HTMLElement;
+            } else if (rowIndex < receivingRows.length - 1) {
+                const nextRowId = receivingRows[rowIndex + 1].id;
+                nextField = document.querySelector(
+                    `[data-row-id="${nextRowId}"][data-field="${fieldOrder[0]}"] input`
+                ) as HTMLElement;
+            } else {
+                addReceivingRow();
+                setTimeout(() => {
+                    const inputs = document.querySelectorAll('[data-field="item_number"] input');
+                    const lastInput = inputs[inputs.length - 1] as HTMLElement;
+                    if (lastInput) {
+                        lastInput.focus();
+                    }
+                }, 100);
+                return;
+            }
+
+            if (nextField) {
+                nextField.focus();
+            }
+        }
+    };
+
+    // 受入れ登録を保存
+    const handleSaveReceiving = async () => {
+        if (!list) return;
+
+        const validRows = receivingRows.filter(row =>
+            row.item_number &&
+            typeof row.quantity_per_box === 'number' &&
+            typeof row.box_count === 'number'
+        );
+
+        if (validRows.length === 0) {
+            setError('受入れ項目を入力してください');
+            return;
+        }
+
+        setSavingReceiving(true);
+        setError(null);
+
+        try {
+            const items: SuppliedItemReceivingItemCreateData[] = validRows.map(row => ({
+                item_number: row.item_number,
+                item_name: row.item_name,
+                quantity_per_box: row.quantity_per_box as number,
+                box_count: row.box_count as number,
+                notes: row.notes,
+            }));
+
+            // 作成時はdraftで作成し、完了処理を行う
+            const receiving = await purchasesApi.createSuppliedItemReceiving({
+                product: list.product,
+                status: 'draft',
+                items,
+            });
+
+            // 完了処理
+            await purchasesApi.completeReceiving(receiving.id);
+            setSuccessMessage(`${validRows.length}件の受入れ登録を完了しました`);
+
+            // フォームをリセット
+            setReceivingRows([createEmptyReceivingRow()]);
+            setShowReceivingForm(false);
+
+            // データを更新
+            fetchData();
+            fetchComparisonData();
+        } catch (error) {
+            console.error('受入れ登録エラー:', error);
+            setError('受入れ登録に失敗しました');
+        } finally {
+            setSavingReceiving(false);
+        }
+    };
+
+    // 受入れ登録フォームをキャンセル
+    const handleCancelReceiving = () => {
+        setReceivingRows([createEmptyReceivingRow()]);
+        setShowReceivingForm(false);
+    };
+
     // リスト項目カラム
     const itemColumns: GridColDef[] = [
         { field: 'item_number', headerName: '品番', width: 150 },
@@ -251,24 +477,20 @@ export default function SuppliedItemListDetailPage() {
 
     if (loading) {
         return (
-            <MainLayout>
-                <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                    <CircularProgress />
-                </Box>
-            </MainLayout>
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                <CircularProgress />
+            </Box>
         );
     }
 
     if (!list) {
         return (
-            <MainLayout>
-                <Box sx={{ p: 3 }}>
-                    <Alert severity="error">リストが見つかりません</Alert>
-                    <Button startIcon={<BackIcon />} onClick={() => router.push('/supplied-item-inventory')} sx={{ mt: 2 }}>
-                        一覧に戻る
-                    </Button>
-                </Box>
-            </MainLayout>
+            <Box sx={{ p: 3 }}>
+                <Alert severity="error">リストが見つかりません</Alert>
+                <Button startIcon={<BackIcon />} onClick={() => router.push('/supplied-item-inventory')} sx={{ mt: 2 }}>
+                    一覧に戻る
+                </Button>
+            </Box>
         );
     }
 
@@ -278,8 +500,7 @@ export default function SuppliedItemListDetailPage() {
     const allCounted = countedCount === totalItems && totalItems > 0;
 
     return (
-        <MainLayout>
-            <Box sx={{ p: 3 }}>
+        <Box sx={{ p: 3 }}>
                 {/* ヘッダー */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -399,8 +620,16 @@ export default function SuppliedItemListDetailPage() {
                                 </Grid>
                             </Grid>
 
-                            {/* 一括確認ボタン */}
-                            <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+                            {/* 操作ボタン */}
+                            <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <Button
+                                    variant="contained"
+                                    color="primary"
+                                    startIcon={<ReceivingIcon />}
+                                    onClick={() => setShowReceivingForm(!showReceivingForm)}
+                                >
+                                    {showReceivingForm ? '受入れ登録を閉じる' : '受入れ登録'}
+                                </Button>
                                 <Button
                                     variant="contained"
                                     color="success"
@@ -417,10 +646,130 @@ export default function SuppliedItemListDetailPage() {
                                 >
                                     比較データを更新
                                 </Button>
-                                <Typography variant="body2" color="text.secondary">
-                                    受入れ数量がリスト数量以上の項目を一括で受入確認済みにできます
-                                </Typography>
                             </Box>
+
+                            {/* 受入れ登録フォーム */}
+                            {showReceivingForm && (
+                                <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}>
+                                    <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <ReceivingIcon />
+                                        受入れ登録
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                        品番・入数・箱数を入力してください。Enterキーで次のフィールドに移動します。
+                                    </Typography>
+
+                                    {/* 受入れ入力フォーム */}
+                                    <Box sx={{ mb: 2 }}>
+                                        {receivingRows.map((row, index) => (
+                                            <Box key={row.id} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                                                <Typography sx={{ width: 30, textAlign: 'center' }}>{index + 1}</Typography>
+                                                <TextField
+                                                    label="品番"
+                                                    size="small"
+                                                    value={row.item_number}
+                                                    onChange={(e) => updateReceivingRow(row.id, 'item_number', e.target.value)}
+                                                    onBlur={() => lookupItemName(row.id, row.item_number)}
+                                                    onKeyDown={(e) => handleInputKeyDown(e, row.id, 'item_number')}
+                                                    data-row-id={row.id}
+                                                    data-field="item_number"
+                                                    sx={{ width: 140 }}
+                                                />
+                                                <TextField
+                                                    label="品名"
+                                                    size="small"
+                                                    value={row.item_name}
+                                                    onChange={(e) => updateReceivingRow(row.id, 'item_name', e.target.value)}
+                                                    onKeyDown={(e) => handleInputKeyDown(e, row.id, 'item_name')}
+                                                    error={row.item_not_found}
+                                                    helperText={row.item_not_found ? '未登録' : ''}
+                                                    disabled={row.is_loading}
+                                                    data-row-id={row.id}
+                                                    data-field="item_name"
+                                                    InputProps={{
+                                                        endAdornment: row.is_loading ? (
+                                                            <InputAdornment position="end">
+                                                                <CircularProgress size={16} />
+                                                            </InputAdornment>
+                                                        ) : undefined,
+                                                    }}
+                                                    sx={{ width: 160 }}
+                                                />
+                                                <TextField
+                                                    label="入数"
+                                                    size="small"
+                                                    type="number"
+                                                    value={row.quantity_per_box}
+                                                    onChange={(e) => updateReceivingRow(row.id, 'quantity_per_box', parseInt(e.target.value) || '')}
+                                                    onKeyDown={(e) => handleInputKeyDown(e, row.id, 'quantity_per_box')}
+                                                    data-row-id={row.id}
+                                                    data-field="quantity_per_box"
+                                                    sx={{ width: 90 }}
+                                                />
+                                                <Typography>×</Typography>
+                                                <TextField
+                                                    label="箱数"
+                                                    size="small"
+                                                    type="number"
+                                                    value={row.box_count}
+                                                    onChange={(e) => updateReceivingRow(row.id, 'box_count', parseInt(e.target.value) || '')}
+                                                    onKeyDown={(e) => handleInputKeyDown(e, row.id, 'box_count')}
+                                                    data-row-id={row.id}
+                                                    data-field="box_count"
+                                                    sx={{ width: 90 }}
+                                                />
+                                                <Typography>=</Typography>
+                                                <TextField
+                                                    label="数量"
+                                                    size="small"
+                                                    value={row.calculated_quantity}
+                                                    InputProps={{ readOnly: true }}
+                                                    sx={{ width: 90 }}
+                                                    tabIndex={-1}
+                                                />
+                                                <TextField
+                                                    label="備考"
+                                                    size="small"
+                                                    value={row.notes}
+                                                    onChange={(e) => updateReceivingRow(row.id, 'notes', e.target.value)}
+                                                    onKeyDown={(e) => handleInputKeyDown(e, row.id, 'notes')}
+                                                    data-row-id={row.id}
+                                                    data-field="notes"
+                                                    sx={{ flex: 1, minWidth: 80 }}
+                                                />
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() => removeReceivingRow(row.id)}
+                                                    disabled={receivingRows.length <= 1}
+                                                >
+                                                    <ClearIcon />
+                                                </IconButton>
+                                            </Box>
+                                        ))}
+                                    </Box>
+
+                                    <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                                        <Button
+                                            variant="outlined"
+                                            onClick={handleCancelReceiving}
+                                            disabled={savingReceiving}
+                                        >
+                                            キャンセル
+                                        </Button>
+                                        <Button
+                                            variant="contained"
+                                            color="success"
+                                            startIcon={savingReceiving ? <CircularProgress size={20} /> : <CheckCircleIcon />}
+                                            onClick={handleSaveReceiving}
+                                            disabled={savingReceiving}
+                                        >
+                                            受入れ登録完了
+                                        </Button>
+                                    </Box>
+                                </Paper>
+                            )}
+
+                            <Divider sx={{ mb: 3 }} />
 
                             {/* 比較表 */}
                             <Typography variant="h6" sx={{ mb: 2 }}>リスト項目と受入れ数量の比較</Typography>
@@ -545,7 +894,6 @@ export default function SuppliedItemListDetailPage() {
                         </CardContent>
                     </Card>
                 </TabPanel>
-            </Box>
-        </MainLayout>
+        </Box>
     );
 }

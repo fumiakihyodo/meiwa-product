@@ -40,7 +40,7 @@ import {
     Clear as ClearIcon,
     LocalShipping as ReceivingIcon,
 } from '@mui/icons-material';
-import MainLayout from '@/components/layout/MainLayout';
+import { useRouter } from 'next/navigation';
 import { purchasesApi } from '@/services/apiPurchases';
 import { productApi } from '@/services/apiProduct';
 import CSVImportModal from '@/components/SuppliedItemInventory/CSVImportModal';
@@ -461,28 +461,25 @@ export default function SuppliedItemInventoryPage() {
                     return <Typography variant="caption" color="text.secondary">-</Typography>;
                 }
 
-                const { total_list_quantity, total_received_quantity, difference, has_shortage, has_excess } = summary;
+                const { total_sku_count, completed_sku_count, incomplete_sku_count } = summary;
 
-                // 差異がある場合は赤色で表示
-                const differenceColor = has_shortage ? 'error.main' : (has_excess ? 'warning.main' : 'success.main');
-                const differenceText = difference > 0 ? `+${difference}` : difference.toString();
+                // 全て完了した場合は緑、未完了がある場合は黄色
+                const isAllCompleted = incomplete_sku_count === 0 && total_sku_count > 0;
 
                 return (
                     <Box sx={{ width: '100%' }}>
-                        <Typography variant="caption" component="div">
-                            予定: {total_list_quantity} / 受入: {total_received_quantity}
-                        </Typography>
-                        <Typography
-                            variant="caption"
-                            component="div"
-                            sx={{
-                                color: differenceColor,
-                                fontWeight: difference !== 0 ? 'bold' : 'normal'
-                            }}
-                        >
-                            差異: {differenceText}
-                            {has_shortage && ' (欠品)'}
-                            {has_excess && ' (過剰)'}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            {isAllCompleted ? (
+                                <CheckCircleIcon color="success" fontSize="small" />
+                            ) : incomplete_sku_count > 0 ? (
+                                <PendingIcon color="warning" fontSize="small" />
+                            ) : null}
+                            <Typography variant="caption" component="span">
+                                {isAllCompleted ? '完了' : '受入中'}
+                            </Typography>
+                        </Box>
+                        <Typography variant="caption" component="div" color="text.secondary">
+                            未完了: {incomplete_sku_count} / 完了: {completed_sku_count}
                         </Typography>
                     </Box>
                 );
@@ -498,7 +495,7 @@ export default function SuppliedItemInventoryPage() {
                     <Tooltip title="詳細確認">
                         <IconButton
                             size="small"
-                            onClick={() => window.location.href = `/supplied-item-inventory/${params.row.id}`}
+                            onClick={() => router.push(`/supplied-item-inventory/${params.row.id}`)}
                         >
                             <ViewIcon />
                         </IconButton>
@@ -691,9 +688,11 @@ export default function SuppliedItemInventoryPage() {
         }
     };
 
+    // ルーターを使用して遷移
+    const router = useRouter();
+
     return (
-        <MainLayout>
-            <Box sx={{ p: 3 }}>
+        <Box sx={{ p: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                     <Typography variant="h5">支給品在庫管理</Typography>
                     <Box>
@@ -1178,7 +1177,6 @@ export default function SuppliedItemInventoryPage() {
                         </Button>
                     </DialogActions>
                 </Dialog>
-            </Box>
-        </MainLayout>
+        </Box>
     );
 }

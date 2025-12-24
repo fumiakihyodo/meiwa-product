@@ -1798,14 +1798,23 @@ def get_receiving_summaries_bulk(request):
     # 各リストの製品IDを収集
     product_ids = set(l['product_id'] for l in lists)
 
-    # リスト項目の合計数量を集計
+    # リスト項目の合計数量とSKU数を集計
     list_item_totals = SuppliedItemListItem.objects.filter(
         supplied_item_list_id__in=list_ids
     ).values('supplied_item_list_id').annotate(
-        total_list_quantity=Sum('quantity')
+        total_list_quantity=Sum('quantity'),
+        total_sku_count=Count('id'),
+        completed_sku_count=Count('id', filter=Q(receiving_confirmed=True)),
     )
     list_quantity_map = {
         item['supplied_item_list_id']: item['total_list_quantity'] or 0
+        for item in list_item_totals
+    }
+    list_sku_map = {
+        item['supplied_item_list_id']: {
+            'total_sku_count': item['total_sku_count'] or 0,
+            'completed_sku_count': item['completed_sku_count'] or 0,
+        }
         for item in list_item_totals
     }
 
@@ -1840,6 +1849,12 @@ def get_receiving_summaries_bulk(request):
         total_received = product_received_map.get(list_info['product_id'], 0)
         difference = total_received - total_list_quantity
 
+        # SKU情報を取得
+        sku_info = list_sku_map.get(list_id, {'total_sku_count': 0, 'completed_sku_count': 0})
+        total_sku_count = sku_info['total_sku_count']
+        completed_sku_count = sku_info['completed_sku_count']
+        incomplete_sku_count = total_sku_count - completed_sku_count
+
         results.append({
             'list_id': list_id,
             'list_number': list_info['list_number'],
@@ -1849,6 +1864,10 @@ def get_receiving_summaries_bulk(request):
             'is_sufficient': total_received >= total_list_quantity,
             'has_shortage': difference < 0,
             'has_excess': difference > 0,
+            # SKUベースのカウント
+            'total_sku_count': total_sku_count,
+            'completed_sku_count': completed_sku_count,
+            'incomplete_sku_count': incomplete_sku_count,
         })
 
     return Response({

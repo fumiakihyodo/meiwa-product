@@ -535,4 +535,8 @@ export interface ReceivingSummary {
     is_sufficient: boolean;
     has_shortage: boolean;
     has_excess: boolean;
+    // SKUベースのカウント
+    total_sku_count: number;
+    completed_sku_count: number;
+    incomplete_sku_count: number;
 }
