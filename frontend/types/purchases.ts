@@ -347,6 +347,26 @@ export interface SuppliedItemReceivingItemCreateData {
     notes?: string;
 }
 
+// 部品別受入一覧項目
+export interface ReceivingItemListItem {
+    id: number;
+    item_number: string;
+    item_name: string;
+    quantity_per_box: number;
+    box_count: number;
+    calculated_quantity: number;
+    notes: string;
+    receiving_id: number;
+    receiving_date: string;
+    receiving_status: ReceivingStatus;
+    receiving_status_display: string;
+    list_number: string | null;
+    list_id: number | null;
+    product_id: number | null;
+    product_number: string | null;
+    product_name: string | null;
+}
+
 // 支給品在庫
 export interface SuppliedItemInventory {
     id: number;

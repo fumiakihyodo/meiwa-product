@@ -93,4 +93,7 @@ urlpatterns = [
 
     # 品番検索
     path('lookup-item/', views.lookup_item_by_number, name='lookup_item_by_number'),
+
+    # 部品別受入一覧
+    path('supplied-item-receiving-items/', views.get_receiving_items_list, name='get_receiving_items_list'),
 ]

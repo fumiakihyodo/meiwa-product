@@ -38,6 +38,7 @@ import {
     BulkConfirmReceivingResult,
     UnregisteredItemsResult,
     ReceivingSummary,
+    ReceivingItemListItem,
 } from '@/types/purchases';
 
 import {
@@ -662,5 +663,18 @@ export const purchasesApi = {
         }
         const response = await apiClient.get('/purchases/lookup-item/', { params });
         return response.data;
+    },
+
+    // 部品別受入一覧を取得
+    getReceivingItemsList: async (params?: {
+        product?: number;
+        status?: ReceivingStatus;
+        count_confirmed?: string;
+    }): Promise<ReceivingItemListItem[]> => {
+        const response = await apiClient.get<{ count: number; results: ReceivingItemListItem[] }>(
+            '/purchases/supplied-item-receiving-items/',
+            { params }
+        );
+        return response.data.results;
     },
 };

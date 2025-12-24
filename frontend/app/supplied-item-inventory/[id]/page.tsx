@@ -416,7 +416,9 @@ function SuppliedItemListDetailContent() {
             }));
 
             // 作成時はdraftで作成し、完了処理を行う
+            // supplied_item_list を設定してリスト番号と紐づける
             const receiving = await purchasesApi.createSuppliedItemReceiving({
+                supplied_item_list: listId,
                 product: list.product,
                 status: 'draft',
                 items,

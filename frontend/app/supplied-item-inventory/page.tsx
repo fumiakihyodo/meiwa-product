@@ -54,6 +54,7 @@ import {
     SuppliedItemReceivingItemCreateData,
     ReceivingSummary,
     ReceivingStatus,
+    ReceivingItemListItem,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
 import { v4 as uuidv4 } from 'uuid';
@@ -156,6 +157,11 @@ export default function SuppliedItemInventoryPage() {
     const [receivingSummaries, setReceivingSummaries] = useState<Record<number, ReceivingSummary>>({});
     const [loadingSummaries, setLoadingSummaries] = useState(false);
 
+    // 受入一覧サブタブ関連
+    const [receivingSubTab, setReceivingSubTab] = useState(0);
+    const [receivingItems, setReceivingItems] = useState<ReceivingItemListItem[]>([]);
+    const [loadingReceivingItems, setLoadingReceivingItems] = useState(false);
+
     // データ取得
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -204,6 +210,29 @@ export default function SuppliedItemInventoryPage() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // 部品一覧の取得
+    const fetchReceivingItems = useCallback(async () => {
+        setLoadingReceivingItems(true);
+        try {
+            // 員数確認前の全ての部品を取得
+            const items = await purchasesApi.getReceivingItemsList({
+                status: 'completed',
+            });
+            setReceivingItems(items);
+        } catch (error) {
+            console.error('部品一覧取得エラー:', error);
+        } finally {
+            setLoadingReceivingItems(false);
+        }
+    }, []);
+
+    // 受入一覧タブの部品一覧サブタブが選択された時に部品一覧を取得
+    useEffect(() => {
+        if (tabValue === 1 && receivingSubTab === 1 && receivingItems.length === 0 && !loadingReceivingItems) {
+            fetchReceivingItems();
+        }
+    }, [tabValue, receivingSubTab, receivingItems.length, loadingReceivingItems, fetchReceivingItems]);
 
     // 削除
     const handleDelete = async () => {
@@ -710,6 +739,88 @@ export default function SuppliedItemInventoryPage() {
         },
     ];
 
+    // 部品一覧カラム（受入一覧の部品別タブ用）
+    const receivingItemColumns: GridColDef[] = [
+        { field: 'item_number', headerName: '品番', width: 150 },
+        { field: 'item_name', headerName: '品名', width: 180 },
+        {
+            field: 'quantity_per_box',
+            headerName: '入数',
+            width: 80,
+            type: 'number',
+        },
+        {
+            field: 'box_count',
+            headerName: '箱数',
+            width: 80,
+            type: 'number',
+        },
+        {
+            field: 'calculated_quantity',
+            headerName: '受入数量',
+            width: 100,
+            type: 'number',
+        },
+        {
+            field: 'receiving_date',
+            headerName: '受入日時',
+            width: 150,
+            renderCell: (params: GridRenderCellParams<ReceivingItemListItem>) => {
+                const date = new Date(params.row.receiving_date);
+                return date.toLocaleString('ja-JP', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
+            },
+        },
+        {
+            field: 'list_number',
+            headerName: 'リスト番号',
+            width: 150,
+            renderCell: (params: GridRenderCellParams<ReceivingItemListItem>) => {
+                return params.row.list_number || '未紐付け';
+            },
+        },
+        {
+            field: 'product_name',
+            headerName: '製品',
+            width: 180,
+            renderCell: (params: GridRenderCellParams<ReceivingItemListItem>) => {
+                const row = params.row;
+                if (row.product_number && row.product_name) {
+                    return `${row.product_number} - ${row.product_name}`;
+                }
+                return row.product_name || '-';
+            },
+        },
+        {
+            field: 'receiving_status',
+            headerName: 'ステータス',
+            width: 100,
+            renderCell: (params: GridRenderCellParams<ReceivingItemListItem>) => {
+                const status = params.row.receiving_status;
+                const isDraft = status === 'draft';
+                return (
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.5,
+                            color: isDraft ? 'warning.main' : 'success.main',
+                        }}
+                    >
+                        {isDraft ? <PendingIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
+                        {params.row.receiving_status_display || (isDraft ? '一時保存' : '完了')}
+                    </Box>
+                );
+            },
+        },
+        { field: 'notes', headerName: '備考', width: 150, flex: 1 },
+    ];
+
     // 受入れ詳細表示
     const [viewReceivingDialogOpen, setViewReceivingDialogOpen] = useState(false);
     const [selectedReceiving, setSelectedReceiving] = useState<SuppliedItemReceiving | null>(null);
@@ -852,37 +963,87 @@ export default function SuppliedItemInventoryPage() {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={1}>
-                    {/* 受入れ一覧フィルター */}
-                    <Paper sx={{ p: 2, mb: 2 }}>
-                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                            <FormControl size="small" sx={{ minWidth: 150 }}>
-                                <InputLabel>ステータス</InputLabel>
-                                <Select
-                                    value={receivingStatusFilter}
-                                    label="ステータス"
-                                    onChange={(e) => setReceivingStatusFilter(e.target.value as ReceivingStatus | '')}
-                                >
-                                    <MenuItem value="">すべて</MenuItem>
-                                    <MenuItem value="draft">一時保存</MenuItem>
-                                    <MenuItem value="completed">完了</MenuItem>
-                                </Select>
-                            </FormControl>
-                        </Box>
-                    </Paper>
+                    {/* 受入一覧内のサブタブ */}
+                    <Tabs
+                        value={receivingSubTab}
+                        onChange={(e, v) => setReceivingSubTab(v)}
+                        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+                    >
+                        <Tab label="受入別" />
+                        <Tab label="部品一覧" />
+                    </Tabs>
 
-                    {/* 受入れ一覧 */}
-                    <Paper sx={{ height: 500 }}>
-                        <DataGrid
-                            rows={receivings}
-                            columns={receivingColumns}
-                            loading={loading}
-                            pageSizeOptions={[10, 25, 50]}
-                            initialState={{
-                                pagination: { paginationModel: { pageSize: 10 } },
-                            }}
-                            disableRowSelectionOnClick
-                        />
-                    </Paper>
+                    {/* 受入別（既存の表示） */}
+                    {receivingSubTab === 0 && (
+                        <>
+                            {/* 受入れ一覧フィルター */}
+                            <Paper sx={{ p: 2, mb: 2 }}>
+                                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                                    <FormControl size="small" sx={{ minWidth: 150 }}>
+                                        <InputLabel>ステータス</InputLabel>
+                                        <Select
+                                            value={receivingStatusFilter}
+                                            label="ステータス"
+                                            onChange={(e) => setReceivingStatusFilter(e.target.value as ReceivingStatus | '')}
+                                        >
+                                            <MenuItem value="">すべて</MenuItem>
+                                            <MenuItem value="draft">一時保存</MenuItem>
+                                            <MenuItem value="completed">完了</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                </Box>
+                            </Paper>
+
+                            {/* 受入れ一覧 */}
+                            <Paper sx={{ height: 500 }}>
+                                <DataGrid
+                                    rows={receivings}
+                                    columns={receivingColumns}
+                                    loading={loading}
+                                    pageSizeOptions={[10, 25, 50]}
+                                    initialState={{
+                                        pagination: { paginationModel: { pageSize: 10 } },
+                                    }}
+                                    disableRowSelectionOnClick
+                                />
+                            </Paper>
+                        </>
+                    )}
+
+                    {/* 部品一覧 */}
+                    {receivingSubTab === 1 && (
+                        <>
+                            <Paper sx={{ p: 2, mb: 2 }}>
+                                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <Typography variant="body2" color="text.secondary">
+                                        員数確認前の全ての部品の受入数量を表示しています
+                                    </Typography>
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        startIcon={<RefreshIcon />}
+                                        onClick={fetchReceivingItems}
+                                    >
+                                        更新
+                                    </Button>
+                                </Box>
+                            </Paper>
+
+                            {/* 部品一覧 */}
+                            <Paper sx={{ height: 500 }}>
+                                <DataGrid
+                                    rows={receivingItems}
+                                    columns={receivingItemColumns}
+                                    loading={loadingReceivingItems}
+                                    pageSizeOptions={[10, 25, 50]}
+                                    initialState={{
+                                        pagination: { paginationModel: { pageSize: 10 } },
+                                    }}
+                                    disableRowSelectionOnClick
+                                />
+                            </Paper>
+                        </>
+                    )}
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={2}>

@@ -2682,3 +2682,82 @@ def lookup_item_by_number(request):
         "supplied_item_id": None,
         "product_id": None,
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_receiving_items_list(request):
+    """
+    受入れ登録された部品（SuppliedItemReceivingItem）の一覧を取得
+
+    クエリパラメータ:
+    - product: 製品ID
+    - status: 受入ステータス（draft, completed）
+    - count_confirmed: 員数確認済みかどうか（true/false）
+    """
+    from django.db.models import F
+
+    queryset = SuppliedItemReceivingItem.objects.select_related(
+        'receiving',
+        'receiving__supplied_item_list',
+        'receiving__supplied_item_list__product',
+        'receiving__product',
+        'supplied_item',
+    ).order_by('-receiving__receiving_date', 'item_number')
+
+    # 製品でフィルタ
+    product_id = request.query_params.get('product', None)
+    if product_id:
+        queryset = queryset.filter(
+            Q(receiving__supplied_item_list__product_id=product_id) |
+            Q(receiving__product_id=product_id)
+        )
+
+    # 受入ステータスでフィルタ
+    status_filter = request.query_params.get('status', None)
+    if status_filter:
+        queryset = queryset.filter(receiving__status=status_filter)
+
+    # 員数確認済みフィルタ（未確認のみ表示する場合）
+    count_confirmed = request.query_params.get('count_confirmed', None)
+    if count_confirmed is not None:
+        if count_confirmed.lower() == 'false':
+            # 員数確認が済んでいない部品のみ
+            # 対応するリスト項目がcount_confirmed=Falseのものを取得
+            # または、リストに紐づいていないもの
+            queryset = queryset.filter(
+                Q(receiving__supplied_item_list__items__item_number=F('item_number'),
+                  receiving__supplied_item_list__items__count_confirmed=False) |
+                Q(receiving__supplied_item_list__isnull=True)
+            ).distinct()
+
+    # 結果をシリアライズ
+    result = []
+    for item in queryset:
+        receiving = item.receiving
+        supplied_list = receiving.supplied_item_list
+        product = supplied_list.product if supplied_list else receiving.product
+
+        result.append({
+            'id': item.id,
+            'item_number': item.item_number,
+            'item_name': item.item_name or '',
+            'quantity_per_box': item.quantity_per_box,
+            'box_count': item.box_count,
+            'calculated_quantity': item.calculated_quantity,
+            'notes': item.notes or '',
+            'receiving_id': receiving.id,
+            'receiving_date': receiving.receiving_date.isoformat(),
+            'receiving_status': receiving.status,
+            'receiving_status_display': receiving.get_status_display(),
+            'list_number': supplied_list.list_number if supplied_list else None,
+            'list_id': supplied_list.id if supplied_list else None,
+            'product_id': product.id if product else None,
+            'product_number': product.product_number if product else None,
+            'product_name': product.product_name if product else None,
+        })
+
+    return Response({
+        'count': len(result),
+        'results': result
+    }, status=status.HTTP_200_OK)
