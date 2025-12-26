@@ -291,8 +291,11 @@ export type ReceivingStatus = 'draft' | 'completed';
 export interface SuppliedItemReceiving {
     id: number;
     supplied_item_list?: number | null;
+    supplied_item_lists?: number[];  // 多対多紐づけ
     product?: number | null;
     list_number?: string;
+    list_numbers?: string[];  // 多対多紐づけの全リスト番号
+    list_ids?: number[];  // 多対多紐づけの全リストID
     product_number?: string;
     product_name?: string;
     status: ReceivingStatus;
@@ -327,6 +330,7 @@ export interface SuppliedItemReceivingItem {
 // 支給品受入確認作成データ
 export interface SuppliedItemReceivingCreateData {
     supplied_item_list?: number | null;
+    list_ids?: number[];  // 多対多紐づけ用
     product?: number | null;
     status?: ReceivingStatus;
     receiving_date?: string;

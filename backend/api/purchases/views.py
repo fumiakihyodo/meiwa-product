@@ -1504,10 +1504,114 @@ class SuppliedItemReceivingDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def auto_update_receiving_status(product_id, user, list_ids=None):
+    """受入れ数量に基づいて自動的にリスト項目のステータスを更新する
+
+    Args:
+        product_id: 製品ID
+        user: リクエストユーザー
+        list_ids: 更新対象のリストID一覧（Noneの場合は製品に関連する全リスト）
+
+    Returns:
+        dict: 更新結果の情報
+    """
+    from django.utils import timezone
+    now = timezone.now()
+
+    # 品番ごとの完了済み受入れ数量を集計
+    receiving_aggregation = SuppliedItemReceivingItem.objects.filter(
+        receiving__status='completed'
+    ).filter(
+        Q(receiving__supplied_item_list__product_id=product_id) |
+        Q(receiving__product_id=product_id)
+    ).values('item_number').annotate(
+        total_received=Sum('calculated_quantity')
+    )
+
+    received_quantities = {
+        item['item_number']: item['total_received'] or 0
+        for item in receiving_aggregation
+    }
+
+    # 対象リストを取得
+    if list_ids:
+        lists = SuppliedItemList.objects.filter(id__in=list_ids, product_id=product_id)
+    else:
+        lists = SuppliedItemList.objects.filter(product_id=product_id).exclude(
+            status__in=['completed', 'cancelled']
+        )
+
+    updated_items = []
+    updated_lists = []
+
+    for supplied_list in lists:
+        list_items = list(supplied_list.items.all())
+        items_to_update = []
+
+        for list_item in list_items:
+            total_received = received_quantities.get(list_item.item_number, 0)
+
+            # 受入れ数量 >= リスト数量 なら自動的に受入確認済みにする
+            if total_received >= list_item.quantity and not list_item.receiving_confirmed:
+                list_item.receiving_confirmed = True
+                list_item.receiving_confirmed_at = now
+                list_item.receiving_confirmed_by = user
+                list_item.received_quantity = total_received
+                items_to_update.append(list_item)
+            elif list_item.received_quantity != total_received:
+                # 数量のみ更新
+                list_item.received_quantity = total_received if total_received > 0 else None
+                items_to_update.append(list_item)
+
+        if items_to_update:
+            SuppliedItemListItem.objects.bulk_update(
+                items_to_update,
+                ['receiving_confirmed', 'receiving_confirmed_at',
+                 'receiving_confirmed_by', 'received_quantity']
+            )
+            updated_items.extend(items_to_update)
+
+        # リストのステータスを更新
+        received_count = supplied_list.items.filter(receiving_confirmed=True).count()
+        count_confirmed_count = supplied_list.items.filter(count_confirmed=True).count()
+        total_count = supplied_list.items.count()
+
+        new_status = supplied_list.status
+
+        # 全アイテムが受入確認済み AND 員数確認済みなら完了
+        if received_count == total_count and count_confirmed_count == total_count:
+            new_status = 'completed'
+        # 全アイテムが受入確認済みなら員数確認待ち
+        elif received_count == total_count:
+            new_status = 'pending_count'
+        # 一部受入確認済みなら受入中
+        elif received_count > 0:
+            new_status = 'receiving'
+        # 受入確認なしなら受入待ち
+        else:
+            new_status = 'pending_receiving'
+
+        if supplied_list.status != new_status:
+            supplied_list.status = new_status
+            supplied_list.save()
+            updated_lists.append(supplied_list)
+
+    return {
+        'updated_items_count': len(updated_items),
+        'updated_lists': [{'id': l.id, 'status': l.status} for l in updated_lists]
+    }
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def complete_receiving(request, pk):
-    """受入確認を完了し、リスト項目を更新する"""
+    """受入確認を完了し、自動的にリスト項目のステータスを更新する
+
+    改善点:
+    - 受入れ数量 >= リスト数量 の項目は自動的に受入確認済みに
+    - 多対多紐づけ（supplied_item_lists）に対応
+    - 全アイテム完了時にリストを「完了」状態に更新
+    """
     try:
         receiving = SuppliedItemReceiving.objects.get(pk=pk)
 
@@ -1518,30 +1622,29 @@ def complete_receiving(request, pk):
             )
 
         with transaction.atomic():
-            # 受入確認項目をリスト項目に反映
-            for item in receiving.items.all():
-                if item.list_item:
-                    list_item = item.list_item
-                    list_item.receiving_confirmed = True
-                    list_item.receiving_confirmed_at = timezone.now()
-                    list_item.receiving_confirmed_by = request.user
-                    list_item.received_quantity = item.calculated_quantity
-                    list_item.quantity_per_box = item.quantity_per_box
-                    list_item.box_count = item.box_count
-                    list_item.save()
-
             # 受入確認ステータスを完了に
             receiving.status = 'completed'
             receiving.save()
 
-            # リストのステータスも更新（リストに紐付いている場合のみ）
-            supplied_list = receiving.supplied_item_list
-            if supplied_list:
-                if supplied_list.received_items_count == supplied_list.total_items:
-                    supplied_list.status = 'pending_count'
-                else:
-                    supplied_list.status = 'receiving'
-                supplied_list.save()
+            # 製品IDを取得（リスト経由またはproduct直接）
+            product_id = receiving.product_id
+            if not product_id and receiving.supplied_item_list:
+                product_id = receiving.supplied_item_list.product_id
+
+            # 多対多紐づけのリストIDを取得
+            list_ids = list(receiving.supplied_item_lists.values_list('id', flat=True))
+
+            # 後方互換：単一リストも含める
+            if receiving.supplied_item_list_id and receiving.supplied_item_list_id not in list_ids:
+                list_ids.append(receiving.supplied_item_list_id)
+
+            # 自動ステータス更新を実行
+            if product_id:
+                auto_update_receiving_status(
+                    product_id=product_id,
+                    user=request.user,
+                    list_ids=list_ids if list_ids else None
+                )
 
         return Response(
             SuppliedItemReceivingDetailSerializer(receiving).data,

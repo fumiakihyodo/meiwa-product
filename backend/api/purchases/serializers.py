@@ -743,6 +743,7 @@ class SuppliedItemReceivingItemCreateSerializer(serializers.ModelSerializer):
 class SuppliedItemReceivingListSerializer(serializers.ModelSerializer):
     """支給品受入確認一覧シリアライザー"""
     list_number = serializers.SerializerMethodField()
+    list_numbers = serializers.SerializerMethodField()  # 多対多紐づけ用
     product_name = serializers.SerializerMethodField()
     product_number = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -757,16 +758,29 @@ class SuppliedItemReceivingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceiving
         fields = [
-            'id', 'supplied_item_list', 'product', 'list_number',
-            'product_number', 'product_name',
+            'id', 'supplied_item_list', 'supplied_item_lists', 'product', 'list_number',
+            'list_numbers', 'product_number', 'product_name',
             'status', 'status_display', 'receiving_date', 'items_count',
             'total_quantity', 'notes', 'created_at', 'updated_at', 'created_by_name'
         ]
 
     def get_list_number(self, obj):
+        # 後方互換: 単一リストがある場合はそのリスト番号を返す
         if obj.supplied_item_list:
             return obj.supplied_item_list.list_number
+        # 多対多紐づけがある場合は最初のリスト番号を返す
+        first_list = obj.supplied_item_lists.first()
+        if first_list:
+            return first_list.list_number
         return None
+
+    def get_list_numbers(self, obj):
+        """多対多紐づけされた全リスト番号を返す"""
+        list_numbers = list(obj.supplied_item_lists.values_list('list_number', flat=True))
+        # 後方互換: 単一リストも含める
+        if obj.supplied_item_list and obj.supplied_item_list.list_number not in list_numbers:
+            list_numbers.insert(0, obj.supplied_item_list.list_number)
+        return list_numbers
 
     def get_product_name(self, obj):
         if obj.supplied_item_list and obj.supplied_item_list.product:
@@ -789,6 +803,8 @@ class SuppliedItemReceivingListSerializer(serializers.ModelSerializer):
 class SuppliedItemReceivingDetailSerializer(serializers.ModelSerializer):
     """支給品受入確認詳細シリアライザー"""
     list_number = serializers.SerializerMethodField()
+    list_numbers = serializers.SerializerMethodField()  # 多対多紐づけ用
+    list_ids = serializers.SerializerMethodField()  # 多対多紐づけのID一覧
     product_name = serializers.SerializerMethodField()
     product_number = serializers.SerializerMethodField()
     items = SuppliedItemReceivingItemSerializer(many=True, read_only=True)
@@ -803,7 +819,8 @@ class SuppliedItemReceivingDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceiving
         fields = [
-            'id', 'supplied_item_list', 'product', 'list_number',
+            'id', 'supplied_item_list', 'supplied_item_lists', 'product',
+            'list_number', 'list_numbers', 'list_ids',
             'product_number', 'product_name',
             'status', 'status_display', 'receiving_date', 'items',
             'total_quantity', 'notes', 'created_at', 'updated_at', 'created_by', 'created_by_name'
@@ -811,9 +828,30 @@ class SuppliedItemReceivingDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
 
     def get_list_number(self, obj):
+        # 後方互換: 単一リストがある場合はそのリスト番号を返す
         if obj.supplied_item_list:
             return obj.supplied_item_list.list_number
+        # 多対多紐づけがある場合は最初のリスト番号を返す
+        first_list = obj.supplied_item_lists.first()
+        if first_list:
+            return first_list.list_number
         return None
+
+    def get_list_numbers(self, obj):
+        """多対多紐づけされた全リスト番号を返す"""
+        list_numbers = list(obj.supplied_item_lists.values_list('list_number', flat=True))
+        # 後方互換: 単一リストも含める
+        if obj.supplied_item_list and obj.supplied_item_list.list_number not in list_numbers:
+            list_numbers.insert(0, obj.supplied_item_list.list_number)
+        return list_numbers
+
+    def get_list_ids(self, obj):
+        """多対多紐づけされた全リストIDを返す"""
+        list_ids = list(obj.supplied_item_lists.values_list('id', flat=True))
+        # 後方互換: 単一リストも含める
+        if obj.supplied_item_list_id and obj.supplied_item_list_id not in list_ids:
+            list_ids.insert(0, obj.supplied_item_list_id)
+        return list_ids
 
     def get_product_name(self, obj):
         if obj.supplied_item_list and obj.supplied_item_list.product:
@@ -834,12 +872,19 @@ class SuppliedItemReceivingDetailSerializer(serializers.ModelSerializer):
 
 
 class SuppliedItemReceivingCreateSerializer(serializers.ModelSerializer):
-    """支給品受入確認作成シリアライザー（一時保存対応）
+    """支給品受入確認作成シリアライザー（一時保存対応・多対多紐づけ対応）
 
     リスト登録前でも受入れ登録が可能。
     supplied_item_list または product のどちらかを指定する。
+    list_ids で複数のリストに紐づけ可能（多対多紐づけ）。
     """
     items = SuppliedItemReceivingItemCreateSerializer(many=True, required=False)
+    list_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        write_only=True,
+        help_text="紐づける支給品リストのID一覧（多対多紐づけ）"
+    )
     created_by = serializers.HiddenField(
         default=serializers.CurrentUserDefault()
     )
@@ -847,7 +892,7 @@ class SuppliedItemReceivingCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SuppliedItemReceiving
         fields = [
-            'id', 'supplied_item_list', 'product', 'status', 'receiving_date',
+            'id', 'supplied_item_list', 'list_ids', 'product', 'status', 'receiving_date',
             'notes', 'items', 'created_by'
         ]
         read_only_fields = ['id']
@@ -858,19 +903,27 @@ class SuppliedItemReceivingCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         supplied_item_list = attrs.get('supplied_item_list')
+        list_ids = attrs.get('list_ids', [])
         product = attrs.get('product')
 
-        # supplied_item_list または product のどちらかが必要
-        if not supplied_item_list and not product:
+        # supplied_item_list, list_ids, product のいずれかが必要
+        if not supplied_item_list and not list_ids and not product:
             raise serializers.ValidationError(
-                "supplied_item_list または product のどちらかを指定してください"
+                "supplied_item_list, list_ids, または product のいずれかを指定してください"
             )
 
         return attrs
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
+        list_ids = validated_data.pop('list_ids', [])
+
         instance = SuppliedItemReceiving.objects.create(**validated_data)
+
+        # 多対多紐づけを設定
+        if list_ids:
+            lists = SuppliedItemList.objects.filter(id__in=list_ids)
+            instance.supplied_item_lists.set(lists)
 
         for item_data in items_data:
             SuppliedItemReceivingItem.objects.create(
@@ -885,23 +938,35 @@ class SuppliedItemReceivingCreateSerializer(serializers.ModelSerializer):
 
 
 class SuppliedItemReceivingUpdateSerializer(serializers.ModelSerializer):
-    """支給品受入確認更新シリアライザー（一時保存対応）"""
+    """支給品受入確認更新シリアライザー（一時保存対応・多対多紐づけ対応）"""
     items = SuppliedItemReceivingItemCreateSerializer(many=True, required=False)
+    list_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        write_only=True,
+        help_text="紐づける支給品リストのID一覧（多対多紐づけ）"
+    )
 
     class Meta:
         model = SuppliedItemReceiving
         fields = [
-            'id', 'status', 'receiving_date', 'notes', 'items'
+            'id', 'list_ids', 'status', 'receiving_date', 'notes', 'items'
         ]
         read_only_fields = ['id']
 
     def update(self, instance, validated_data):
         items_data = validated_data.pop('items', None)
+        list_ids = validated_data.pop('list_ids', None)
 
         # 基本情報の更新
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+
+        # 多対多紐づけの更新
+        if list_ids is not None:
+            lists = SuppliedItemList.objects.filter(id__in=list_ids)
+            instance.supplied_item_lists.set(lists)
 
         # 項目の更新（全削除して再作成）
         if items_data is not None:

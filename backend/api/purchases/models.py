@@ -1026,20 +1026,29 @@ class SuppliedItemReceiving(models.Model):
     """支給品受入確認モデル（一時保存対応）
 
     リスト登録前でも受入れ登録が可能。
-    supplied_item_list がnullの場合は、リスト未紐付けの受入れ登録として扱う。
+    supplied_item_lists（多対多）で複数のリストに紐づけ可能。
+    supplied_item_list は後方互換のため残し、単一リスト参照時に使用。
     """
 
     class ReceivingStatus(models.TextChoices):
         DRAFT = 'draft', '一時保存'
         COMPLETED = 'completed', '完了'
 
-    # 支給品リスト（任意 - リスト登録前でも受入れ可能）
+    # 支給品リスト（後方互換のため残す - 単一リスト時に使用）
     supplied_item_list = models.ForeignKey(
         'SuppliedItemList',
         on_delete=models.CASCADE,
         related_name='receivings',
-        verbose_name="支給品リスト",
+        verbose_name="支給品リスト（単一）",
         null=True,
+        blank=True
+    )
+
+    # 支給品リスト（多対多 - 複数リストへの紐づけ用）
+    supplied_item_lists = models.ManyToManyField(
+        'SuppliedItemList',
+        related_name='multi_receivings',
+        verbose_name="支給品リスト（複数）",
         blank=True
     )
 
