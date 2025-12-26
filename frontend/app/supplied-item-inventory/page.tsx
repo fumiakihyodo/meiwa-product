@@ -9,6 +9,8 @@ import {
     TextField,
     InputAdornment,
     FormControl,
+    FormControlLabel,
+    Checkbox,
     InputLabel,
     Select,
     MenuItem,
@@ -168,9 +170,66 @@ export default function SuppliedItemInventoryPage() {
     const [receivingItems, setReceivingItems] = useState<ReceivingItemListItem[]>([]);
     const [loadingReceivingItems, setLoadingReceivingItems] = useState(false);
 
+    // 完了済みリスト表示フィルタ
+    const [showCompletedLists, setShowCompletedLists] = useState(false);
+
+    // 在庫一覧の製品フィルタ
+    const [inventoryProductFilter, setInventoryProductFilter] = useState<number | ''>('');
+
     // 部品詳細モーダル関連
     const [partDetailModalOpen, setPartDetailModalOpen] = useState(false);
     const [selectedPartItemNumber, setSelectedPartItemNumber] = useState<string | null>(null);
+
+    // フィルタリングされたリスト（完了済みを表示/非表示）
+    const filteredLists = React.useMemo(() => {
+        if (showCompletedLists) return lists;
+        // 完了済み = すべての項目が員数確認済み（count_confirmed_items_count === total_items && total_items > 0）またはステータスが completed
+        return lists.filter(list => {
+            const isCompleted = list.status === 'completed' ||
+                (list.total_items > 0 && list.count_confirmed_items_count === list.total_items);
+            return !isCompleted;
+        });
+    }, [lists, showCompletedLists]);
+
+    // フィルタリングされた在庫一覧
+    const filteredInventories = React.useMemo(() => {
+        if (!inventoryProductFilter) return inventories;
+        return inventories.filter(inv => inv.product === inventoryProductFilter);
+    }, [inventories, inventoryProductFilter]);
+
+    // 製品別の在庫集計
+    interface ProductInventorySummary {
+        productId: number;
+        productNumber: string;
+        productName: string;
+        itemCount: number;
+        totalQuantity: number;
+    }
+
+    const productInventorySummaries = React.useMemo((): ProductInventorySummary[] => {
+        const summaryMap = new Map<number, ProductInventorySummary>();
+
+        inventories.forEach(inv => {
+            const productId = inv.product || 0;
+            if (summaryMap.has(productId)) {
+                const existing = summaryMap.get(productId)!;
+                existing.itemCount += 1;
+                existing.totalQuantity += inv.quantity || 0;
+            } else {
+                summaryMap.set(productId, {
+                    productId,
+                    productNumber: inv.product_number || '-',
+                    productName: inv.product_name || '製品未設定',
+                    itemCount: 1,
+                    totalQuantity: inv.quantity || 0,
+                });
+            }
+        });
+
+        return Array.from(summaryMap.values()).sort((a, b) =>
+            a.productNumber.localeCompare(b.productNumber)
+        );
+    }, [inventories]);
 
     // データ取得
     const fetchData = useCallback(async () => {
@@ -965,13 +1024,22 @@ export default function SuppliedItemInventoryPage() {
                                     ))}
                                 </Select>
                             </FormControl>
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={showCompletedLists}
+                                        onChange={(e) => setShowCompletedLists(e.target.checked)}
+                                    />
+                                }
+                                label="完了済みを表示"
+                            />
                         </Box>
                     </Paper>
 
                     {/* リスト一覧 */}
                     <Paper sx={{ height: 500 }}>
                         <DataGrid
-                            rows={lists}
+                            rows={filteredLists}
                             columns={listColumns}
                             loading={loading}
                             pageSizeOptions={[10, 25, 50]}
@@ -1074,10 +1142,51 @@ export default function SuppliedItemInventoryPage() {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={2}>
+                    {/* 製品別集計 */}
+                    <Paper sx={{ p: 2, mb: 2 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>製品別在庫サマリー</Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            {productInventorySummaries.map((summary) => (
+                                <Paper
+                                    key={summary.productId}
+                                    variant="outlined"
+                                    sx={{
+                                        p: 1.5,
+                                        cursor: 'pointer',
+                                        bgcolor: inventoryProductFilter === summary.productId ? 'primary.light' : 'background.paper',
+                                        '&:hover': { bgcolor: 'action.hover' },
+                                        minWidth: 180,
+                                    }}
+                                    onClick={() => setInventoryProductFilter(
+                                        inventoryProductFilter === summary.productId ? '' : summary.productId
+                                    )}
+                                >
+                                    <Typography variant="body2" fontWeight="bold">
+                                        {summary.productNumber} - {summary.productName}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {summary.itemCount}品番 / 総在庫: {summary.totalQuantity.toLocaleString()}
+                                    </Typography>
+                                </Paper>
+                            ))}
+                        </Box>
+                        {inventoryProductFilter && (
+                            <Box sx={{ mt: 1 }}>
+                                <Button
+                                    size="small"
+                                    startIcon={<ClearIcon />}
+                                    onClick={() => setInventoryProductFilter('')}
+                                >
+                                    フィルタ解除
+                                </Button>
+                            </Box>
+                        )}
+                    </Paper>
+
                     {/* 在庫一覧 */}
-                    <Paper sx={{ height: 500 }}>
+                    <Paper sx={{ height: 450 }}>
                         <DataGrid
-                            rows={inventories}
+                            rows={filteredInventories}
                             columns={inventoryColumns}
                             loading={loading}
                             pageSizeOptions={[10, 25, 50]}

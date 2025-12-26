@@ -33,13 +33,11 @@ import {
     Refresh as RefreshIcon,
     Clear as ClearIcon,
     CheckCircle as CheckCircleIcon,
-    Inventory as InventoryIcon,
     Compare as CompareIcon,
     Warning as WarningIcon,
     PlaylistAddCheck as BulkConfirmIcon,
     ReportProblem as UnregisteredIcon,
     LocalShipping as ReceivingIcon,
-    Add as AddIcon,
 } from '@mui/icons-material';
 import { v4 as uuidv4 } from 'uuid';
 import { purchasesApi } from '@/services/apiPurchases';
@@ -140,8 +138,6 @@ function SuppliedItemListDetailContent() {
     // 員数確認
     const [countConfirmLoading, setCountConfirmLoading] = useState<{ [key: number]: boolean }>({});
 
-    // 在庫登録
-    const [registeringInventory, setRegisteringInventory] = useState(false);
 
     // 比較データ
     const [comparisonData, setComparisonData] = useState<ReceivingComparisonResult | null>(null);
@@ -175,34 +171,29 @@ function SuppliedItemListDetailContent() {
         fetchData();
     }, [fetchData]);
 
-    // 員数確認
+    // 員数確認（最適化: ローカル状態を直接更新してページ全体の再レンダリングを防ぐ）
     const handleCountConfirm = async (itemId: number, confirmed: boolean) => {
-        setCountConfirmLoading(prev => ({ ...prev, [itemId]: true }));
+        setCountConfirmLoading((prev: { [key: number]: boolean }) => ({ ...prev, [itemId]: true }));
         try {
             await purchasesApi.confirmCountListItem(itemId, { count_confirmed: confirmed });
-            fetchData();
+            // fetchData()の代わりにローカル状態を直接更新（部分レンダリング）
+            setList((prevList: SuppliedItemList | null) => {
+                if (!prevList || !prevList.items) return prevList;
+                const updatedItems = prevList.items.map((item: SuppliedItemListItem) =>
+                    item.id === itemId ? { ...item, count_confirmed: confirmed } : item
+                );
+                const countedCount = updatedItems.filter((item: SuppliedItemListItem) => item.count_confirmed).length;
+                return {
+                    ...prevList,
+                    items: updatedItems,
+                    count_confirmed_items_count: countedCount,
+                };
+            });
         } catch (err) {
             setError('員数確認の更新に失敗しました');
             console.error(err);
         } finally {
-            setCountConfirmLoading(prev => ({ ...prev, [itemId]: false }));
-        }
-    };
-
-    // 在庫登録
-    const handleRegisterInventory = async () => {
-        setRegisteringInventory(true);
-        setError(null);
-        try {
-            const result = await purchasesApi.registerInventoryFromList(listId);
-            setSuccessMessage(result.message);
-            fetchData();
-        } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : '在庫登録に失敗しました';
-            setError(errorMessage);
-            console.error(err);
-        } finally {
-            setRegisteringInventory(false);
+            setCountConfirmLoading((prev: { [key: number]: boolean }) => ({ ...prev, [itemId]: false }));
         }
     };
 
@@ -453,12 +444,19 @@ function SuppliedItemListDetailContent() {
         setShowReceivingForm(false);
     };
 
-    // リスト項目カラム
+    // リスト項目カラム（表示順序: 品番、品名、リスト数量、単位、受入れ数量、単位、受入確認、員数確認、備考）
     const itemColumns: GridColDef[] = [
         { field: 'item_number', headerName: '品番', width: 150 },
         { field: 'item_name', headerName: '品名', width: 200 },
         { field: 'quantity', headerName: 'リスト数量', width: 100, type: 'number' },
+        { field: 'unit', headerName: '単位', width: 60 },
         { field: 'received_quantity', headerName: '受入数量', width: 100, type: 'number' },
+        {
+            field: 'received_unit',
+            headerName: '単位',
+            width: 60,
+            renderCell: (params: GridRenderCellParams<SuppliedItemListItem>) => params.row.unit || '-',
+        },
         {
             field: 'receiving_confirmed',
             headerName: '受入確認',
@@ -488,7 +486,6 @@ function SuppliedItemListDetailContent() {
                 );
             },
         },
-        { field: 'unit', headerName: '単位', width: 80 },
         { field: 'notes', headerName: '備考', width: 150, flex: 1 },
     ];
 
@@ -522,7 +519,6 @@ function SuppliedItemListDetailContent() {
     const totalItems = list.total_items || 0;
     const receivedCount = list.received_items_count || 0;
     const countedCount = list.count_confirmed_items_count || 0;
-    const allCounted = countedCount === totalItems && totalItems > 0;
 
     return (
         <Box sx={{ p: 3 }}>
@@ -583,7 +579,6 @@ function SuppliedItemListDetailContent() {
                 <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)} sx={{ mb: 2 }}>
                     <Tab label="リスト項目" />
                     <Tab label="受入確認比較" icon={<CompareIcon />} iconPosition="start" />
-                    <Tab label="在庫登録" disabled={!allCounted} />
                 </Tabs>
 
                 {/* リスト項目タブ */}
@@ -892,44 +887,6 @@ function SuppliedItemListDetailContent() {
                             比較データを読み込んでいます...
                         </Alert>
                     )}
-                </TabPanel>
-
-                {/* 在庫登録タブ */}
-                <TabPanel value={tabValue} index={2}>
-                    <Card>
-                        <CardContent>
-                            <Typography variant="h6" sx={{ mb: 2 }}>在庫登録</Typography>
-
-                            {!allCounted ? (
-                                <Alert severity="warning">
-                                    すべての項目の員数確認が完了するまで在庫登録はできません。<br />
-                                    現在: {countedCount}/{totalItems} 完了
-                                </Alert>
-                            ) : (
-                                <>
-                                    <Alert severity="info" sx={{ mb: 2 }}>
-                                        すべての員数確認が完了しました。在庫登録ボタンをクリックして在庫を登録してください。
-                                    </Alert>
-                                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                                        <Button
-                                            variant="contained"
-                                            size="large"
-                                            startIcon={<InventoryIcon />}
-                                            onClick={handleRegisterInventory}
-                                            disabled={registeringInventory || list.status === 'completed'}
-                                        >
-                                            {registeringInventory ? <CircularProgress size={24} /> : '在庫を登録する'}
-                                        </Button>
-                                    </Box>
-                                    {list.status === 'completed' && (
-                                        <Alert severity="success" sx={{ mt: 2 }}>
-                                            このリストの在庫登録は完了しています。
-                                        </Alert>
-                                    )}
-                                </>
-                            )}
-                        </CardContent>
-                    </Card>
                 </TabPanel>
         </Box>
     );
