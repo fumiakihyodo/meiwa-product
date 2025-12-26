@@ -1125,7 +1125,7 @@ export default function SuppliedItemInventoryPage() {
                     <DialogTitle>
                         受入れ詳細
                         {selectedReceiving && (
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block' }}>
                                 受入日時: {new Date(selectedReceiving.receiving_date).toLocaleString('ja-JP')}
                             </Typography>
                         )}
@@ -1273,7 +1273,7 @@ export default function SuppliedItemInventoryPage() {
                 >
                     <DialogTitle>
                         受入れ登録
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block' }}>
                             リスト登録前でも受入れ登録ができます。製品を選択し、品番・入数・箱数を入力してください。
                         </Typography>
                     </DialogTitle>
@@ -1468,7 +1468,7 @@ export default function SuppliedItemInventoryPage() {
                     <DialogTitle>
                         部品受入履歴
                         {selectedPartItemNumber && (
-                            <Typography variant="subtitle2" color="text.secondary">
+                            <Typography variant="subtitle2" color="text.secondary" component="span" sx={{ display: 'block' }}>
                                 品番: {selectedPartItemNumber}
                             </Typography>
                         )}

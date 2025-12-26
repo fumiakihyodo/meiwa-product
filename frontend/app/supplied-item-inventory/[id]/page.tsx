@@ -600,13 +600,13 @@ function SuppliedItemListDetailContent() {
                             label="完了済みを表示"
                         />
                     </Box>
-                    <Paper sx={{ height: 400 }}>
+                    <Paper sx={{ height: 600 }}>
                         <DataGrid
                             rows={filteredItems}
                             columns={itemColumns}
-                            pageSizeOptions={[10, 25, 50]}
+                            pageSizeOptions={[25, 50, 100]}
                             initialState={{
-                                pagination: { paginationModel: { pageSize: 10 } },
+                                pagination: { paginationModel: { pageSize: 100 } },
                             }}
                             disableRowSelectionOnClick
                         />

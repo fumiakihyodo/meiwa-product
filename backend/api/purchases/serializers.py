@@ -1113,7 +1113,12 @@ class SuppliedItemInventoryUpdateSerializer(serializers.ModelSerializer):
 # ===== 員数確認用のシリアライザー =====
 
 class SuppliedItemListItemCountConfirmSerializer(serializers.ModelSerializer):
-    """支給品リスト項目員数確認シリアライザー"""
+    """支給品リスト項目員数確認シリアライザー
+
+    員数確認がtrueに更新されたタイミングで、在庫登録を自動実行する。
+    - 受け入れ数量（received_quantity or quantity）を在庫に移動
+    - SuppliedItemInventoryに新規レコードを作成
+    """
 
     class Meta:
         model = SuppliedItemListItem
@@ -1122,15 +1127,44 @@ class SuppliedItemListItemCountConfirmSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         from django.utils import timezone
+        from django.db import transaction
 
         count_confirmed = validated_data.get('count_confirmed', instance.count_confirmed)
 
+        # 員数確認がFalse→Trueに変更された場合
         if count_confirmed and not instance.count_confirmed:
             instance.count_confirmed_at = timezone.now()
             instance.count_confirmed_by = self.context['request'].user
+
+            # 在庫登録を実行（支給品マスタに紐付いている場合のみ）
+            if instance.supplied_item:
+                with transaction.atomic():
+                    # 受入れ数量（なければリスト数量）を在庫に登録
+                    quantity = instance.received_quantity or instance.quantity
+
+                    # 親リストの納品予定日を取得（なければ現在日）
+                    received_date = None
+                    if instance.supplied_item_list and instance.supplied_item_list.delivery_date:
+                        received_date = instance.supplied_item_list.delivery_date
+                    else:
+                        received_date = timezone.now().date()
+
+                    # 在庫レコードを作成
+                    SuppliedItemInventory.objects.create(
+                        supplied_item=instance.supplied_item,
+                        list_item=instance,
+                        quantity=quantity,
+                        received_date=received_date,
+                        created_by=self.context['request'].user,
+                        notes=f"員数確認時に自動登録"
+                    )
         elif not count_confirmed:
             instance.count_confirmed_at = None
             instance.count_confirmed_by = None
+
+            # 員数確認がTrue→Falseに変更された場合、対応する在庫を削除
+            if instance.supplied_item:
+                SuppliedItemInventory.objects.filter(list_item=instance).delete()
 
         instance.count_confirmed = count_confirmed
         instance.notes = validated_data.get('notes', instance.notes)
