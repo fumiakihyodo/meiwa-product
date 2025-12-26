@@ -21,6 +21,7 @@ import {
     TextField,
     InputAdornment,
     Divider,
+    FormControlLabel,
 } from '@mui/material';
 import {
     DataGrid,
@@ -151,6 +152,9 @@ function SuppliedItemListDetailContent() {
     const [receivingRows, setReceivingRows] = useState<ReceivingInputRow[]>([createEmptyReceivingRow()]);
     const [savingReceiving, setSavingReceiving] = useState(false);
     const [showReceivingForm, setShowReceivingForm] = useState(shouldOpenReceivingForm);
+
+    // 完了済み表示フィルタ
+    const [showCompleted, setShowCompleted] = useState(false);
 
     // データ取得
     const fetchData = useCallback(async () => {
@@ -456,19 +460,6 @@ function SuppliedItemListDetailContent() {
         { field: 'quantity', headerName: 'リスト数量', width: 100, type: 'number' },
         { field: 'received_quantity', headerName: '受入数量', width: 100, type: 'number' },
         {
-            field: 'is_quantity_matched',
-            headerName: '数量一致',
-            width: 100,
-            renderCell: (params: GridRenderCellParams<SuppliedItemListItem>) => {
-                if (params.value === null) return '-';
-                return params.value ? (
-                    <CheckCircleIcon color="success" />
-                ) : (
-                    <ClearIcon color="error" />
-                );
-            },
-        },
-        {
             field: 'receiving_confirmed',
             headerName: '受入確認',
             width: 100,
@@ -500,6 +491,14 @@ function SuppliedItemListDetailContent() {
         { field: 'unit', headerName: '単位', width: 80 },
         { field: 'notes', headerName: '備考', width: 150, flex: 1 },
     ];
+
+    // フィルタリングされたリスト項目（完了済みを表示/非表示）
+    const filteredItems = React.useMemo(() => {
+        if (!list?.items) return [];
+        if (showCompleted) return list.items;
+        // 完了済み = 受入確認済み AND 員数確認済み
+        return list.items.filter(item => !(item.receiving_confirmed && item.count_confirmed));
+    }, [list?.items, showCompleted]);
 
     if (loading) {
         return (
@@ -589,9 +588,21 @@ function SuppliedItemListDetailContent() {
 
                 {/* リスト項目タブ */}
                 <TabPanel value={tabValue} index={0}>
+                    {/* 完了済み表示フィルタ */}
+                    <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                        <FormControlLabel
+                            control={
+                                <Checkbox
+                                    checked={showCompleted}
+                                    onChange={(e) => setShowCompleted(e.target.checked)}
+                                />
+                            }
+                            label="完了済みを表示"
+                        />
+                    </Box>
                     <Paper sx={{ height: 400 }}>
                         <DataGrid
-                            rows={list.items || []}
+                            rows={filteredItems}
                             columns={itemColumns}
                             pageSizeOptions={[10, 25, 50]}
                             initialState={{

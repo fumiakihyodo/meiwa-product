@@ -23,6 +23,12 @@ import {
     Tabs,
     Tab,
     LinearProgress,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
 } from '@mui/material';
 import {
     DataGrid,
@@ -157,10 +163,14 @@ export default function SuppliedItemInventoryPage() {
     const [receivingSummaries, setReceivingSummaries] = useState<Record<number, ReceivingSummary>>({});
     const [loadingSummaries, setLoadingSummaries] = useState(false);
 
-    // 受入一覧サブタブ関連
-    const [receivingSubTab, setReceivingSubTab] = useState(0);
+    // 受入一覧サブタブ関連（デフォルトを「部品一覧」に設定）
+    const [receivingSubTab, setReceivingSubTab] = useState(1);
     const [receivingItems, setReceivingItems] = useState<ReceivingItemListItem[]>([]);
     const [loadingReceivingItems, setLoadingReceivingItems] = useState(false);
+
+    // 部品詳細モーダル関連
+    const [partDetailModalOpen, setPartDetailModalOpen] = useState(false);
+    const [selectedPartItemNumber, setSelectedPartItemNumber] = useState<string | null>(null);
 
     // データ取得
     const fetchData = useCallback(async () => {
@@ -700,12 +710,6 @@ export default function SuppliedItemInventoryPage() {
             type: 'number',
         },
         {
-            field: 'total_quantity',
-            headerName: '合計数量',
-            width: 100,
-            type: 'number',
-        },
-        {
             field: 'created_by_name',
             headerName: '登録者',
             width: 120,
@@ -739,56 +743,81 @@ export default function SuppliedItemInventoryPage() {
         },
     ];
 
-    // 部品一覧カラム（受入一覧の部品別タブ用）
+    // 部品別の集計データ型
+    interface PartSummary {
+        id: string;
+        item_number: string;
+        item_name: string;
+        total_quantity: number; // 受入済み・員数確認前総数
+        receiving_count: number; // 受入回数
+        product_name: string;
+        product_number: string;
+    }
+
+    // 部品別の集計データを作成
+    const partSummaries = React.useMemo((): PartSummary[] => {
+        const summaryMap = new Map<string, PartSummary>();
+
+        receivingItems.forEach(item => {
+            const key = item.item_number;
+            if (summaryMap.has(key)) {
+                const existing = summaryMap.get(key)!;
+                existing.total_quantity += item.calculated_quantity;
+                existing.receiving_count += 1;
+            } else {
+                summaryMap.set(key, {
+                    id: key,
+                    item_number: item.item_number,
+                    item_name: item.item_name,
+                    total_quantity: item.calculated_quantity,
+                    receiving_count: 1,
+                    product_name: item.product_name || '',
+                    product_number: item.product_number || '',
+                });
+            }
+        });
+
+        return Array.from(summaryMap.values());
+    }, [receivingItems]);
+
+    // 選択した部品の受入履歴を取得
+    const selectedPartHistory = React.useMemo(() => {
+        if (!selectedPartItemNumber) return [];
+        return receivingItems.filter(item => item.item_number === selectedPartItemNumber);
+    }, [receivingItems, selectedPartItemNumber]);
+
+    // 部品詳細モーダルを開く
+    const handleOpenPartDetail = (itemNumber: string) => {
+        setSelectedPartItemNumber(itemNumber);
+        setPartDetailModalOpen(true);
+    };
+
+    // 部品一覧カラム（受入一覧の部品別タブ用 - 集計表示）
     const receivingItemColumns: GridColDef[] = [
         { field: 'item_number', headerName: '品番', width: 150 },
-        { field: 'item_name', headerName: '品名', width: 180 },
+        { field: 'item_name', headerName: '品名', width: 200 },
         {
-            field: 'quantity_per_box',
-            headerName: '入数',
-            width: 80,
+            field: 'total_quantity',
+            headerName: '受入済み・員数確認前総数',
+            width: 180,
             type: 'number',
+            renderCell: (params: GridRenderCellParams<PartSummary>) => (
+                <Typography fontWeight="bold">
+                    {params.row.total_quantity.toLocaleString()}
+                </Typography>
+            ),
         },
         {
-            field: 'box_count',
-            headerName: '箱数',
-            width: 80,
-            type: 'number',
-        },
-        {
-            field: 'calculated_quantity',
-            headerName: '受入数量',
+            field: 'receiving_count',
+            headerName: '受入回数',
             width: 100,
             type: 'number',
         },
         {
-            field: 'receiving_date',
-            headerName: '受入日時',
-            width: 150,
-            renderCell: (params: GridRenderCellParams<ReceivingItemListItem>) => {
-                const date = new Date(params.row.receiving_date);
-                return date.toLocaleString('ja-JP', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                });
-            },
-        },
-        {
-            field: 'list_number',
-            headerName: 'リスト番号',
-            width: 150,
-            renderCell: (params: GridRenderCellParams<ReceivingItemListItem>) => {
-                return params.row.list_number || '未紐付け';
-            },
-        },
-        {
             field: 'product_name',
             headerName: '製品',
-            width: 180,
-            renderCell: (params: GridRenderCellParams<ReceivingItemListItem>) => {
+            width: 200,
+            renderCell: (params: GridRenderCellParams<PartSummary>) => {
                 const row = params.row;
                 if (row.product_number && row.product_name) {
                     return `${row.product_number} - ${row.product_name}`;
@@ -797,28 +826,20 @@ export default function SuppliedItemInventoryPage() {
             },
         },
         {
-            field: 'receiving_status',
-            headerName: 'ステータス',
+            field: 'actions',
+            headerName: '詳細',
             width: 100,
-            renderCell: (params: GridRenderCellParams<ReceivingItemListItem>) => {
-                const status = params.row.receiving_status;
-                const isDraft = status === 'draft';
-                return (
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 0.5,
-                            color: isDraft ? 'warning.main' : 'success.main',
-                        }}
-                    >
-                        {isDraft ? <PendingIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
-                        {params.row.receiving_status_display || (isDraft ? '一時保存' : '完了')}
-                    </Box>
-                );
-            },
+            sortable: false,
+            renderCell: (params: GridRenderCellParams<PartSummary>) => (
+                <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => handleOpenPartDetail(params.row.item_number)}
+                >
+                    履歴
+                </Button>
+            ),
         },
-        { field: 'notes', headerName: '備考', width: 150, flex: 1 },
     ];
 
     // 受入れ詳細表示
@@ -1016,7 +1037,7 @@ export default function SuppliedItemInventoryPage() {
                             <Paper sx={{ p: 2, mb: 2 }}>
                                 <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                                     <Typography variant="body2" color="text.secondary">
-                                        員数確認前の全ての部品の受入数量を表示しています
+                                        員数確認前の全ての部品を品番別に集計して表示しています。各行をクリックすると受入履歴を確認できます。
                                     </Typography>
                                     <Button
                                         variant="outlined"
@@ -1029,10 +1050,10 @@ export default function SuppliedItemInventoryPage() {
                                 </Box>
                             </Paper>
 
-                            {/* 部品一覧 */}
+                            {/* 部品一覧（集計表示） */}
                             <Paper sx={{ height: 500 }}>
                                 <DataGrid
-                                    rows={receivingItems}
+                                    rows={partSummaries}
                                     columns={receivingItemColumns}
                                     loading={loadingReceivingItems}
                                     pageSizeOptions={[10, 25, 50]}
@@ -1040,6 +1061,12 @@ export default function SuppliedItemInventoryPage() {
                                         pagination: { paginationModel: { pageSize: 10 } },
                                     }}
                                     disableRowSelectionOnClick
+                                    onRowClick={(params) => handleOpenPartDetail(params.row.item_number)}
+                                    sx={{
+                                        '& .MuiDataGrid-row': {
+                                            cursor: 'pointer',
+                                        },
+                                    }}
                                 />
                             </Paper>
                         </>
@@ -1427,6 +1454,84 @@ export default function SuppliedItemInventoryPage() {
                             color="success"
                         >
                             {savingReceiving ? <CircularProgress size={24} /> : '受入れ登録完了'}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* 部品詳細モーダル（受入履歴） */}
+                <Dialog
+                    open={partDetailModalOpen}
+                    onClose={() => setPartDetailModalOpen(false)}
+                    maxWidth="md"
+                    fullWidth
+                >
+                    <DialogTitle>
+                        部品受入履歴
+                        {selectedPartItemNumber && (
+                            <Typography variant="subtitle2" color="text.secondary">
+                                品番: {selectedPartItemNumber}
+                            </Typography>
+                        )}
+                    </DialogTitle>
+                    <DialogContent>
+                        {selectedPartHistory.length > 0 ? (
+                            <>
+                                <Box sx={{ mb: 2 }}>
+                                    <Typography variant="subtitle2" color="text.secondary">
+                                        品名: {selectedPartHistory[0]?.item_name || '-'}
+                                    </Typography>
+                                    <Typography variant="h6" sx={{ mt: 1 }}>
+                                        総数量: {selectedPartHistory.reduce((sum, item) => sum + item.calculated_quantity, 0).toLocaleString()}
+                                    </Typography>
+                                </Box>
+                                <TableContainer component={Paper}>
+                                    <Table size="small">
+                                        <TableHead>
+                                            <TableRow sx={{ bgcolor: 'grey.100' }}>
+                                                <TableCell>受入日時</TableCell>
+                                                <TableCell align="right">入数</TableCell>
+                                                <TableCell align="center">×</TableCell>
+                                                <TableCell align="right">箱数</TableCell>
+                                                <TableCell align="center">=</TableCell>
+                                                <TableCell align="right">受入数量</TableCell>
+                                                <TableCell>リスト番号</TableCell>
+                                                <TableCell>備考</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {selectedPartHistory.map((item, index) => (
+                                                <TableRow key={item.id} hover>
+                                                    <TableCell>
+                                                        {new Date(item.receiving_date).toLocaleString('ja-JP', {
+                                                            year: 'numeric',
+                                                            month: '2-digit',
+                                                            day: '2-digit',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit',
+                                                        })}
+                                                    </TableCell>
+                                                    <TableCell align="right">{item.quantity_per_box}</TableCell>
+                                                    <TableCell align="center">×</TableCell>
+                                                    <TableCell align="right">{item.box_count}</TableCell>
+                                                    <TableCell align="center">=</TableCell>
+                                                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                                                        {item.calculated_quantity.toLocaleString()}
+                                                    </TableCell>
+                                                    <TableCell>{item.list_number || '未紐付け'}</TableCell>
+                                                    <TableCell>{item.notes || '-'}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </>
+                        ) : (
+                            <Typography color="text.secondary">受入履歴がありません</Typography>
+                        )}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setPartDetailModalOpen(false)}>
+                            閉じる
                         </Button>
                     </DialogActions>
                 </Dialog>
