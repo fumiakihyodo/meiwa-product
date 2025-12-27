@@ -173,8 +173,14 @@ export default function SuppliedItemInventoryPage() {
     // 完了済みリスト表示フィルタ
     const [showCompletedLists, setShowCompletedLists] = useState(false);
 
+    // 受入れ一覧の製品フィルタ
+    const [receivingProductFilter, setReceivingProductFilter] = useState<number | ''>('');
+
     // 在庫一覧の製品フィルタ
     const [inventoryProductFilter, setInventoryProductFilter] = useState<number | ''>('');
+
+    // デフォルト製品の初期化済みフラグ
+    const [defaultProductInitialized, setDefaultProductInitialized] = useState(false);
 
     // 部品詳細モーダル関連
     const [partDetailModalOpen, setPartDetailModalOpen] = useState(false);
@@ -191,11 +197,41 @@ export default function SuppliedItemInventoryPage() {
         });
     }, [lists, showCompletedLists]);
 
+    // 機種情報が登録されている製品のみをフィルタ（支給品管理用）
+    const suppliedItemProducts = React.useMemo(() => {
+        return products.filter(p => p.model_info && p.model_info.trim() !== '');
+    }, [products]);
+
+    // デフォルト製品を初期化（products読み込み後1回のみ）
+    useEffect(() => {
+        if (!defaultProductInitialized && suppliedItemProducts.length > 0) {
+            const defaultId = getDefaultProductId();
+            if (defaultId && suppliedItemProducts.some(p => p.id === defaultId)) {
+                // デフォルト製品が有効な場合、両方のフィルタに設定
+                setReceivingProductFilter(defaultId);
+                setInventoryProductFilter(defaultId);
+            }
+            setDefaultProductInitialized(true);
+        }
+    }, [suppliedItemProducts, defaultProductInitialized]);
+
+    // フィルタリングされた受入れ一覧
+    const filteredReceivings = React.useMemo(() => {
+        if (!receivingProductFilter) return receivings;
+        return receivings.filter(r => r.product === receivingProductFilter);
+    }, [receivings, receivingProductFilter]);
+
     // フィルタリングされた在庫一覧
     const filteredInventories = React.useMemo(() => {
         if (!inventoryProductFilter) return inventories;
         return inventories.filter(inv => inv.product === inventoryProductFilter);
     }, [inventories, inventoryProductFilter]);
+
+    // フィルタリングされた受入アイテム一覧（部品一覧タブ用）
+    const filteredReceivingItems = React.useMemo(() => {
+        if (!receivingProductFilter) return receivingItems;
+        return receivingItems.filter(item => item.product_id === receivingProductFilter);
+    }, [receivingItems, receivingProductFilter]);
 
     // 製品別の在庫集計
     interface ProductInventorySummary {
@@ -319,9 +355,9 @@ export default function SuppliedItemInventoryPage() {
     // 受入れ登録モーダルを開く
     const handleOpenReceivingModal = () => {
         setReceivingModalOpen(true);
-        // デフォルト製品があれば設定
+        // デフォルト製品があれば設定（機種情報が登録されている製品のみ対象）
         const defaultId = getDefaultProductId();
-        if (defaultId && products.some(p => p.id === defaultId)) {
+        if (defaultId && suppliedItemProducts.some(p => p.id === defaultId)) {
             setReceivingProductId(defaultId);
         } else {
             setReceivingProductId('');
@@ -331,8 +367,24 @@ export default function SuppliedItemInventoryPage() {
         setReceivingSuccess(null);
     };
 
-    // デフォルト製品を設定/解除
+    // デフォルト製品を設定/解除（受入れ登録モーダル用）
     const handleToggleDefaultProduct = (productId: number) => {
+        const currentDefault = getDefaultProductId();
+        if (currentDefault === productId) {
+            // 既にデフォルトならば解除
+            setDefaultProductId(null);
+        } else {
+            // デフォルトに設定し、両方のフィルタも同期
+            setDefaultProductId(productId);
+            setReceivingProductFilter(productId);
+            setInventoryProductFilter(productId);
+        }
+        // UIを更新するためにre-render
+        setReceivingProductId(receivingProductId);
+    };
+
+    // 受入れ一覧／在庫一覧のデフォルト製品を設定
+    const handleSetDefaultProductForFilters = (productId: number) => {
         const currentDefault = getDefaultProductId();
         if (currentDefault === productId) {
             // 既にデフォルトならば解除
@@ -341,8 +393,20 @@ export default function SuppliedItemInventoryPage() {
             // デフォルトに設定
             setDefaultProductId(productId);
         }
-        // UIを更新するためにre-render
-        setReceivingProductId(receivingProductId);
+    };
+
+    // 製品フィルタを変更（受入れ一覧用）
+    const handleReceivingProductFilterChange = (productId: number | '') => {
+        setReceivingProductFilter(productId);
+        // 在庫一覧も同期
+        setInventoryProductFilter(productId);
+    };
+
+    // 製品フィルタを変更（在庫一覧用）
+    const handleInventoryProductFilterChange = (productId: number | '') => {
+        setInventoryProductFilter(productId);
+        // 受入れ一覧も同期
+        setReceivingProductFilter(productId);
     };
 
     // 受入れ登録モーダルを閉じる
@@ -813,11 +877,11 @@ export default function SuppliedItemInventoryPage() {
         product_number: string;
     }
 
-    // 部品別の集計データを作成
+    // 部品別の集計データを作成（フィルタリングされたデータを使用）
     const partSummaries = React.useMemo((): PartSummary[] => {
         const summaryMap = new Map<string, PartSummary>();
 
-        receivingItems.forEach(item => {
+        filteredReceivingItems.forEach(item => {
             const key = item.item_number;
             if (summaryMap.has(key)) {
                 const existing = summaryMap.get(key)!;
@@ -837,13 +901,13 @@ export default function SuppliedItemInventoryPage() {
         });
 
         return Array.from(summaryMap.values());
-    }, [receivingItems]);
+    }, [filteredReceivingItems]);
 
-    // 選択した部品の受入履歴を取得
+    // 選択した部品の受入履歴を取得（フィルタリングされたデータを使用）
     const selectedPartHistory = React.useMemo(() => {
         if (!selectedPartItemNumber) return [];
-        return receivingItems.filter(item => item.item_number === selectedPartItemNumber);
-    }, [receivingItems, selectedPartItemNumber]);
+        return filteredReceivingItems.filter(item => item.item_number === selectedPartItemNumber);
+    }, [filteredReceivingItems, selectedPartItemNumber]);
 
     // 部品詳細モーダルを開く
     const handleOpenPartDetail = (itemNumber: string) => {
@@ -1052,6 +1116,72 @@ export default function SuppliedItemInventoryPage() {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={1}>
+                    {/* 製品フィルタ（受入一覧共通） */}
+                    <Paper sx={{ p: 2, mb: 2 }}>
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <FormControl size="small" sx={{ minWidth: 280 }}>
+                                <InputLabel>製品を選択</InputLabel>
+                                <Select
+                                    value={receivingProductFilter}
+                                    label="製品を選択"
+                                    onChange={(e) => handleReceivingProductFilterChange(e.target.value as number | '')}
+                                    renderValue={(selected) => {
+                                        if (!selected) return 'すべて';
+                                        const product = suppliedItemProducts.find(p => p.id === selected);
+                                        if (!product) return 'すべて';
+                                        const isDefault = getDefaultProductId() === product.id;
+                                        return (
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
+                                                {product.product_number} - {product.product_name}
+                                            </Box>
+                                        );
+                                    }}
+                                >
+                                    <MenuItem value="">すべて</MenuItem>
+                                    {suppliedItemProducts.map((p) => {
+                                        const isDefault = getDefaultProductId() === p.id;
+                                        return (
+                                            <MenuItem key={p.id} value={p.id}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                                    <Tooltip title={isDefault ? 'デフォルト解除' : 'デフォルトに設定'}>
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSetDefaultProductForFilters(p.id);
+                                                            }}
+                                                            sx={{ p: 0.5 }}
+                                                        >
+                                                            {isDefault ? (
+                                                                <StarIcon sx={{ color: 'warning.main' }} />
+                                                            ) : (
+                                                                <StarBorderIcon sx={{ color: 'action.disabled' }} />
+                                                            )}
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <span>{p.product_number} - {p.product_name}</span>
+                                                </Box>
+                                            </MenuItem>
+                                        );
+                                    })}
+                                </Select>
+                            </FormControl>
+                            {receivingProductFilter && (
+                                <Button
+                                    size="small"
+                                    startIcon={<ClearIcon />}
+                                    onClick={() => handleReceivingProductFilterChange('')}
+                                >
+                                    フィルタ解除
+                                </Button>
+                            )}
+                            <Typography variant="caption" color="text.secondary">
+                                ★をクリックするとデフォルト製品に設定できます
+                            </Typography>
+                        </Box>
+                    </Paper>
+
                     {/* 受入一覧内のサブタブ */}
                     <Tabs
                         value={receivingSubTab}
@@ -1086,7 +1216,7 @@ export default function SuppliedItemInventoryPage() {
                             {/* 受入れ一覧 */}
                             <Paper sx={{ height: 500 }}>
                                 <DataGrid
-                                    rows={receivings}
+                                    rows={filteredReceivings}
                                     columns={receivingColumns}
                                     loading={loading}
                                     pageSizeOptions={[10, 25, 50]}
@@ -1142,46 +1272,103 @@ export default function SuppliedItemInventoryPage() {
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={2}>
-                    {/* 製品別集計 */}
+                    {/* 製品フィルタ（在庫一覧） */}
                     <Paper sx={{ p: 2, mb: 2 }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1 }}>製品別在庫サマリー</Typography>
-                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                            {productInventorySummaries.map((summary) => (
-                                <Paper
-                                    key={summary.productId}
-                                    variant="outlined"
-                                    sx={{
-                                        p: 1.5,
-                                        cursor: 'pointer',
-                                        bgcolor: inventoryProductFilter === summary.productId ? 'primary.light' : 'background.paper',
-                                        '&:hover': { bgcolor: 'action.hover' },
-                                        minWidth: 180,
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <FormControl size="small" sx={{ minWidth: 280 }}>
+                                <InputLabel>製品を選択</InputLabel>
+                                <Select
+                                    value={inventoryProductFilter}
+                                    label="製品を選択"
+                                    onChange={(e) => handleInventoryProductFilterChange(e.target.value as number | '')}
+                                    renderValue={(selected) => {
+                                        if (!selected) return 'すべて';
+                                        const product = suppliedItemProducts.find(p => p.id === selected);
+                                        if (!product) return 'すべて';
+                                        const isDefault = getDefaultProductId() === product.id;
+                                        return (
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
+                                                {product.product_number} - {product.product_name}
+                                            </Box>
+                                        );
                                     }}
-                                    onClick={() => setInventoryProductFilter(
-                                        inventoryProductFilter === summary.productId ? '' : summary.productId
-                                    )}
                                 >
-                                    <Typography variant="body2" fontWeight="bold">
-                                        {summary.productNumber} - {summary.productName}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                        {summary.itemCount}品番 / 総在庫: {summary.totalQuantity.toLocaleString()}
-                                    </Typography>
-                                </Paper>
-                            ))}
-                        </Box>
-                        {inventoryProductFilter && (
-                            <Box sx={{ mt: 1 }}>
+                                    <MenuItem value="">すべて</MenuItem>
+                                    {suppliedItemProducts.map((p) => {
+                                        const isDefault = getDefaultProductId() === p.id;
+                                        return (
+                                            <MenuItem key={p.id} value={p.id}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                                    <Tooltip title={isDefault ? 'デフォルト解除' : 'デフォルトに設定'}>
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSetDefaultProductForFilters(p.id);
+                                                            }}
+                                                            sx={{ p: 0.5 }}
+                                                        >
+                                                            {isDefault ? (
+                                                                <StarIcon sx={{ color: 'warning.main' }} />
+                                                            ) : (
+                                                                <StarBorderIcon sx={{ color: 'action.disabled' }} />
+                                                            )}
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <span>{p.product_number} - {p.product_name}</span>
+                                                </Box>
+                                            </MenuItem>
+                                        );
+                                    })}
+                                </Select>
+                            </FormControl>
+                            {inventoryProductFilter && (
                                 <Button
                                     size="small"
                                     startIcon={<ClearIcon />}
-                                    onClick={() => setInventoryProductFilter('')}
+                                    onClick={() => handleInventoryProductFilterChange('')}
                                 >
                                     フィルタ解除
                                 </Button>
-                            </Box>
-                        )}
+                            )}
+                            <Typography variant="caption" color="text.secondary">
+                                ★をクリックするとデフォルト製品に設定できます
+                            </Typography>
+                        </Box>
                     </Paper>
+
+                    {/* 製品別集計（在庫があるもののみ） */}
+                    {productInventorySummaries.length > 0 && (
+                        <Paper sx={{ p: 2, mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ mb: 1 }}>製品別在庫サマリー</Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                {productInventorySummaries.map((summary) => (
+                                    <Paper
+                                        key={summary.productId}
+                                        variant="outlined"
+                                        sx={{
+                                            p: 1.5,
+                                            cursor: 'pointer',
+                                            bgcolor: inventoryProductFilter === summary.productId ? 'primary.light' : 'background.paper',
+                                            '&:hover': { bgcolor: 'action.hover' },
+                                            minWidth: 180,
+                                        }}
+                                        onClick={() => handleInventoryProductFilterChange(
+                                            inventoryProductFilter === summary.productId ? '' : summary.productId
+                                        )}
+                                    >
+                                        <Typography variant="body2" fontWeight="bold">
+                                            {summary.productNumber} - {summary.productName}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            {summary.itemCount}品番 / 総在庫: {summary.totalQuantity.toLocaleString()}
+                                        </Typography>
+                                    </Paper>
+                                ))}
+                            </Box>
+                        </Paper>
+                    )}
 
                     {/* 在庫一覧 */}
                     <Paper sx={{ height: 450 }}>
@@ -1407,7 +1594,7 @@ export default function SuppliedItemInventoryPage() {
                                     label="製品を選択 *"
                                     onChange={(e) => setReceivingProductId(e.target.value as number)}
                                     renderValue={(selected) => {
-                                        const product = products.find(p => p.id === selected);
+                                        const product = suppliedItemProducts.find(p => p.id === selected);
                                         if (!product) return '';
                                         const isDefault = getDefaultProductId() === product.id;
                                         return (
@@ -1418,7 +1605,7 @@ export default function SuppliedItemInventoryPage() {
                                         );
                                     }}
                                 >
-                                    {products.map((p) => {
+                                    {suppliedItemProducts.map((p) => {
                                         const isDefault = getDefaultProductId() === p.id;
                                         return (
                                             <MenuItem key={p.id} value={p.id}>
@@ -1447,7 +1634,7 @@ export default function SuppliedItemInventoryPage() {
                                 </Select>
                             </FormControl>
                             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                                ★をクリックするとデフォルト製品に設定できます
+                                ★をクリックするとデフォルト製品に設定できます（機種情報が登録されている製品のみ表示）
                             </Typography>
                         </Box>
 

@@ -378,6 +378,8 @@ export interface SuppliedItemInventory {
     item_number?: string;
     item_name?: string;
     unit?: string;
+    product?: number;
+    product_number?: string;
     product_name?: string;
     customer_name?: string;
     list_item?: number;

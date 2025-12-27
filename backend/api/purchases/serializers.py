@@ -990,6 +990,11 @@ class SuppliedItemInventoryListSerializer(serializers.ModelSerializer):
     item_number = serializers.CharField(source='supplied_item.item_number', read_only=True)
     item_name = serializers.CharField(source='supplied_item.item_name', read_only=True)
     unit = serializers.CharField(source='supplied_item.unit', read_only=True)
+    product = serializers.IntegerField(source='supplied_item.product.id', read_only=True)
+    product_number = serializers.CharField(
+        source='supplied_item.product.product_number',
+        read_only=True
+    )
     product_name = serializers.CharField(
         source='supplied_item.product.product_name',
         read_only=True
@@ -1010,7 +1015,8 @@ class SuppliedItemInventoryListSerializer(serializers.ModelSerializer):
         model = SuppliedItemInventory
         fields = [
             'id', 'supplied_item', 'item_number', 'item_name', 'unit',
-            'product_name', 'customer_name', 'list_item', 'list_number', 'quantity',
+            'product', 'product_number', 'product_name', 'customer_name',
+            'list_item', 'list_number', 'quantity',
             'lot_number', 'received_date', 'notes',
             'created_at', 'updated_at', 'created_by_name'
         ]
@@ -1029,6 +1035,11 @@ class SuppliedItemInventoryDetailSerializer(serializers.ModelSerializer):
     item_number = serializers.CharField(source='supplied_item.item_number', read_only=True)
     item_name = serializers.CharField(source='supplied_item.item_name', read_only=True)
     unit = serializers.CharField(source='supplied_item.unit', read_only=True)
+    product = serializers.IntegerField(source='supplied_item.product.id', read_only=True)
+    product_number = serializers.CharField(
+        source='supplied_item.product.product_number',
+        read_only=True
+    )
     product_name = serializers.CharField(
         source='supplied_item.product.product_name',
         read_only=True
@@ -1049,7 +1060,8 @@ class SuppliedItemInventoryDetailSerializer(serializers.ModelSerializer):
         model = SuppliedItemInventory
         fields = [
             'id', 'supplied_item', 'item_number', 'item_name', 'unit',
-            'product_name', 'customer_name', 'list_item', 'list_number',
+            'product', 'product_number', 'product_name', 'customer_name',
+            'list_item', 'list_number',
             'quantity', 'lot_number', 'received_date', 'notes',
             'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
