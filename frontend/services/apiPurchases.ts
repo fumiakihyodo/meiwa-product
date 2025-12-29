@@ -670,6 +670,7 @@ export const purchasesApi = {
         product?: number;
         status?: ReceivingStatus;
         count_confirmed?: string;
+        exclude_count_confirmed?: string; // 員数確認済み数量を除外するかどうか
     }): Promise<ReceivingItemListItem[]> => {
         const response = await apiClient.get<{ count: number; results: ReceivingItemListItem[] }>(
             '/purchases/supplied-item-receiving-items/',

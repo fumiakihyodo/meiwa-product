@@ -369,6 +369,7 @@ export interface ReceivingItemListItem {
     product_id: number | null;
     product_number: string | null;
     product_name: string | null;
+    confirmed_quantity_for_item_number?: number; // 員数確認済み数量（品番・製品ごと）
 }
 
 // 支給品在庫

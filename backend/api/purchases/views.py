@@ -2797,8 +2797,9 @@ def get_receiving_items_list(request):
     - product: 製品ID
     - status: 受入ステータス（draft, completed）
     - count_confirmed: 員数確認済みかどうか（true/false）
+    - exclude_count_confirmed: 員数確認済み数量を除外するかどうか（true/false）
     """
-    from django.db.models import F
+    from django.db.models import F, Sum
 
     queryset = SuppliedItemReceivingItem.objects.select_related(
         'receiving',
@@ -2834,12 +2835,41 @@ def get_receiving_items_list(request):
                 Q(receiving__supplied_item_list__isnull=True)
             ).distinct()
 
+    # 員数確認済み数量を除外するかどうか
+    exclude_count_confirmed = request.query_params.get('exclude_count_confirmed', 'false')
+    should_exclude = exclude_count_confirmed.lower() == 'true'
+
+    # 員数確認済みの数量を品番・製品ごとに集計
+    confirmed_quantities: dict[tuple[str, int], int] = {}
+    if should_exclude:
+        # 製品IDでフィルタされている場合はその製品の確認済み数量を取得
+        confirmed_items = SuppliedItemListItem.objects.filter(
+            count_confirmed=True
+        ).select_related('list', 'list__product')
+
+        if product_id:
+            confirmed_items = confirmed_items.filter(list__product_id=product_id)
+
+        for item in confirmed_items:
+            key = (item.item_number, item.list.product_id)
+            if key not in confirmed_quantities:
+                confirmed_quantities[key] = 0
+            # リスト項目の数量を員数確認済みとして計上
+            confirmed_quantities[key] += item.quantity or 0
+
     # 結果をシリアライズ
     result = []
     for item in queryset:
         receiving = item.receiving
         supplied_list = receiving.supplied_item_list
         product = supplied_list.product if supplied_list else receiving.product
+        product_id_val = product.id if product else None
+
+        # 員数確認済み数量を取得
+        confirmed_qty = 0
+        if should_exclude and product_id_val:
+            key = (item.item_number, product_id_val)
+            confirmed_qty = confirmed_quantities.get(key, 0)
 
         result.append({
             'id': item.id,
@@ -2855,9 +2885,10 @@ def get_receiving_items_list(request):
             'receiving_status_display': receiving.get_status_display(),
             'list_number': supplied_list.list_number if supplied_list else None,
             'list_id': supplied_list.id if supplied_list else None,
-            'product_id': product.id if product else None,
+            'product_id': product_id_val,
             'product_number': product.product_number if product else None,
             'product_name': product.product_name if product else None,
+            'confirmed_quantity_for_item_number': confirmed_qty,
         })
 
     return Response({

@@ -320,9 +320,10 @@ export default function SuppliedItemInventoryPage() {
     const fetchReceivingItems = useCallback(async () => {
         setLoadingReceivingItems(true);
         try {
-            // 員数確認前の全ての部品を取得
+            // 員数確認前の全ての部品を取得（確認済み数量を除外する情報を含む）
             const items = await purchasesApi.getReceivingItemsList({
                 status: 'completed',
+                exclude_count_confirmed: 'true', // 員数確認済み数量を除外
             });
             setReceivingItems(items);
         } catch (error) {
@@ -871,18 +872,23 @@ export default function SuppliedItemInventoryPage() {
         id: string;
         item_number: string;
         item_name: string;
-        total_quantity: number; // 受入済み・員数確認前総数
+        total_quantity: number; // 受入済み・員数確認前総数（確認済み数量を差し引いた値）
         receiving_count: number; // 受入回数
         product_name: string;
         product_number: string;
+        confirmed_quantity: number; // 員数確認済み数量
     }
 
     // 部品別の集計データを作成（フィルタリングされたデータを使用）
+    // 員数確認完了した数量を差し引いた「未処理の残数」を表示
     const partSummaries = React.useMemo((): PartSummary[] => {
         const summaryMap = new Map<string, PartSummary>();
 
         filteredReceivingItems.forEach(item => {
             const key = item.item_number;
+            // 確認済み数量は品番・製品ごとに同じ値が返されるため、最初のアイテムから取得
+            const confirmedQty = item.confirmed_quantity_for_item_number || 0;
+
             if (summaryMap.has(key)) {
                 const existing = summaryMap.get(key)!;
                 existing.total_quantity += item.calculated_quantity;
@@ -896,11 +902,24 @@ export default function SuppliedItemInventoryPage() {
                     receiving_count: 1,
                     product_name: item.product_name || '',
                     product_number: item.product_number || '',
+                    confirmed_quantity: confirmedQty,
                 });
             }
         });
 
-        return Array.from(summaryMap.values());
+        // 確認済み数量を差し引き、残数が0以下のものは除外
+        const result: PartSummary[] = [];
+        summaryMap.forEach((summary) => {
+            const remainingQuantity = summary.total_quantity - summary.confirmed_quantity;
+            if (remainingQuantity > 0) {
+                result.push({
+                    ...summary,
+                    total_quantity: remainingQuantity,
+                });
+            }
+        });
+
+        return result;
     }, [filteredReceivingItems]);
 
     // 選択した部品の受入履歴を取得（フィルタリングされたデータを使用）
@@ -925,9 +944,11 @@ export default function SuppliedItemInventoryPage() {
             width: 180,
             type: 'number',
             renderCell: (params: GridRenderCellParams<PartSummary>) => (
-                <Typography fontWeight="bold">
-                    {params.row.total_quantity.toLocaleString()}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%', width: '100%' }}>
+                    <Typography fontWeight="bold">
+                        {params.row.total_quantity.toLocaleString()}
+                    </Typography>
+                </Box>
             ),
         },
         {

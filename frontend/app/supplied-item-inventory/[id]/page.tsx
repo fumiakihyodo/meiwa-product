@@ -41,6 +41,23 @@ import {
 } from '@mui/icons-material';
 import { v4 as uuidv4 } from 'uuid';
 import { purchasesApi } from '@/services/apiPurchases';
+
+// localStorage キー
+const SHOW_COMPLETED_KEY = 'supplied_item_detail_show_completed';
+
+// 完了済み表示設定をlocalStorageから取得
+const getShowCompletedSetting = (): boolean => {
+    if (typeof window === 'undefined') return true; // デフォルトは表示
+    const stored = localStorage.getItem(SHOW_COMPLETED_KEY);
+    return stored === null ? true : stored === 'true'; // デフォルトは表示（true）
+};
+
+// 完了済み表示設定をlocalStorageに保存
+const setShowCompletedSetting = (value: boolean) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(SHOW_COMPLETED_KEY, value.toString());
+};
+
 import {
     SuppliedItemList,
     SuppliedItemListItem,
@@ -149,8 +166,9 @@ function SuppliedItemListDetailContent() {
     const [savingReceiving, setSavingReceiving] = useState(false);
     const [showReceivingForm, setShowReceivingForm] = useState(shouldOpenReceivingForm);
 
-    // 完了済み表示フィルタ
-    const [showCompleted, setShowCompleted] = useState(false);
+    // 完了済み表示フィルタ（デフォルトは表示=true、localStorageから設定を読み込む）
+    const [showCompleted, setShowCompleted] = useState(true);
+    const [showCompletedInitialized, setShowCompletedInitialized] = useState(false);
 
     // データ取得
     const fetchData = useCallback(async () => {
@@ -170,6 +188,21 @@ function SuppliedItemListDetailContent() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // localStorageから完了済み表示設定を読み込む
+    useEffect(() => {
+        if (!showCompletedInitialized) {
+            const storedValue = getShowCompletedSetting();
+            setShowCompleted(storedValue);
+            setShowCompletedInitialized(true);
+        }
+    }, [showCompletedInitialized]);
+
+    // 完了済み表示設定を変更時にlocalStorageに保存
+    const handleShowCompletedChange = (value: boolean) => {
+        setShowCompleted(value);
+        setShowCompletedSetting(value);
+    };
 
     // 員数確認（最適化: ローカル状態を直接更新してページ全体の再レンダリングを防ぐ）
     const handleCountConfirm = async (itemId: number, confirmed: boolean) => {
@@ -589,7 +622,7 @@ function SuppliedItemListDetailContent() {
                             control={
                                 <Checkbox
                                     checked={showCompleted}
-                                    onChange={(e) => setShowCompleted(e.target.checked)}
+                                    onChange={(e) => handleShowCompletedChange(e.target.checked)}
                                 />
                             }
                             label="完了済みを表示"
