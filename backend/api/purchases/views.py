@@ -2845,13 +2845,13 @@ def get_receiving_items_list(request):
         # 製品IDでフィルタされている場合はその製品の確認済み数量を取得
         confirmed_items = SuppliedItemListItem.objects.filter(
             count_confirmed=True
-        ).select_related('list', 'list__product')
+        ).select_related('supplied_item_list', 'supplied_item_list__product')
 
         if product_id:
-            confirmed_items = confirmed_items.filter(list__product_id=product_id)
+            confirmed_items = confirmed_items.filter(supplied_item_list__product_id=product_id)
 
         for item in confirmed_items:
-            key = (item.item_number, item.list.product_id)
+            key = (item.item_number, item.supplied_item_list.product_id)
             if key not in confirmed_quantities:
                 confirmed_quantities[key] = 0
             # リスト項目の数量を員数確認済みとして計上
