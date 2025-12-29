@@ -1298,3 +1298,581 @@ class SuppliedItemInventory(models.Model):
 
     def __str__(self):
         return f"{self.supplied_item.item_number} - {self.quantity}{self.supplied_item.unit}"
+
+
+# ===== 購入品管理モデル =====
+
+class PurchaseOrder(models.Model):
+    """発注モデル（購入品の発注管理）"""
+
+    class OrderStatus(models.TextChoices):
+        DRAFT = 'draft', '下書き'
+        ORDERED = 'ordered', '発注済み'
+        PARTIALLY_RECEIVED = 'partially_received', '一部受入'
+        RECEIVED = 'received', '受入完了'
+        PENDING_COUNT = 'pending_count', '員数確認待ち'
+        COUNTING = 'counting', '員数確認中'
+        COMPLETED = 'completed', '完了'
+        CANCELLED = 'cancelled', 'キャンセル'
+
+    # 発注番号（自動生成）
+    order_number = models.CharField(
+        max_length=50,
+        unique=True,
+        verbose_name="発注番号",
+        help_text="発注を識別する番号"
+    )
+
+    # 製品
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.PROTECT,
+        related_name='purchase_orders',
+        verbose_name="製品"
+    )
+
+    # 仕入先支店
+    supplier_branch = models.ForeignKey(
+        'supplier.SupplierBranch',
+        on_delete=models.PROTECT,
+        related_name='purchase_orders',
+        verbose_name="仕入先支店"
+    )
+
+    # 発注日
+    order_date = models.DateField(
+        default=timezone.now,
+        verbose_name="発注日"
+    )
+
+    # 希望納期
+    requested_delivery_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="希望納期"
+    )
+
+    # 確定納期
+    confirmed_delivery_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="確定納期"
+    )
+
+    # ステータス
+    status = models.CharField(
+        max_length=20,
+        choices=OrderStatus.choices,
+        default=OrderStatus.DRAFT,
+        verbose_name="ステータス"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_purchase_orders',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "発注"
+        verbose_name_plural = "発注一覧"
+        ordering = ['-created_at']
+        db_table = "purchase_orders"
+        indexes = [
+            models.Index(fields=['order_number']),
+            models.Index(fields=['product', 'status']),
+            models.Index(fields=['supplier_branch', 'status']),
+            models.Index(fields=['order_date']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"{self.order_number} - {self.supplier_branch.branch_name}"
+
+    def save(self, *args, **kwargs):
+        if not self.order_number:
+            # 発注番号を自動生成 (PO-YYYYMMDD-NNNN)
+            today = timezone.now()
+            prefix = f"PO-{today.strftime('%Y%m%d')}-"
+            last_order = PurchaseOrder.objects.filter(
+                order_number__startswith=prefix
+            ).order_by('-order_number').first()
+
+            if last_order:
+                last_num = int(last_order.order_number.split('-')[-1])
+                self.order_number = f"{prefix}{last_num + 1:04d}"
+            else:
+                self.order_number = f"{prefix}0001"
+
+        super().save(*args, **kwargs)
+
+    @property
+    def total_items(self):
+        """発注内の品番数"""
+        return self.items.count()
+
+    @property
+    def total_quantity(self):
+        """発注内の合計数量"""
+        return self.items.aggregate(
+            total=models.Sum('quantity')
+        )['total'] or 0
+
+    @property
+    def total_amount(self):
+        """発注金額合計"""
+        return self.items.aggregate(
+            total=models.Sum('amount')
+        )['total'] or 0
+
+    @property
+    def received_items_count(self):
+        """受入確認済みの品番数"""
+        return self.items.filter(receiving_confirmed=True).count()
+
+    @property
+    def count_confirmed_items_count(self):
+        """員数確認済みの品番数"""
+        return self.items.filter(count_confirmed=True).count()
+
+
+class PurchaseOrderItem(models.Model):
+    """発注明細モデル（発注内の各部品）"""
+
+    # 親発注
+    purchase_order = models.ForeignKey(
+        'PurchaseOrder',
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name="発注"
+    )
+
+    # 部品マスタ
+    part = models.ForeignKey(
+        'Part',
+        on_delete=models.PROTECT,
+        related_name='purchase_order_items',
+        verbose_name="部品"
+    )
+
+    # 品番情報（スナップショット）
+    part_number = models.CharField(
+        max_length=100,
+        verbose_name="部品品番"
+    )
+    part_name = models.CharField(
+        max_length=200,
+        verbose_name="部品名"
+    )
+
+    # 数量情報
+    quantity = models.PositiveIntegerField(
+        verbose_name="発注数量",
+        help_text="発注数量"
+    )
+
+    # 単価（発注時の価格）
+    unit_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="単価",
+        help_text="発注時の単価"
+    )
+
+    # 金額（数量 × 単価）
+    amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="金額"
+    )
+
+    # 単位
+    unit = models.CharField(
+        max_length=20,
+        default="個",
+        verbose_name="単位"
+    )
+
+    # 受入確認
+    receiving_confirmed = models.BooleanField(
+        default=False,
+        verbose_name="受入確認済み"
+    )
+    receiving_confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="受入確認日時"
+    )
+    receiving_confirmed_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='receiving_confirmed_purchase_items',
+        verbose_name="受入確認者"
+    )
+
+    # 実際の受入数量（受入時に入力）
+    received_quantity = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="受入数量",
+        help_text="実際に受け入れた数量"
+    )
+
+    # 員数確認
+    count_confirmed = models.BooleanField(
+        default=False,
+        verbose_name="員数確認済み"
+    )
+    count_confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="員数確認日時"
+    )
+    count_confirmed_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='count_confirmed_purchase_items',
+        verbose_name="員数確認者"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+
+    class Meta:
+        verbose_name = "発注明細"
+        verbose_name_plural = "発注明細一覧"
+        ordering = ['id']
+        db_table = "purchase_order_items"
+        indexes = [
+            models.Index(fields=['purchase_order']),
+            models.Index(fields=['part']),
+            models.Index(fields=['part_number']),
+            models.Index(fields=['receiving_confirmed']),
+            models.Index(fields=['count_confirmed']),
+            models.Index(fields=['purchase_order', 'count_confirmed']),
+            models.Index(fields=['purchase_order', 'receiving_confirmed']),
+        ]
+
+    def __str__(self):
+        return f"{self.part_number} - {self.part_name} ({self.quantity}{self.unit})"
+
+    def save(self, *args, **kwargs):
+        # 金額を自動計算
+        if self.unit_price is not None and self.quantity:
+            from decimal import Decimal
+            self.amount = Decimal(str(self.unit_price)) * Decimal(str(self.quantity))
+        super().save(*args, **kwargs)
+
+    @property
+    def is_quantity_matched(self):
+        """受入数量が発注数量と一致しているか"""
+        if self.received_quantity is None:
+            return None
+        return self.received_quantity == self.quantity
+
+
+class PurchaseReceiving(models.Model):
+    """購入品受入確認モデル"""
+
+    class ReceivingStatus(models.TextChoices):
+        DRAFT = 'draft', '一時保存'
+        COMPLETED = 'completed', '完了'
+
+    # 発注（複数可能）
+    purchase_orders = models.ManyToManyField(
+        'PurchaseOrder',
+        related_name='receivings',
+        verbose_name="発注",
+        blank=True
+    )
+
+    # 製品（発注未紐付け時に使用）
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.CASCADE,
+        related_name='purchase_receivings',
+        verbose_name="製品",
+        null=True,
+        blank=True
+    )
+
+    # 仕入先支店
+    supplier_branch = models.ForeignKey(
+        'supplier.SupplierBranch',
+        on_delete=models.PROTECT,
+        related_name='purchase_receivings',
+        verbose_name="仕入先支店",
+        null=True,
+        blank=True
+    )
+
+    # ステータス
+    status = models.CharField(
+        max_length=20,
+        choices=ReceivingStatus.choices,
+        default=ReceivingStatus.DRAFT,
+        verbose_name="ステータス"
+    )
+
+    # 受入日時
+    receiving_date = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="受入日時"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_purchase_receivings',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "購入品受入確認"
+        verbose_name_plural = "購入品受入確認一覧"
+        ordering = ['-created_at']
+        db_table = "purchase_receivings"
+        indexes = [
+            models.Index(fields=['product']),
+            models.Index(fields=['supplier_branch']),
+            models.Index(fields=['status']),
+            models.Index(fields=['receiving_date']),
+            models.Index(fields=['product', 'status']),
+        ]
+
+    def __str__(self):
+        if self.supplier_branch:
+            return f"{self.supplier_branch.branch_name} - {self.receiving_date}"
+        return f"受入確認 - {self.receiving_date}"
+
+
+class PurchaseReceivingItem(models.Model):
+    """購入品受入確認項目モデル"""
+
+    # 親の受入確認
+    receiving = models.ForeignKey(
+        'PurchaseReceiving',
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name="受入確認"
+    )
+
+    # 発注明細（任意）
+    order_item = models.ForeignKey(
+        'PurchaseOrderItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='receiving_items',
+        verbose_name="発注明細"
+    )
+
+    # 部品マスタ
+    part = models.ForeignKey(
+        'Part',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='receiving_items',
+        verbose_name="部品"
+    )
+
+    # 品番情報
+    part_number = models.CharField(
+        max_length=100,
+        verbose_name="部品品番"
+    )
+    part_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        verbose_name="部品名"
+    )
+
+    # 入数
+    quantity_per_box = models.PositiveIntegerField(
+        verbose_name="入数",
+        help_text="1箱あたりの入数"
+    )
+
+    # 箱数
+    box_count = models.PositiveIntegerField(
+        verbose_name="箱数"
+    )
+
+    # 計算された数量（入数 × 箱数）
+    calculated_quantity = models.PositiveIntegerField(
+        verbose_name="数量",
+        help_text="入数 × 箱数で自動計算"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+
+    class Meta:
+        verbose_name = "購入品受入確認項目"
+        verbose_name_plural = "購入品受入確認項目一覧"
+        ordering = ['id']
+        db_table = "purchase_receiving_items"
+        indexes = [
+            models.Index(fields=['receiving']),
+            models.Index(fields=['part_number']),
+            models.Index(fields=['part']),
+            models.Index(fields=['receiving', 'part_number']),
+        ]
+
+    def __str__(self):
+        return f"{self.part_number} ({self.quantity_per_box} × {self.box_count} = {self.calculated_quantity})"
+
+    def save(self, *args, **kwargs):
+        # 数量を自動計算
+        self.calculated_quantity = self.quantity_per_box * self.box_count
+        super().save(*args, **kwargs)
+
+
+class PurchasedItemInventory(models.Model):
+    """購入品在庫モデル"""
+
+    # 部品マスタ
+    part = models.ForeignKey(
+        'Part',
+        on_delete=models.CASCADE,
+        related_name='inventories',
+        verbose_name="部品"
+    )
+
+    # 発注明細（どの発注から来たか）
+    order_item = models.ForeignKey(
+        'PurchaseOrderItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='inventories',
+        verbose_name="発注明細"
+    )
+
+    # 数量
+    quantity = models.PositiveIntegerField(
+        verbose_name="在庫数量"
+    )
+
+    # ロット番号
+    lot_number = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="ロット番号"
+    )
+
+    # 入庫日
+    received_date = models.DateField(
+        default=timezone.now,
+        verbose_name="入庫日"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_purchased_item_inventories',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "購入品在庫"
+        verbose_name_plural = "購入品在庫一覧"
+        ordering = ['-received_date', '-created_at']
+        db_table = "purchased_item_inventories"
+        indexes = [
+            models.Index(fields=['part']),
+            models.Index(fields=['lot_number']),
+            models.Index(fields=['received_date']),
+            models.Index(fields=['part', 'received_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.part.part_number} - {self.quantity}{self.part.unit}"

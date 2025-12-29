@@ -39,6 +39,23 @@ import {
     UnregisteredItemsResult,
     ReceivingSummary,
     ReceivingItemListItem,
+    // 購入品管理用
+    PurchaseOrder,
+    PurchaseOrderItem,
+    PurchaseOrderStatus,
+    PurchaseOrderCreateData,
+    PurchaseOrderUpdateData,
+    PurchaseReceiving,
+    PurchaseReceivingCreateData,
+    PurchaseReceivingUpdateData,
+    PurchasedItemInventory,
+    PurchasedItemInventoryCreateData,
+    PurchasedItemInventoryUpdateData,
+    SupplierPartsGroup,
+    CreateOrdersFromPartsRequest,
+    CreateOrdersFromPartsResponse,
+    BulkConfirmPurchaseReceivingResult,
+    BulkConfirmPurchaseCountResult,
 } from '@/types/purchases';
 
 import {
@@ -677,5 +694,196 @@ export const purchasesApi = {
             { params }
         );
         return response.data.results;
+    },
+
+    // ===== 購入品管理 - 発注 =====
+
+    // 発注一覧取得
+    getPurchaseOrders: async (params?: {
+        customer?: number;
+        product?: number;
+        supplier_branch?: number;
+        supplier?: number;
+        status?: PurchaseOrderStatus;
+        search?: string;
+    }): Promise<PurchaseOrder[]> => {
+        const response = await apiClient.get<PaginatedResponse<PurchaseOrder>>('/purchases/purchase-orders/', { params });
+        return response.data.results;
+    },
+
+    // 発注詳細取得
+    getPurchaseOrder: async (id: number): Promise<PurchaseOrder> => {
+        const response = await apiClient.get<PurchaseOrder>(`/purchases/purchase-orders/${id}/`);
+        return response.data;
+    },
+
+    // 発注作成
+    createPurchaseOrder: async (data: PurchaseOrderCreateData): Promise<PurchaseOrder> => {
+        const response = await apiClient.post<PurchaseOrder>('/purchases/purchase-orders/', data);
+        return response.data;
+    },
+
+    // 発注更新
+    updatePurchaseOrder: async (id: number, data: PurchaseOrderUpdateData): Promise<PurchaseOrder> => {
+        const response = await apiClient.patch<PurchaseOrder>(`/purchases/purchase-orders/${id}/`, data);
+        return response.data;
+    },
+
+    // 発注削除
+    deletePurchaseOrder: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/purchase-orders/${id}/`);
+    },
+
+    // 発注ステータス更新
+    updatePurchaseOrderStatus: async (id: number, status: PurchaseOrderStatus): Promise<PurchaseOrder> => {
+        const response = await apiClient.post<PurchaseOrder>(
+            `/purchases/purchase-orders/${id}/update-status/`,
+            { status }
+        );
+        return response.data;
+    },
+
+    // 発注の一括受入確認
+    bulkConfirmPurchaseOrderReceiving: async (id: number): Promise<BulkConfirmPurchaseReceivingResult> => {
+        const response = await apiClient.post<BulkConfirmPurchaseReceivingResult>(
+            `/purchases/purchase-orders/${id}/bulk-confirm-receiving/`
+        );
+        return response.data;
+    },
+
+    // 発注の一括員数確認（在庫移動）
+    bulkConfirmPurchaseOrderCount: async (id: number): Promise<BulkConfirmPurchaseCountResult> => {
+        const response = await apiClient.post<BulkConfirmPurchaseCountResult>(
+            `/purchases/purchase-orders/${id}/bulk-confirm-count/`
+        );
+        return response.data;
+    },
+
+    // ===== 発注明細 =====
+
+    // 発注明細一覧取得
+    getPurchaseOrderItems: async (params?: {
+        order?: number;
+        receiving_confirmed?: string;
+        count_confirmed?: string;
+    }): Promise<PurchaseOrderItem[]> => {
+        const response = await apiClient.get<PaginatedResponse<PurchaseOrderItem>>('/purchases/purchase-order-items/', { params });
+        return response.data.results;
+    },
+
+    // 発注明細詳細取得
+    getPurchaseOrderItem: async (id: number): Promise<PurchaseOrderItem> => {
+        const response = await apiClient.get<PurchaseOrderItem>(`/purchases/purchase-order-items/${id}/`);
+        return response.data;
+    },
+
+    // 発注明細受入確認
+    confirmPurchaseOrderItemReceiving: async (id: number, data: ReceivingConfirmData): Promise<PurchaseOrderItem> => {
+        const response = await apiClient.patch<PurchaseOrderItem>(
+            `/purchases/purchase-order-items/${id}/receiving-confirm/`,
+            data
+        );
+        return response.data;
+    },
+
+    // 発注明細員数確認
+    confirmPurchaseOrderItemCount: async (id: number, data: CountConfirmData): Promise<PurchaseOrderItem> => {
+        const response = await apiClient.patch<PurchaseOrderItem>(
+            `/purchases/purchase-order-items/${id}/count-confirm/`,
+            data
+        );
+        return response.data;
+    },
+
+    // ===== 購入品受入確認 =====
+
+    // 購入品受入確認一覧取得
+    getPurchaseReceivings: async (params?: {
+        order?: number;
+        product?: number;
+        supplier_branch?: number;
+        status?: ReceivingStatus;
+    }): Promise<PurchaseReceiving[]> => {
+        const response = await apiClient.get<PaginatedResponse<PurchaseReceiving>>('/purchases/purchase-receivings/', { params });
+        return response.data.results;
+    },
+
+    // 購入品受入確認詳細取得
+    getPurchaseReceiving: async (id: number): Promise<PurchaseReceiving> => {
+        const response = await apiClient.get<PurchaseReceiving>(`/purchases/purchase-receivings/${id}/`);
+        return response.data;
+    },
+
+    // 購入品受入確認作成
+    createPurchaseReceiving: async (data: PurchaseReceivingCreateData): Promise<PurchaseReceiving> => {
+        const response = await apiClient.post<PurchaseReceiving>('/purchases/purchase-receivings/', data);
+        return response.data;
+    },
+
+    // 購入品受入確認更新
+    updatePurchaseReceiving: async (id: number, data: PurchaseReceivingUpdateData): Promise<PurchaseReceiving> => {
+        const response = await apiClient.patch<PurchaseReceiving>(`/purchases/purchase-receivings/${id}/`, data);
+        return response.data;
+    },
+
+    // 購入品受入確認削除
+    deletePurchaseReceiving: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/purchase-receivings/${id}/`);
+    },
+
+    // ===== 購入品在庫 =====
+
+    // 購入品在庫一覧取得
+    getPurchasedItemInventories: async (params?: {
+        part?: number;
+        product?: number;
+        customer?: number;
+        supplier_branch?: number;
+        search?: string;
+    }): Promise<PurchasedItemInventory[]> => {
+        const response = await apiClient.get<PaginatedResponse<PurchasedItemInventory>>('/purchases/purchased-item-inventories/', { params });
+        return response.data.results;
+    },
+
+    // 購入品在庫詳細取得
+    getPurchasedItemInventory: async (id: number): Promise<PurchasedItemInventory> => {
+        const response = await apiClient.get<PurchasedItemInventory>(`/purchases/purchased-item-inventories/${id}/`);
+        return response.data;
+    },
+
+    // 購入品在庫作成
+    createPurchasedItemInventory: async (data: PurchasedItemInventoryCreateData): Promise<PurchasedItemInventory> => {
+        const response = await apiClient.post<PurchasedItemInventory>('/purchases/purchased-item-inventories/', data);
+        return response.data;
+    },
+
+    // 購入品在庫更新
+    updatePurchasedItemInventory: async (id: number, data: PurchasedItemInventoryUpdateData): Promise<PurchasedItemInventory> => {
+        const response = await apiClient.patch<PurchasedItemInventory>(`/purchases/purchased-item-inventories/${id}/`, data);
+        return response.data;
+    },
+
+    // 購入品在庫削除
+    deletePurchasedItemInventory: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/purchased-item-inventories/${id}/`);
+    },
+
+    // ===== 発注作成サポート =====
+
+    // サプライヤー別にグループ化された部品を取得
+    getPartsGroupedBySupplier: async (productId: number): Promise<SupplierPartsGroup[]> => {
+        const response = await apiClient.get<SupplierPartsGroup[]>('/purchases/parts-by-supplier/', {
+            params: { product: productId }
+        });
+        return response.data;
+    },
+
+    // 部品と数量から発注を一括作成
+    createOrdersFromParts: async (data: CreateOrdersFromPartsRequest): Promise<CreateOrdersFromPartsResponse> => {
+        const response = await apiClient.post<CreateOrdersFromPartsResponse>(
+            '/purchases/create-orders-from-parts/',
+            data
+        );
+        return response.data;
     },
 };

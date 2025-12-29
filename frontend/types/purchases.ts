@@ -567,3 +567,252 @@ export interface ReceivingSummary {
     completed_sku_count: number;
     incomplete_sku_count: number;
 }
+
+
+// ===== 購入品管理関連の型定義 =====
+
+// 発注ステータス
+export type PurchaseOrderStatus =
+    | 'draft'
+    | 'ordered'
+    | 'partially_received'
+    | 'received'
+    | 'pending_count'
+    | 'counting'
+    | 'completed'
+    | 'cancelled';
+
+// 発注
+export interface PurchaseOrder {
+    id: number;
+    order_number: string;
+    product: number;
+    product_name?: string;
+    product_number?: string;
+    customer_name?: string;
+    supplier_branch: number;
+    supplier_name?: string;
+    supplier_branch_name?: string;
+    order_date: string;
+    requested_delivery_date?: string;
+    confirmed_delivery_date?: string;
+    status: PurchaseOrderStatus;
+    status_display?: string;
+    items?: PurchaseOrderItem[];
+    total_items?: number;
+    total_quantity?: number;
+    total_amount?: number;
+    received_items_count?: number;
+    count_confirmed_items_count?: number;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+    created_by?: number;
+    created_by_name?: string;
+}
+
+// 発注明細
+export interface PurchaseOrderItem {
+    id: number;
+    purchase_order: number;
+    part: number;
+    part_number: string;
+    part_name: string;
+    quantity: number;
+    unit_price?: number;
+    amount?: number;
+    unit: string;
+    receiving_confirmed: boolean;
+    receiving_confirmed_at?: string;
+    receiving_confirmed_by?: number;
+    receiving_confirmed_by_name?: string;
+    received_quantity?: number;
+    is_quantity_matched?: boolean | null;
+    count_confirmed: boolean;
+    count_confirmed_at?: string;
+    count_confirmed_by?: number;
+    count_confirmed_by_name?: string;
+    supplier_name?: string;
+    supplier_branch_name?: string;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+// 発注作成データ
+export interface PurchaseOrderCreateData {
+    product: number;
+    supplier_branch: number;
+    order_date?: string;
+    requested_delivery_date?: string;
+    confirmed_delivery_date?: string;
+    status?: PurchaseOrderStatus;
+    notes?: string;
+    items?: PurchaseOrderItemCreateData[];
+}
+
+export type PurchaseOrderUpdateData = Partial<PurchaseOrderCreateData>;
+
+// 発注明細作成データ
+export interface PurchaseOrderItemCreateData {
+    part: number;
+    part_number: string;
+    part_name: string;
+    quantity: number;
+    unit_price?: number;
+    unit?: string;
+    notes?: string;
+}
+
+// 購入品受入確認
+export interface PurchaseReceiving {
+    id: number;
+    purchase_orders?: number[];
+    order_numbers?: string[];
+    order_ids?: number[];
+    product?: number;
+    product_number?: string;
+    product_name?: string;
+    supplier_branch?: number;
+    supplier_name?: string;
+    supplier_branch_name?: string;
+    status: ReceivingStatus;
+    status_display?: string;
+    receiving_date: string;
+    items?: PurchaseReceivingItem[];
+    items_count?: number;
+    total_quantity?: number;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+    created_by?: number;
+    created_by_name?: string;
+}
+
+// 購入品受入確認項目
+export interface PurchaseReceivingItem {
+    id: number;
+    receiving: number;
+    order_item?: number;
+    part?: number;
+    part_number: string;
+    part_name?: string;
+    quantity_per_box: number;
+    box_count: number;
+    calculated_quantity: number;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+// 購入品受入確認作成データ
+export interface PurchaseReceivingCreateData {
+    order_ids?: number[];
+    product?: number;
+    supplier_branch?: number;
+    status?: ReceivingStatus;
+    receiving_date?: string;
+    notes?: string;
+    items?: PurchaseReceivingItemCreateData[];
+}
+
+export type PurchaseReceivingUpdateData = Partial<PurchaseReceivingCreateData>;
+
+// 購入品受入確認項目作成データ
+export interface PurchaseReceivingItemCreateData {
+    order_item?: number;
+    part?: number;
+    part_number: string;
+    part_name?: string;
+    quantity_per_box: number;
+    box_count: number;
+    notes?: string;
+}
+
+// 購入品在庫
+export interface PurchasedItemInventory {
+    id: number;
+    part: number;
+    part_number?: string;
+    part_name?: string;
+    unit?: string;
+    product?: number;
+    product_number?: string;
+    product_name?: string;
+    customer_name?: string;
+    supplier_name?: string;
+    supplier_branch_name?: string;
+    order_item?: number;
+    order_number?: string;
+    quantity: number;
+    lot_number?: string;
+    received_date: string;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+    created_by?: number;
+    created_by_name?: string;
+}
+
+// 購入品在庫作成データ
+export interface PurchasedItemInventoryCreateData {
+    part: number;
+    order_item?: number;
+    quantity: number;
+    lot_number?: string;
+    received_date?: string;
+    notes?: string;
+}
+
+export type PurchasedItemInventoryUpdateData = Partial<PurchasedItemInventoryCreateData>;
+
+// 発注作成用：サプライヤー別部品グループ
+export interface SupplierPartsGroup {
+    supplier_branch_id: number;
+    supplier_name: string;
+    branch_name: string;
+    parts: PartForOrder[];
+}
+
+// 発注作成用：部品情報
+export interface PartForOrder {
+    id: number;
+    part_number: string;
+    part_name: string;
+    supplier_part_name?: string;
+    specification?: string;
+    unit: string;
+    minimum_order_quantity: number;
+    current_price?: number;
+    is_active: boolean;
+}
+
+// 発注作成リクエスト
+export interface CreateOrdersFromPartsRequest {
+    product: number;
+    items: {
+        part: number;
+        quantity: number;
+    }[];
+    order_date?: string;
+    requested_delivery_date?: string;
+    notes?: string;
+}
+
+// 発注作成レスポンス
+export interface CreateOrdersFromPartsResponse {
+    message: string;
+    orders: PurchaseOrder[];
+}
+
+// 一括受入確認レスポンス
+export interface BulkConfirmPurchaseReceivingResult {
+    message: string;
+    order: PurchaseOrder;
+}
+
+// 一括員数確認レスポンス
+export interface BulkConfirmPurchaseCountResult {
+    message: string;
+    order: PurchaseOrder;
+}

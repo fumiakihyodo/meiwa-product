@@ -25,6 +25,17 @@ from api.purchases.views import (
     SuppliedItemReceivingDetailView,
     SuppliedItemInventoryListCreateView,
     SuppliedItemInventoryDetailView,
+    # 購入品管理用
+    PurchaseOrderListCreateView,
+    PurchaseOrderDetailView,
+    PurchaseOrderItemListCreateView,
+    PurchaseOrderItemDetailView,
+    PurchaseOrderItemReceivingConfirmView,
+    PurchaseOrderItemCountConfirmView,
+    PurchaseReceivingListCreateView,
+    PurchaseReceivingDetailView,
+    PurchasedItemInventoryListCreateView,
+    PurchasedItemInventoryDetailView,
 )
 from api.purchases import views
 
@@ -96,4 +107,31 @@ urlpatterns = [
 
     # 部品別受入一覧
     path('supplied-item-receiving-items/', views.get_receiving_items_list, name='get_receiving_items_list'),
+
+    # ========== 購入品管理関連 ==========
+
+    # 発注
+    path('purchase-orders/', PurchaseOrderListCreateView.as_view(), name='purchase_order_list_create'),
+    path('purchase-orders/<int:pk>/', PurchaseOrderDetailView.as_view(), name='purchase_order_detail'),
+    path('purchase-orders/<int:pk>/update-status/', views.update_purchase_order_status, name='update_purchase_order_status'),
+    path('purchase-orders/<int:pk>/bulk-confirm-receiving/', views.bulk_confirm_purchase_order_receiving, name='bulk_confirm_purchase_order_receiving'),
+    path('purchase-orders/<int:pk>/bulk-confirm-count/', views.bulk_confirm_purchase_order_count, name='bulk_confirm_purchase_order_count'),
+
+    # 発注明細
+    path('purchase-order-items/', PurchaseOrderItemListCreateView.as_view(), name='purchase_order_item_list_create'),
+    path('purchase-order-items/<int:pk>/', PurchaseOrderItemDetailView.as_view(), name='purchase_order_item_detail'),
+    path('purchase-order-items/<int:pk>/receiving-confirm/', PurchaseOrderItemReceivingConfirmView.as_view(), name='purchase_order_item_receiving_confirm'),
+    path('purchase-order-items/<int:pk>/count-confirm/', PurchaseOrderItemCountConfirmView.as_view(), name='purchase_order_item_count_confirm'),
+
+    # 購入品受入確認
+    path('purchase-receivings/', PurchaseReceivingListCreateView.as_view(), name='purchase_receiving_list_create'),
+    path('purchase-receivings/<int:pk>/', PurchaseReceivingDetailView.as_view(), name='purchase_receiving_detail'),
+
+    # 購入品在庫
+    path('purchased-item-inventories/', PurchasedItemInventoryListCreateView.as_view(), name='purchased_item_inventory_list_create'),
+    path('purchased-item-inventories/<int:pk>/', PurchasedItemInventoryDetailView.as_view(), name='purchased_item_inventory_detail'),
+
+    # 発注作成サポート
+    path('parts-by-supplier/', views.get_parts_grouped_by_supplier, name='parts_by_supplier'),
+    path('create-orders-from-parts/', views.create_purchase_orders_from_parts, name='create_orders_from_parts'),
 ]

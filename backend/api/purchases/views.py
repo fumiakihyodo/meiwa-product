@@ -18,7 +18,9 @@ import io
 from api.purchases.models import (
     Part, PriceHistory, SuppliedItem, SuppliedItemPriceHistory,
     SuppliedItemList, SuppliedItemListItem, SuppliedItemReceiving,
-    SuppliedItemReceivingItem, SuppliedItemInventory
+    SuppliedItemReceivingItem, SuppliedItemInventory,
+    PurchaseOrder, PurchaseOrderItem, PurchaseReceiving,
+    PurchaseReceivingItem, PurchasedItemInventory
 )
 from api.purchases.serializers import (
     PartListSerializer,
@@ -50,9 +52,28 @@ from api.purchases.serializers import (
     SuppliedItemInventoryDetailSerializer,
     SuppliedItemInventoryCreateSerializer,
     SuppliedItemInventoryUpdateSerializer,
+    # 購入品管理用
+    PurchaseOrderListSerializer,
+    PurchaseOrderDetailSerializer,
+    PurchaseOrderCreateSerializer,
+    PurchaseOrderUpdateSerializer,
+    PurchaseOrderItemSerializer,
+    PurchaseOrderItemCreateSerializer,
+    PurchaseOrderItemCountConfirmSerializer,
+    PurchaseOrderItemReceivingConfirmSerializer,
+    PurchaseReceivingListSerializer,
+    PurchaseReceivingDetailSerializer,
+    PurchaseReceivingCreateSerializer,
+    PurchaseReceivingUpdateSerializer,
+    PurchasedItemInventoryListSerializer,
+    PurchasedItemInventoryDetailSerializer,
+    PurchasedItemInventoryCreateSerializer,
+    PurchasedItemInventoryUpdateSerializer,
+    PartForOrderSerializer,
+    SupplierPartsGroupSerializer,
 )
 from api.products.models import Product
-from api.supplier.models import SupplierBranch
+from api.supplier.models import SupplierBranch, Supplier
 
 logger = logging.getLogger(__name__)
 
@@ -2894,4 +2915,639 @@ def get_receiving_items_list(request):
     return Response({
         'count': len(result),
         'results': result
+    }, status=status.HTTP_200_OK)
+
+
+# ==================== 購入品管理 Views ====================
+
+class PurchaseOrderListCreateView(generics.ListCreateAPIView):
+    """発注一覧取得・作成ビュー
+
+    最適化: アノテーションでカウントを事前計算し、N+1問題を解消
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = PurchaseOrder.objects.select_related(
+            'product',
+            'product__customer_branch',
+            'product__customer_branch__customer',
+            'supplier_branch',
+            'supplier_branch__supplier',
+            'created_by'
+        ).annotate(
+            total_items_count=Count('items'),
+            total_quantity_sum=Sum('items__quantity'),
+            total_amount_sum=Sum('items__amount'),
+            received_items_annotated=Count(
+                Case(
+                    When(items__receiving_confirmed=True, then=1),
+                    output_field=IntegerField()
+                )
+            ),
+            count_confirmed_items_annotated=Count(
+                Case(
+                    When(items__count_confirmed=True, then=1),
+                    output_field=IntegerField()
+                )
+            )
+        )
+
+        # フィルタリング
+        customer_id = self.request.query_params.get('customer', None)
+        if customer_id:
+            queryset = queryset.filter(product__customer_branch__customer_id=customer_id)
+
+        product_id = self.request.query_params.get('product', None)
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+
+        supplier_branch_id = self.request.query_params.get('supplier_branch', None)
+        if supplier_branch_id:
+            queryset = queryset.filter(supplier_branch_id=supplier_branch_id)
+
+        supplier_id = self.request.query_params.get('supplier', None)
+        if supplier_id:
+            queryset = queryset.filter(supplier_branch__supplier_id=supplier_id)
+
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        # 検索
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(order_number__icontains=search) |
+                Q(product__product_number__icontains=search) |
+                Q(product__product_name__icontains=search) |
+                Q(supplier_branch__supplier__company_name__icontains=search) |
+                Q(supplier_branch__branch_name__icontains=search)
+            )
+
+        return queryset.order_by('-created_at')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return PurchaseOrderCreateSerializer
+        return PurchaseOrderListSerializer
+
+
+class PurchaseOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """発注詳細取得・更新・削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        return PurchaseOrder.objects.select_related(
+            'product',
+            'product__customer_branch',
+            'product__customer_branch__customer',
+            'supplier_branch',
+            'supplier_branch__supplier',
+            'created_by'
+        ).prefetch_related(
+            'items',
+            'items__part',
+            'items__part__supplier_branch',
+            'items__part__supplier_branch__supplier',
+            'items__receiving_confirmed_by',
+            'items__count_confirmed_by'
+        )
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return PurchaseOrderUpdateSerializer
+        return PurchaseOrderDetailSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        """発注の削除（管理者のみ）"""
+        if not request.user.is_administrator:
+            return Response(
+                {"error": "削除権限がありません"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        self.perform_destroy(self.get_object())
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PurchaseOrderItemListCreateView(generics.ListCreateAPIView):
+    """発注明細一覧取得・作成ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = PurchaseOrderItem.objects.select_related(
+            'purchase_order',
+            'part',
+            'part__supplier_branch',
+            'part__supplier_branch__supplier',
+            'receiving_confirmed_by',
+            'count_confirmed_by'
+        )
+
+        order_id = self.request.query_params.get('order', None)
+        if order_id:
+            queryset = queryset.filter(purchase_order_id=order_id)
+
+        receiving_confirmed = self.request.query_params.get('receiving_confirmed', None)
+        if receiving_confirmed is not None:
+            queryset = queryset.filter(receiving_confirmed=receiving_confirmed.lower() == 'true')
+
+        count_confirmed = self.request.query_params.get('count_confirmed', None)
+        if count_confirmed is not None:
+            queryset = queryset.filter(count_confirmed=count_confirmed.lower() == 'true')
+
+        return queryset.order_by('id')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return PurchaseOrderItemCreateSerializer
+        return PurchaseOrderItemSerializer
+
+
+class PurchaseOrderItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """発注明細詳細取得・更新・削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+    queryset = PurchaseOrderItem.objects.all()
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return PurchaseOrderItemCreateSerializer
+        return PurchaseOrderItemSerializer
+
+
+class PurchaseOrderItemReceivingConfirmView(generics.UpdateAPIView):
+    """発注明細受入確認ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = PurchaseOrderItemReceivingConfirmSerializer
+    lookup_field = 'pk'
+    queryset = PurchaseOrderItem.objects.all()
+
+
+class PurchaseOrderItemCountConfirmView(generics.UpdateAPIView):
+    """発注明細員数確認ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = PurchaseOrderItemCountConfirmSerializer
+    lookup_field = 'pk'
+    queryset = PurchaseOrderItem.objects.all()
+
+
+# ===== 購入品受入確認 Views =====
+
+class PurchaseReceivingListCreateView(generics.ListCreateAPIView):
+    """購入品受入確認一覧取得・作成ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = PurchaseReceiving.objects.select_related(
+            'product',
+            'supplier_branch',
+            'supplier_branch__supplier',
+            'created_by'
+        ).prefetch_related(
+            'purchase_orders',
+            'items'
+        )
+
+        # フィルタリング
+        order_id = self.request.query_params.get('order', None)
+        if order_id:
+            queryset = queryset.filter(purchase_orders__id=order_id)
+
+        product_id = self.request.query_params.get('product', None)
+        if product_id:
+            queryset = queryset.filter(
+                Q(product_id=product_id) | Q(purchase_orders__product_id=product_id)
+            ).distinct()
+
+        supplier_branch_id = self.request.query_params.get('supplier_branch', None)
+        if supplier_branch_id:
+            queryset = queryset.filter(supplier_branch_id=supplier_branch_id)
+
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        return queryset.order_by('-created_at')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return PurchaseReceivingCreateSerializer
+        return PurchaseReceivingListSerializer
+
+
+class PurchaseReceivingDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """購入品受入確認詳細取得・更新・削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        return PurchaseReceiving.objects.select_related(
+            'product',
+            'supplier_branch',
+            'supplier_branch__supplier',
+            'created_by'
+        ).prefetch_related(
+            'purchase_orders',
+            'items',
+            'items__part',
+            'items__order_item'
+        )
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return PurchaseReceivingUpdateSerializer
+        return PurchaseReceivingDetailSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        """受入確認の削除（管理者のみ）"""
+        if not request.user.is_administrator:
+            return Response(
+                {"error": "削除権限がありません"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        self.perform_destroy(self.get_object())
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ===== 購入品在庫 Views =====
+
+class PurchasedItemInventoryListCreateView(generics.ListCreateAPIView):
+    """購入品在庫一覧取得・作成ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = PurchasedItemInventory.objects.select_related(
+            'part',
+            'part__product',
+            'part__product__customer_branch',
+            'part__product__customer_branch__customer',
+            'part__supplier_branch',
+            'part__supplier_branch__supplier',
+            'order_item',
+            'order_item__purchase_order',
+            'created_by'
+        )
+
+        # フィルタリング
+        part_id = self.request.query_params.get('part', None)
+        if part_id:
+            queryset = queryset.filter(part_id=part_id)
+
+        product_id = self.request.query_params.get('product', None)
+        if product_id:
+            queryset = queryset.filter(part__product_id=product_id)
+
+        customer_id = self.request.query_params.get('customer', None)
+        if customer_id:
+            queryset = queryset.filter(part__product__customer_branch__customer_id=customer_id)
+
+        supplier_branch_id = self.request.query_params.get('supplier_branch', None)
+        if supplier_branch_id:
+            queryset = queryset.filter(part__supplier_branch_id=supplier_branch_id)
+
+        # 検索
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(part__part_number__icontains=search) |
+                Q(part__part_name__icontains=search) |
+                Q(lot_number__icontains=search)
+            )
+
+        return queryset.order_by('-received_date', '-created_at')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return PurchasedItemInventoryCreateSerializer
+        return PurchasedItemInventoryListSerializer
+
+
+class PurchasedItemInventoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """購入品在庫詳細取得・更新・削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'pk'
+    queryset = PurchasedItemInventory.objects.all()
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return PurchasedItemInventoryUpdateSerializer
+        return PurchasedItemInventoryDetailSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        """在庫の削除（管理者のみ）"""
+        if not request.user.is_administrator:
+            return Response(
+                {"error": "削除権限がありません"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        self.perform_destroy(self.get_object())
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ===== 発注作成サポート Views =====
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_parts_grouped_by_supplier(request):
+    """製品IDに基づいて、サプライヤー別にグループ化された部品を取得
+
+    発注作成画面で使用：
+    1. productを選択
+    2. そのproductに紐づくpartを取得
+    3. supplier_branchごとにグループ化して返す
+    """
+    product_id = request.query_params.get('product', None)
+
+    if not product_id:
+        return Response(
+            {"error": "製品IDが必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 部品を取得（有効なもののみ）
+    parts = Part.objects.filter(
+        product_id=product_id,
+        is_active=True
+    ).select_related(
+        'supplier_branch',
+        'supplier_branch__supplier'
+    ).order_by('supplier_branch__supplier__company_name', 'supplier_branch__branch_name', 'part_number')
+
+    # サプライヤー別にグループ化
+    grouped = {}
+    for part in parts:
+        branch_id = part.supplier_branch_id
+        if branch_id not in grouped:
+            grouped[branch_id] = {
+                'supplier_branch_id': branch_id,
+                'supplier_name': part.supplier_branch.supplier.company_name,
+                'branch_name': part.supplier_branch.branch_name,
+                'parts': []
+            }
+        grouped[branch_id]['parts'].append(part)
+
+    # シリアライズ
+    result = []
+    for branch_id, data in grouped.items():
+        result.append({
+            'supplier_branch_id': data['supplier_branch_id'],
+            'supplier_name': data['supplier_name'],
+            'branch_name': data['branch_name'],
+            'parts': PartForOrderSerializer(data['parts'], many=True).data
+        })
+
+    return Response(result, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_purchase_orders_from_parts(request):
+    """部品と数量のリストから、サプライヤー別に発注を一括作成
+
+    リクエストボディ:
+    {
+        "product": 1,
+        "items": [
+            {"part": 1, "quantity": 100},
+            {"part": 2, "quantity": 50},
+            ...
+        ],
+        "order_date": "2024-01-15",  // オプション
+        "requested_delivery_date": "2024-01-30",  // オプション
+        "notes": ""  // オプション
+    }
+    """
+    product_id = request.data.get('product')
+    items = request.data.get('items', [])
+    order_date = request.data.get('order_date')
+    requested_delivery_date = request.data.get('requested_delivery_date')
+    notes = request.data.get('notes', '')
+
+    if not product_id:
+        return Response(
+            {"error": "製品IDが必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not items:
+        return Response(
+            {"error": "発注する部品が必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 製品を取得
+    try:
+        product = Product.objects.get(id=product_id)
+    except Product.DoesNotExist:
+        return Response(
+            {"error": "製品が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # 部品を取得
+    part_ids = [item.get('part') for item in items if item.get('part')]
+    parts = Part.objects.filter(id__in=part_ids).select_related(
+        'supplier_branch',
+        'supplier_branch__supplier'
+    )
+
+    # 部品IDからPartオブジェクトへのマップを作成
+    part_map = {part.id: part for part in parts}
+
+    # サプライヤー別にグループ化
+    supplier_groups = {}  # type: dict
+    for item in items:
+        part_id = item.get('part')
+        quantity = item.get('quantity', 0)
+
+        if part_id not in part_map:
+            continue
+
+        part = part_map[part_id]
+        branch_id = part.supplier_branch_id
+
+        if branch_id not in supplier_groups:
+            supplier_groups[branch_id] = {
+                'supplier_branch': part.supplier_branch,
+                'items': []
+            }
+
+        supplier_groups[branch_id]['items'].append({
+            'part': part,
+            'quantity': quantity,
+            'unit_price': part.current_price
+        })
+
+    # トランザクション内で発注を作成
+    created_orders = []
+    with transaction.atomic():
+        for branch_id, group in supplier_groups.items():
+            # 発注を作成
+            order_data = {
+                'product': product,
+                'supplier_branch': group['supplier_branch'],
+                'status': PurchaseOrder.OrderStatus.DRAFT,
+                'notes': notes,
+                'created_by': request.user
+            }
+
+            if order_date:
+                order_data['order_date'] = order_date
+            if requested_delivery_date:
+                order_data['requested_delivery_date'] = requested_delivery_date
+
+            order = PurchaseOrder.objects.create(**order_data)
+
+            # 発注明細を作成
+            for item in group['items']:
+                part = item['part']
+                PurchaseOrderItem.objects.create(
+                    purchase_order=order,
+                    part=part,
+                    part_number=part.part_number,
+                    part_name=part.part_name,
+                    quantity=item['quantity'],
+                    unit_price=item['unit_price'],
+                    unit=part.unit
+                )
+
+            created_orders.append(order)
+
+    # 作成した発注をシリアライズして返す
+    serializer = PurchaseOrderDetailSerializer(created_orders, many=True)
+    return Response({
+        'message': f'{len(created_orders)}件の発注を作成しました',
+        'orders': serializer.data
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_purchase_order_status(request, pk):
+    """発注ステータスを更新"""
+    try:
+        order = PurchaseOrder.objects.get(pk=pk)
+    except PurchaseOrder.DoesNotExist:
+        return Response(
+            {"error": "発注が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    new_status = request.data.get('status')
+    if not new_status:
+        return Response(
+            {"error": "ステータスが必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    valid_statuses = [s[0] for s in PurchaseOrder.OrderStatus.choices]
+    if new_status not in valid_statuses:
+        return Response(
+            {"error": f"無効なステータスです。有効な値: {valid_statuses}"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    order.status = new_status
+    order.save()
+
+    serializer = PurchaseOrderDetailSerializer(order)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_confirm_purchase_order_receiving(request, pk):
+    """発注の受入れを一括確認"""
+    try:
+        order = PurchaseOrder.objects.prefetch_related('items').get(pk=pk)
+    except PurchaseOrder.DoesNotExist:
+        return Response(
+            {"error": "発注が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    confirmed_count = 0
+    with transaction.atomic():
+        from django.utils import timezone
+        now = timezone.now()
+
+        for item in order.items.filter(receiving_confirmed=False):
+            item.receiving_confirmed = True
+            item.receiving_confirmed_at = now
+            item.receiving_confirmed_by = request.user
+            item.received_quantity = item.quantity  # 発注数量と同じとする
+            item.save()
+            confirmed_count += 1
+
+        # 発注ステータスを更新
+        if order.items.filter(receiving_confirmed=False).count() == 0:
+            order.status = PurchaseOrder.OrderStatus.RECEIVED
+            order.save()
+
+    serializer = PurchaseOrderDetailSerializer(order)
+    return Response({
+        'message': f'{confirmed_count}件の受入れを確認しました',
+        'order': serializer.data
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_confirm_purchase_order_count(request, pk):
+    """発注の員数を一括確認（在庫へ移動）"""
+    try:
+        order = PurchaseOrder.objects.prefetch_related('items', 'items__part').get(pk=pk)
+    except PurchaseOrder.DoesNotExist:
+        return Response(
+            {"error": "発注が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    confirmed_count = 0
+    with transaction.atomic():
+        from django.utils import timezone
+        now = timezone.now()
+
+        for item in order.items.filter(receiving_confirmed=True, count_confirmed=False):
+            item.count_confirmed = True
+            item.count_confirmed_at = now
+            item.count_confirmed_by = request.user
+            item.save()
+
+            # 在庫を作成
+            if item.part:
+                quantity = item.received_quantity or item.quantity
+                received_date = order.confirmed_delivery_date or now.date()
+
+                PurchasedItemInventory.objects.create(
+                    part=item.part,
+                    order_item=item,
+                    quantity=quantity,
+                    received_date=received_date,
+                    created_by=request.user,
+                    notes="一括員数確認時に自動登録"
+                )
+
+            confirmed_count += 1
+
+        # 発注ステータスを更新
+        if order.items.filter(count_confirmed=False).count() == 0:
+            order.status = PurchaseOrder.OrderStatus.COMPLETED
+            order.save()
+
+    serializer = PurchaseOrderDetailSerializer(order)
+    return Response({
+        'message': f'{confirmed_count}件の員数確認が完了し、在庫に移動しました',
+        'order': serializer.data
     }, status=status.HTTP_200_OK)
