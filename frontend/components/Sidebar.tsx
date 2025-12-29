@@ -32,6 +32,7 @@ import {
     ExpandMore,
     CloudUpload as CloudUploadIcon,
     Inventory2 as Inventory2Icon,
+    ShoppingBag as ShoppingBagIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
 import { Header } from '@/components/Header';
@@ -131,6 +132,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
             text: '支給品在庫管理',
             icon: <Inventory2Icon />,
             path: '/supplied-item-inventory',
+            show: true,
+        },
+        {
+            text: '購入品管理',
+            icon: <ShoppingBagIcon />,
+            path: '/purchased-item-inventory',
             show: true,
         },
         {
