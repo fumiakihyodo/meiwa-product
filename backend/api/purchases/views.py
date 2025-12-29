@@ -2840,7 +2840,7 @@ def get_receiving_items_list(request):
     should_exclude = exclude_count_confirmed.lower() == 'true'
 
     # 員数確認済みの数量を品番・製品ごとに集計
-    confirmed_quantities: dict[tuple[str, int], int] = {}
+    confirmed_quantities = {}  # type: dict
     if should_exclude:
         # 製品IDでフィルタされている場合はその製品の確認済み数量を取得
         confirmed_items = SuppliedItemListItem.objects.filter(
