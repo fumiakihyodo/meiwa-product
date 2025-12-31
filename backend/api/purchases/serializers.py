@@ -234,8 +234,8 @@ class PartCreateUpdateSerializer(serializers.ModelSerializer):
         model = Part
         fields = [
             'id',
-            'product', 'supplier_branch', 'part_number', 'part_name','order_type', 'supplier_part_name',
-            'specification', 'unit', 'standard_quantity', 'usage_quantity', 'minimum_order_quantity',
+            'product', 'supplier_branch', 'part_number', 'part_name', 'order_type', 'supplier_part_name',
+            'specification', 'unit', 'usage_quantity', 'minimum_order_quantity',
             'lead_time_days', 'is_active', 'notes',
             'created_by'
         ]

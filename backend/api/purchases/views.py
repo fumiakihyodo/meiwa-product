@@ -617,10 +617,13 @@ class PartBulkImportView(APIView):
                             'notes': row.get('notes', '').strip() or '',
                         }
 
-                        # シリアライザーでバリデーション
-                        serializer = PartCreateUpdateSerializer(data=part_data)
+                        # シリアライザーでバリデーション（contextにrequestを渡す）
+                        serializer = PartCreateUpdateSerializer(
+                            data=part_data,
+                            context={'request': request}
+                        )
                         if serializer.is_valid():
-                            part = serializer.save(created_by=request.user)
+                            part = serializer.save()
                             created_items.append({
                                 'row': row_num,
                                 'part_number': part.part_number,

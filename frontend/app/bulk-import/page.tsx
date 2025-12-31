@@ -155,14 +155,26 @@ export default function BulkImportPage() {
             if (response.data.success) {
                 setFile(null);
             }
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Import error:', error);
-            setResult({
-                success: false,
-                message: 'インポート中にエラーが発生しました',
-                success_count: 0,
-                errors: []
-            });
+            // axiosエラーからレスポンスの詳細を取得
+            interface AxiosError {
+                response?: {
+                    data?: ImportResult;
+                };
+            }
+            const axiosError = error as AxiosError;
+            if (axiosError.response?.data) {
+                // バックエンドからのエラーレスポンスを表示
+                setResult(axiosError.response.data);
+            } else {
+                setResult({
+                    success: false,
+                    message: 'インポート中にエラーが発生しました',
+                    success_count: 0,
+                    errors: []
+                });
+            }
         } finally {
             setLoading(false);
         }
