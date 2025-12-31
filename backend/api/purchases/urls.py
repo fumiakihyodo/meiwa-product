@@ -8,8 +8,7 @@ from api.purchases.views import (
     PriceHistoryDetailView,
     PartBulkImportView,
     PartCSVTemplateView,
-    PriceHistoryBulkImportView,
-    PriceHistoryCSVTemplateView,
+    # PriceHistoryBulkImportView と PriceHistoryCSVTemplateView は削除（初期価格は部品登録に統合）
     SuppliedItemListCreateView,
     SuppliedItemDetailView,
     SuppliedItemPriceHistoryListCreateView,
@@ -48,11 +47,9 @@ urlpatterns = [
     path('parts/bulk-import/', PartBulkImportView.as_view(), name='part_bulk_import'),
     path('parts/csv-template/', PartCSVTemplateView.as_view(), name='part_csv_template'),
 
-    # 価格履歴関連
+    # 価格履歴関連（一括登録は削除、初期価格は部品登録時に設定）
     path('price-histories/', PriceHistoryListCreateView.as_view(), name='price_history_list_create'),
     path('price-histories/<int:pk>/', PriceHistoryDetailView.as_view(), name='price_history_detail'),
-    path('price-histories/bulk-import/', PriceHistoryBulkImportView.as_view(), name='price_history_bulk_import'),
-    path('price-histories/csv-template/', PriceHistoryCSVTemplateView.as_view(), name='price_history_csv_template'),
 
     # Quote file download
     path('price-histories/<int:pk>/quote-file/', views.download_quote_file, name='price-history-quote-file'),

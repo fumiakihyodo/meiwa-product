@@ -250,11 +250,11 @@ class CustomerContactDetailView(generics.RetrieveUpdateDestroyAPIView):
 # ==================== CSV Bulk Import/Export Views ====================
 
 class CustomerBulkImportView(APIView):
-    """カスタマー一括登録ビュー"""
+    """カスタマー一括登録ビュー（顧客＋拠点情報を統合）"""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        """CSVファイルから一括登録"""
+        """CSVファイルから一括登録（顧客情報と拠点情報を同時に登録）"""
         if 'file' not in request.FILES:
             return Response(
                 {"error": "CSVファイルがアップロードされていません"},
@@ -277,12 +277,14 @@ class CustomerBulkImportView(APIView):
             errors = []
             success_count = 0
             created_items = []
+            created_customers = {}  # customer_code -> Customer instance cache
 
             with transaction.atomic():
                 for row_num, row in enumerate(reader, start=2):
                     try:
                         # 必須フィールドのチェック
-                        if not row.get('customer_code'):
+                        customer_code = row.get('customer_code', '').strip()
+                        if not customer_code:
                             errors.append({
                                 'row': row_num,
                                 'error': 'カスタマーコードは必須です'
@@ -296,30 +298,107 @@ class CustomerBulkImportView(APIView):
                             })
                             continue
 
-                        # データの準備
-                        customer_data = {
-                            'customer_code': row.get('customer_code', '').strip(),
-                            'company_name': row.get('company_name', '').strip(),
-                            'website': row.get('website', '').strip() or None,
-                            'notes': row.get('notes', '').strip() or None,
-                            'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい']
-                        }
+                        # 拠点情報がある場合は必須チェック
+                        branch_code = row.get('branch_code', '').strip()
+                        branch_name = row.get('branch_name', '').strip()
+                        has_branch_info = branch_code or branch_name
 
-                        # シリアライザーでバリデーション
-                        serializer = CustomerCreateUpdateSerializer(data=customer_data)
-                        if serializer.is_valid():
-                            customer = serializer.save()
+                        if has_branch_info:
+                            if not branch_code:
+                                errors.append({
+                                    'row': row_num,
+                                    'error': '拠点コードは必須です（拠点情報を入力する場合）'
+                                })
+                                continue
+                            if not branch_name:
+                                errors.append({
+                                    'row': row_num,
+                                    'error': '拠点名は必須です（拠点情報を入力する場合）'
+                                })
+                                continue
+
+                        # カスタマーの検索または作成
+                        customer = None
+
+                        # まずキャッシュから検索
+                        if customer_code in created_customers:
+                            customer = created_customers[customer_code]
+                        else:
+                            # DBから検索
+                            try:
+                                customer = Customer.objects.get(customer_code=customer_code)
+                            except Customer.DoesNotExist:
+                                # 新規作成
+                                customer_data = {
+                                    'customer_code': customer_code,
+                                    'company_name': row.get('company_name', '').strip(),
+                                    'website': row.get('website', '').strip() or None,
+                                    'notes': row.get('customer_notes', '').strip() or None,
+                                    'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい']
+                                }
+
+                                serializer = CustomerCreateUpdateSerializer(data=customer_data)
+                                if serializer.is_valid():
+                                    customer = serializer.save()
+                                    created_customers[customer_code] = customer
+                                else:
+                                    errors.append({
+                                        'row': row_num,
+                                        'error': serializer.errors
+                                    })
+                                    continue
+
+                        # 拠点情報があれば登録
+                        if has_branch_info:
+                            # 既存の拠点コードチェック
+                            if CustomerBranch.objects.filter(branch_code=branch_code).exists():
+                                errors.append({
+                                    'row': row_num,
+                                    'error': f"拠点コード '{branch_code}' は既に存在します"
+                                })
+                                continue
+
+                            branch_data = {
+                                'customer': customer.id,
+                                'branch_code': branch_code,
+                                'branch_name': branch_name,
+                                'branch_type': row.get('branch_type', 'BRANCH').strip(),
+                                'postal_code': row.get('postal_code', '').strip() or None,
+                                'address': row.get('address', '').strip() or None,
+                                'phone_number': row.get('phone_number', '').strip() or None,
+                                'fax_number': row.get('fax_number', '').strip() or None,
+                                'email': row.get('email', '').strip() or None,
+                                'notes': row.get('branch_notes', '').strip() or None,
+                                'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい']
+                            }
+
+                            branch_serializer = CustomerBranchCreateUpdateSerializer(data=branch_data)
+                            if branch_serializer.is_valid():
+                                branch = branch_serializer.save()
+                                created_items.append({
+                                    'row': row_num,
+                                    'customer_code': customer.customer_code,
+                                    'company_name': customer.company_name,
+                                    'branch_code': branch.branch_code,
+                                    'branch_name': branch.branch_name
+                                })
+                            else:
+                                errors.append({
+                                    'row': row_num,
+                                    'error': branch_serializer.errors
+                                })
+                                continue
+                        else:
+                            # 拠点情報なしの場合（顧客のみ登録）
                             created_items.append({
                                 'row': row_num,
                                 'customer_code': customer.customer_code,
-                                'company_name': customer.company_name
+                                'company_name': customer.company_name,
+                                'branch_code': None,
+                                'branch_name': None
                             })
-                            success_count += 1
-                        else:
-                            errors.append({
-                                'row': row_num,
-                                'error': serializer.errors
-                            })
+
+                        success_count += 1
 
                     except Exception as e:
                         errors.append({
@@ -339,7 +418,7 @@ class CustomerBulkImportView(APIView):
 
             return Response({
                 'success': True,
-                'message': f'{success_count}件のカスタマーを登録しました',
+                'message': f'{success_count}件のカスタマー/拠点を登録しました',
                 'success_count': success_count,
                 'created_items': created_items,
                 'errors': []
@@ -354,7 +433,7 @@ class CustomerBulkImportView(APIView):
 
 
 class CustomerCSVTemplateView(APIView):
-    """カスタマーCSVテンプレートダウンロードビュー"""
+    """カスタマーCSVテンプレートダウンロードビュー（顧客＋拠点情報統合）"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -363,11 +442,33 @@ class CustomerCSVTemplateView(APIView):
         response['Content-Disposition'] = 'attachment; filename="customer_template.csv"'
 
         writer = csv.writer(response)
+        # ヘッダー行（顧客情報 + 拠点情報）
         writer.writerow([
-            'customer_code', 'company_name', 'website', 'notes', 'is_active'
+            'customer_code', 'company_name', 'website', 'customer_notes',
+            'branch_code', 'branch_name', 'branch_type',
+            'postal_code', 'address', 'phone_number', 'fax_number', 'email',
+            'branch_notes', 'is_active'
         ])
+        # 説明行（日本語）
         writer.writerow([
-            'CS001', '株式会社サンプル', 'https://example.com', '備考欄', 'true'
+            '# 顧客コード（必須）', '企業名（必須）', 'ウェブサイト', '顧客備考',
+            '拠点コード', '拠点名', '拠点種別（HEAD_OFFICE/BRANCH/FACTORY等）',
+            '郵便番号', '住所', '電話番号', 'FAX番号', 'メール',
+            '拠点備考', '有効（true/false）'
+        ])
+        # サンプルデータ行1（顧客 + 拠点）
+        writer.writerow([
+            'CS001', '株式会社サンプル', 'https://example.com', '優良顧客',
+            'CS001-HQ', '本社', 'HEAD_OFFICE',
+            '100-0001', '東京都千代田区千代田1-1', '03-1234-5678', '03-1234-5679',
+            'info@example.com', '主要拠点', 'true'
+        ])
+        # サンプルデータ行2（同じ顧客の別拠点）
+        writer.writerow([
+            'CS001', '株式会社サンプル', '', '',
+            'CS001-NAG', '名古屋支店', 'BRANCH',
+            '450-0001', '愛知県名古屋市中村区1-1', '052-1234-5678', '',
+            'nagoya@example.com', '', 'true'
         ])
 
         return response

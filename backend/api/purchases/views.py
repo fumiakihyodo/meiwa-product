@@ -483,11 +483,11 @@ def download_quote_file(request, pk):
 # ==================== CSV Bulk Import/Export Views ====================
 
 class PartBulkImportView(APIView):
-    """部品一括登録ビュー"""
+    """部品一括登録ビュー（初期価格フィールドを含む）"""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        """CSVファイルから一括登録"""
+        """CSVファイルから一括登録（初期価格があれば価格履歴を自動作成）"""
         if 'file' not in request.FILES:
             return Response(
                 {"error": "CSVファイルがアップロードされていません"},
@@ -601,6 +601,25 @@ class PartBulkImportView(APIView):
                             except (ValueError, TypeError):
                                 pass
 
+                        # 初期価格のパース
+                        initial_price = None
+                        initial_price_str = row.get('initial_price', '').strip()
+                        if initial_price_str:
+                            try:
+                                initial_price = Decimal(initial_price_str)
+                                if initial_price < 0:
+                                    errors.append({
+                                        'row': row_num,
+                                        'error': '初期価格は0以上で入力してください'
+                                    })
+                                    continue
+                            except (InvalidOperation, ValueError):
+                                errors.append({
+                                    'row': row_num,
+                                    'error': '初期価格の形式が不正です（数値で入力してください）'
+                                })
+                                continue
+
                         # データの準備
                         part_data = {
                             'product': product.id if product else None,
@@ -624,10 +643,23 @@ class PartBulkImportView(APIView):
                         )
                         if serializer.is_valid():
                             part = serializer.save()
+
+                            # 初期価格がある場合は価格履歴を作成
+                            if initial_price is not None:
+                                PriceHistory.objects.create(
+                                    part=part,
+                                    price=initial_price,
+                                    start_date=datetime.now().date(),
+                                    is_active=True,
+                                    change_reason='初期登録',
+                                    created_by=request.user
+                                )
+
                             created_items.append({
                                 'row': row_num,
                                 'part_number': part.part_number,
-                                'part_name': part.part_name
+                                'part_name': part.part_name,
+                                'initial_price': str(initial_price) if initial_price is not None else None
                             })
                             success_count += 1
                         else:
@@ -669,7 +701,7 @@ class PartBulkImportView(APIView):
 
 
 class PartCSVTemplateView(APIView):
-    """部品CSVテンプレートダウンロードビュー"""
+    """部品CSVテンプレートダウンロードビュー（初期価格フィールドを含む）"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -678,22 +710,22 @@ class PartCSVTemplateView(APIView):
         response['Content-Disposition'] = 'attachment; filename="part_template.csv"'
 
         writer = csv.writer(response)
-        # ヘッダー行
+        # ヘッダー行（初期価格フィールドを追加）
         writer.writerow([
             'supplier_code', 'branch_code', 'product_number', 'part_number', 'part_name',
             'supplier_part_name', 'specification', 'unit', 'order_type',
-            'minimum_order_quantity', 'lead_time_days', 'is_active', 'notes'
+            'minimum_order_quantity', 'lead_time_days', 'initial_price', 'is_active', 'notes'
         ])
         # 説明行（日本語）
         writer.writerow([
             '# 仕入先コード（必須）', '拠点コード（必須）', '製品品番（任意）', '部品品番（必須）', '部品名（必須）',
             '仕入先部品名称', '仕様', '単位', '発注区分',
-            '最小発注数量', 'リードタイム（日）', '有効', '備考'
+            '最小発注数量', 'リードタイム（日）', '初期価格（税抜）', '有効', '備考'
         ])
         # サンプルデータ行
         writer.writerow([
             'SUP001', 'SUP001-HQ', 'PROD001', 'PART001', 'サンプル部品', 'Sample Part',
-            '仕様説明', '個', 'MOQ', '100', '30', 'true', '備考欄'
+            '仕様説明', '個', 'MOQ', '100', '30', '1500.00', 'true', '備考欄'
         ])
 
         return response

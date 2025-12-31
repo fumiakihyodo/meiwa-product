@@ -266,11 +266,11 @@ class SupplierContactDetailView(generics.RetrieveUpdateDestroyAPIView):
 # ==================== CSV Bulk Import/Export Views ====================
 
 class SupplierBulkImportView(APIView):
-    """サプライヤー一括登録ビュー"""
+    """サプライヤー一括登録ビュー（仕入先＋拠点情報を統合）"""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        """CSVファイルから一括登録"""
+        """CSVファイルから一括登録（仕入先情報と拠点情報を同時に登録）"""
         if 'file' not in request.FILES:
             return Response(
                 {"error": "CSVファイルがアップロードされていません"},
@@ -293,12 +293,14 @@ class SupplierBulkImportView(APIView):
             errors = []
             success_count = 0
             created_items = []
+            created_suppliers = {}  # supplier_code -> Supplier instance cache
 
             with transaction.atomic():
                 for row_num, row in enumerate(reader, start=2):
                     try:
                         # 必須フィールドのチェック
-                        if not row.get('supplier_code'):
+                        supplier_code = row.get('supplier_code', '').strip()
+                        if not supplier_code:
                             errors.append({
                                 'row': row_num,
                                 'error': 'サプライヤーコードは必須です'
@@ -312,30 +314,107 @@ class SupplierBulkImportView(APIView):
                             })
                             continue
 
-                        # データの準備
-                        supplier_data = {
-                            'supplier_code': row.get('supplier_code', '').strip(),
-                            'company_name': row.get('company_name', '').strip(),
-                            'website': row.get('website', '').strip() or None,
-                            'notes': row.get('notes', '').strip() or None,
-                            'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい']
-                        }
+                        # 拠点情報がある場合は必須チェック
+                        branch_code = row.get('branch_code', '').strip()
+                        branch_name = row.get('branch_name', '').strip()
+                        has_branch_info = branch_code or branch_name
 
-                        # シリアライザーでバリデーション
-                        serializer = SupplierCreateUpdateSerializer(data=supplier_data)
-                        if serializer.is_valid():
-                            supplier = serializer.save()
+                        if has_branch_info:
+                            if not branch_code:
+                                errors.append({
+                                    'row': row_num,
+                                    'error': '拠点コードは必須です（拠点情報を入力する場合）'
+                                })
+                                continue
+                            if not branch_name:
+                                errors.append({
+                                    'row': row_num,
+                                    'error': '拠点名は必須です（拠点情報を入力する場合）'
+                                })
+                                continue
+
+                        # サプライヤーの検索または作成
+                        supplier = None
+
+                        # まずキャッシュから検索
+                        if supplier_code in created_suppliers:
+                            supplier = created_suppliers[supplier_code]
+                        else:
+                            # DBから検索
+                            try:
+                                supplier = Supplier.objects.get(supplier_code=supplier_code)
+                            except Supplier.DoesNotExist:
+                                # 新規作成
+                                supplier_data = {
+                                    'supplier_code': supplier_code,
+                                    'company_name': row.get('company_name', '').strip(),
+                                    'website': row.get('website', '').strip() or None,
+                                    'notes': row.get('supplier_notes', '').strip() or None,
+                                    'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい']
+                                }
+
+                                serializer = SupplierCreateUpdateSerializer(data=supplier_data)
+                                if serializer.is_valid():
+                                    supplier = serializer.save()
+                                    created_suppliers[supplier_code] = supplier
+                                else:
+                                    errors.append({
+                                        'row': row_num,
+                                        'error': serializer.errors
+                                    })
+                                    continue
+
+                        # 拠点情報があれば登録
+                        if has_branch_info:
+                            # 既存の拠点コードチェック
+                            if SupplierBranch.objects.filter(branch_code=branch_code).exists():
+                                errors.append({
+                                    'row': row_num,
+                                    'error': f"拠点コード '{branch_code}' は既に存在します"
+                                })
+                                continue
+
+                            branch_data = {
+                                'supplier': supplier.id,
+                                'branch_code': branch_code,
+                                'branch_name': branch_name,
+                                'branch_type': row.get('branch_type', 'BRANCH').strip(),
+                                'postal_code': row.get('postal_code', '').strip() or None,
+                                'address': row.get('address', '').strip() or None,
+                                'phone_number': row.get('phone_number', '').strip() or None,
+                                'fax_number': row.get('fax_number', '').strip() or None,
+                                'email': row.get('email', '').strip() or None,
+                                'notes': row.get('branch_notes', '').strip() or None,
+                                'is_active': row.get('is_active', 'true').lower() in ['true', '1', 'yes', 'はい']
+                            }
+
+                            branch_serializer = SupplierBranchCreateUpdateSerializer(data=branch_data)
+                            if branch_serializer.is_valid():
+                                branch = branch_serializer.save()
+                                created_items.append({
+                                    'row': row_num,
+                                    'supplier_code': supplier.supplier_code,
+                                    'company_name': supplier.company_name,
+                                    'branch_code': branch.branch_code,
+                                    'branch_name': branch.branch_name
+                                })
+                            else:
+                                errors.append({
+                                    'row': row_num,
+                                    'error': branch_serializer.errors
+                                })
+                                continue
+                        else:
+                            # 拠点情報なしの場合（仕入先のみ登録）
                             created_items.append({
                                 'row': row_num,
                                 'supplier_code': supplier.supplier_code,
-                                'company_name': supplier.company_name
+                                'company_name': supplier.company_name,
+                                'branch_code': None,
+                                'branch_name': None
                             })
-                            success_count += 1
-                        else:
-                            errors.append({
-                                'row': row_num,
-                                'error': serializer.errors
-                            })
+
+                        success_count += 1
 
                     except Exception as e:
                         errors.append({
@@ -355,7 +434,7 @@ class SupplierBulkImportView(APIView):
 
             return Response({
                 'success': True,
-                'message': f'{success_count}件のサプライヤーを登録しました',
+                'message': f'{success_count}件のサプライヤー/拠点を登録しました',
                 'success_count': success_count,
                 'created_items': created_items,
                 'errors': []
@@ -370,7 +449,7 @@ class SupplierBulkImportView(APIView):
 
 
 class SupplierCSVTemplateView(APIView):
-    """サプライヤーCSVテンプレートダウンロードビュー"""
+    """サプライヤーCSVテンプレートダウンロードビュー（仕入先＋拠点情報統合）"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -379,11 +458,33 @@ class SupplierCSVTemplateView(APIView):
         response['Content-Disposition'] = 'attachment; filename="supplier_template.csv"'
 
         writer = csv.writer(response)
+        # ヘッダー行（仕入先情報 + 拠点情報）
         writer.writerow([
-            'supplier_code', 'company_name', 'website', 'notes', 'is_active'
+            'supplier_code', 'company_name', 'website', 'supplier_notes',
+            'branch_code', 'branch_name', 'branch_type',
+            'postal_code', 'address', 'phone_number', 'fax_number', 'email',
+            'branch_notes', 'is_active'
         ])
+        # 説明行（日本語）
         writer.writerow([
-            'SUP001', '株式会社サプライヤー', 'https://example.com', '備考欄', 'true'
+            '# 仕入先コード（必須）', '企業名（必須）', 'ウェブサイト', '仕入先備考',
+            '拠点コード', '拠点名', '拠点種別（HEAD_OFFICE/BRANCH/FACTORY等）',
+            '郵便番号', '住所', '電話番号', 'FAX番号', 'メール',
+            '拠点備考', '有効（true/false）'
+        ])
+        # サンプルデータ行1（仕入先 + 拠点）
+        writer.writerow([
+            'SUP001', '株式会社サプライヤー', 'https://example.com', '主要取引先',
+            'SUP001-HQ', '本社', 'HEAD_OFFICE',
+            '100-0001', '東京都千代田区千代田1-1', '03-1234-5678', '03-1234-5679',
+            'info@supplier.com', '主要拠点', 'true'
+        ])
+        # サンプルデータ行2（同じ仕入先の別拠点）
+        writer.writerow([
+            'SUP001', '株式会社サプライヤー', '', '',
+            'SUP001-OSK', '大阪支店', 'BRANCH',
+            '530-0001', '大阪府大阪市北区1-1', '06-1234-5678', '',
+            'osaka@supplier.com', '', 'true'
         ])
 
         return response

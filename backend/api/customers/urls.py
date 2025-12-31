@@ -10,8 +10,7 @@ from api.customers.views import (
     CustomerContactDetailView,
     CustomerBulkImportView,
     CustomerCSVTemplateView,
-    CustomerBranchBulkImportView,
-    CustomerBranchCSVTemplateView,
+    # CustomerBranchBulkImportView と CustomerBranchCSVTemplateView は統合されたため削除
     CustomerContactBulkImportView,
     CustomerContactCSVTemplateView,
 )
@@ -19,17 +18,15 @@ from api.customers.views import (
 app_name = 'customers'
 
 urlpatterns = [
-    # カスタマー関連
+    # カスタマー関連（顧客＋拠点の一括登録を統合）
     path('', CustomerListCreateView.as_view(), name='customer_list_create'),
     path('<int:pk>/', CustomerDetailView.as_view(), name='customer_detail'),
     path('bulk-import/', CustomerBulkImportView.as_view(), name='customer_bulk_import'),
     path('csv-template/', CustomerCSVTemplateView.as_view(), name='customer_csv_template'),
 
-    # カスタマー拠点関連
+    # カスタマー拠点関連（個別CRUDのみ残す、一括登録は顧客と統合済み）
     path('branches/', CustomerBranchListCreateView.as_view(), name='branch_list_create'),
     path('branches/<int:pk>/', CustomerBranchDetailView.as_view(), name='branch_detail'),
-    path('branches/bulk-import/', CustomerBranchBulkImportView.as_view(), name='branch_bulk_import'),
-    path('branches/csv-template/', CustomerBranchCSVTemplateView.as_view(), name='branch_csv_template'),
 
     # カスタマー担当者関連
     path('contacts/', CustomerContactListCreateView.as_view(), name='contact_list_create'),
