@@ -14,10 +14,12 @@ class Part(models.Model):
     # 関連
     product = models.ForeignKey(
         'products.Product',
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name='parts',
         verbose_name="製品",
-        help_text="この部品が使用される製品"
+        help_text="この部品が使用される製品（任意）",
+        null=True,
+        blank=True
     )
     supplier_branch = models.ForeignKey(
         'supplier.SupplierBranch',

@@ -514,18 +514,23 @@ class PartBulkImportView(APIView):
             with transaction.atomic():
                 for row_num, row in enumerate(reader, start=2):
                     try:
+                        # 説明行（#で始まる行）をスキップ
+                        first_value = list(row.values())[0] if row else ''
+                        if first_value and first_value.startswith('#'):
+                            continue
+
                         # 必須フィールドのチェック
-                        if not row.get('product_number'):
+                        if not row.get('supplier_code'):
                             errors.append({
                                 'row': row_num,
-                                'error': '製品品番は必須です'
+                                'error': '仕入先コードは必須です'
                             })
                             continue
 
-                        if not row.get('supplier_branch_code'):
+                        if not row.get('branch_code'):
                             errors.append({
                                 'row': row_num,
-                                'error': '仕入先支店コードは必須です'
+                                'error': '拠点コードは必須です'
                             })
                             continue
 
@@ -543,29 +548,43 @@ class PartBulkImportView(APIView):
                             })
                             continue
 
-                        # 製品の検索
+                        # 仕入先コードでサプライヤーを検索
+                        supplier_code = row.get('supplier_code', '').strip()
                         try:
-                            product = Product.objects.get(
-                                product_number=row.get('product_number', '').strip()
-                            )
-                        except Product.DoesNotExist:
+                            supplier = Supplier.objects.get(supplier_code=supplier_code)
+                        except Supplier.DoesNotExist:
                             errors.append({
                                 'row': row_num,
-                                'error': f"製品品番 '{row.get('product_number')}' が見つかりません"
+                                'error': f"仕入先コード '{supplier_code}' が見つかりません"
                             })
                             continue
 
-                        # サプライヤー支店の検索
+                        # 拠点コードでサプライヤー支店を検索
+                        branch_code = row.get('branch_code', '').strip()
                         try:
                             supplier_branch = SupplierBranch.objects.get(
-                                branch_code=row.get('supplier_branch_code', '').strip()
+                                branch_code=branch_code,
+                                supplier=supplier
                             )
                         except SupplierBranch.DoesNotExist:
                             errors.append({
                                 'row': row_num,
-                                'error': f"仕入先支店コード '{row.get('supplier_branch_code')}' が見つかりません"
+                                'error': f"仕入先 '{supplier_code}' に拠点コード '{branch_code}' が見つかりません"
                             })
                             continue
+
+                        # 製品の検索（任意）
+                        product = None
+                        product_number = row.get('product_number', '').strip()
+                        if product_number:
+                            try:
+                                product = Product.objects.get(product_number=product_number)
+                            except Product.DoesNotExist:
+                                errors.append({
+                                    'row': row_num,
+                                    'error': f"製品品番 '{product_number}' が見つかりません"
+                                })
+                                continue
 
                         # 最小発注数量のパース
                         try:
@@ -584,7 +603,7 @@ class PartBulkImportView(APIView):
 
                         # データの準備
                         part_data = {
-                            'product': product.id,
+                            'product': product.id if product else None,
                             'supplier_branch': supplier_branch.id,
                             'part_number': row.get('part_number', '').strip(),
                             'part_name': row.get('part_name', '').strip(),
@@ -656,13 +675,21 @@ class PartCSVTemplateView(APIView):
         response['Content-Disposition'] = 'attachment; filename="part_template.csv"'
 
         writer = csv.writer(response)
+        # ヘッダー行
         writer.writerow([
-            'product_number', 'supplier_branch_code', 'part_number', 'part_name',
+            'supplier_code', 'branch_code', 'product_number', 'part_number', 'part_name',
             'supplier_part_name', 'specification', 'unit', 'order_type',
             'minimum_order_quantity', 'lead_time_days', 'is_active', 'notes'
         ])
+        # 説明行（日本語）
         writer.writerow([
-            'PROD001', 'HQ', 'PART001', 'サンプル部品', 'Sample Part',
+            '# 仕入先コード（必須）', '拠点コード（必須）', '製品品番（任意）', '部品品番（必須）', '部品名（必須）',
+            '仕入先部品名称', '仕様', '単位', '発注区分',
+            '最小発注数量', 'リードタイム（日）', '有効', '備考'
+        ])
+        # サンプルデータ行
+        writer.writerow([
+            'SUP001', 'SUP001-HQ', 'PROD001', 'PART001', 'サンプル部品', 'Sample Part',
             '仕様説明', '個', 'MOQ', '100', '30', 'true', '備考欄'
         ])
 

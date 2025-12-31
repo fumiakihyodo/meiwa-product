@@ -123,8 +123,8 @@ class PriceHistoryCreateUpdateSerializer(serializers.ModelSerializer):
 
 class PartListSerializer(serializers.ModelSerializer):
     """部品一覧用のシリアライザー"""
-    product_number = serializers.CharField(source='product.product_number', read_only=True)
-    product_name = serializers.CharField(source='product.product_name', read_only=True)
+    product_number = serializers.CharField(source='product.product_number', read_only=True, default=None)
+    product_name = serializers.CharField(source='product.product_name', read_only=True, default=None)
     supplier_name = serializers.CharField(
         source='supplier_branch.supplier.company_name',
         read_only=True
@@ -155,8 +155,8 @@ class PartListSerializer(serializers.ModelSerializer):
 
 class PartDetailSerializer(serializers.ModelSerializer):
     """部品詳細用のシリアライザー(価格履歴を含む)"""
-    product_number = serializers.CharField(source='product.product_number', read_only=True)
-    product_name = serializers.CharField(source='product.product_name', read_only=True)
+    product_number = serializers.CharField(source='product.product_number', read_only=True, default=None)
+    product_name = serializers.CharField(source='product.product_name', read_only=True, default=None)
     
     # 顧客情報を追加
     customer_name = serializers.SerializerMethodField()
@@ -241,7 +241,7 @@ class PartCreateUpdateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
         extra_kwargs = {
-            'product': {'required': True},
+            'product': {'required': False, 'allow_null': True},
             'supplier_branch': {'required': True},
             'part_number': {'required': True},
             'part_name': {'required': True},
@@ -258,21 +258,37 @@ class PartCreateUpdateSerializer(serializers.ModelSerializer):
         product = attrs.get('product')
         supplier_branch = attrs.get('supplier_branch')
         part_number = attrs.get('part_number')
-        
+
         instance = self.instance
-        if instance:
-            existing = Part.objects.filter(
-                product=product,
-                supplier_branch=supplier_branch,
-                part_number=part_number
-            ).exclude(pk=instance.pk)
+
+        # 製品が指定されていない場合の重複チェック
+        if product is None:
+            if instance:
+                existing = Part.objects.filter(
+                    product__isnull=True,
+                    supplier_branch=supplier_branch,
+                    part_number=part_number
+                ).exclude(pk=instance.pk)
+            else:
+                existing = Part.objects.filter(
+                    product__isnull=True,
+                    supplier_branch=supplier_branch,
+                    part_number=part_number
+                )
         else:
-            existing = Part.objects.filter(
-                product=product,
-                supplier_branch=supplier_branch,
-                part_number=part_number
-            )
-        
+            if instance:
+                existing = Part.objects.filter(
+                    product=product,
+                    supplier_branch=supplier_branch,
+                    part_number=part_number
+                ).exclude(pk=instance.pk)
+            else:
+                existing = Part.objects.filter(
+                    product=product,
+                    supplier_branch=supplier_branch,
+                    part_number=part_number
+                )
+
         if existing.exists():
             raise serializers.ValidationError(
                 "この製品と仕入先の組み合わせで、同じ品番が既に登録されています"
