@@ -5,6 +5,7 @@ import React from 'react';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/context/AuthContext';
+import { MenuProvider } from '@/context/MenuContext';
 import { theme } from './theme';
 
 export default function RootLayout({
@@ -23,7 +24,8 @@ export default function RootLayout({
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <AuthProvider>
-            {children}
+            <MenuProvider>
+              {children}
             <Toaster
               position="top-right"
               toastOptions={{
@@ -54,6 +56,7 @@ export default function RootLayout({
                 },
               }}
             />
+            </MenuProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

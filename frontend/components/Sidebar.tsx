@@ -16,6 +16,7 @@ import {
     Typography,
     Box,
     Collapse,
+    Chip,
 } from '@mui/material';
 import {
     Dashboard as DashboardIcon,
@@ -33,14 +34,31 @@ import {
     CloudUpload as CloudUploadIcon,
     Inventory2 as Inventory2Icon,
     ShoppingBag as ShoppingBagIcon,
+    Home as HomeIcon,
+    Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
+import { useMenu, MenuCategory, MENU_CATEGORIES } from '@/context/MenuContext';
 import { Header } from '@/components/Header';
 
 const drawerWidth = 240;
 
 interface SidebarProps {
     children: React.ReactNode;
+}
+
+// カテゴリ別のメニュー項目定義
+interface MenuItem {
+    text: string;
+    icon: React.ReactNode;
+    path: string;
+    show?: boolean;
+}
+
+interface NestedMenuItem {
+    text: string;
+    icon: React.ReactNode;
+    items: MenuItem[];
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
@@ -63,15 +81,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
         return true;
     });
 
-    const [masterOpen, setMasterOpen] = useState(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('sidebar-master-open');
-            return saved !== null ? JSON.parse(saved) : true;
-        }
-        return true;
-    });
-
     const { isAdmin } = useAuth();
+    const { currentCategory } = useMenu();
     const router = useRouter();
     const pathname = usePathname();
 
@@ -87,12 +98,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
             localStorage.setItem('sidebar-customer-open', JSON.stringify(customerOpen));
         }
     }, [customerOpen]);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('sidebar-master-open', JSON.stringify(masterOpen));
-        }
-    }, [masterOpen]);
 
     const handleDrawerToggle = () => {
         setMobileOpen(!mobileOpen);
@@ -111,93 +116,121 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
         setCustomerOpen(!customerOpen);
     };
 
-    const handleMasterToggle = () => {
-        setMasterOpen(!masterOpen);
+    // 現在のカテゴリ情報を取得
+    const currentCategoryInfo = MENU_CATEGORIES.find(c => c.id === currentCategory);
+
+    // カテゴリごとのメニュー定義
+    const getMenuForCategory = (category: MenuCategory): { items: MenuItem[], nested?: NestedMenuItem[] } => {
+        switch (category) {
+            case 'inventory':
+                return {
+                    items: [
+                        {
+                            text: '支給品在庫管理',
+                            icon: <Inventory2Icon />,
+                            path: '/supplied-item-inventory',
+                        },
+                        {
+                            text: '購入品管理',
+                            icon: <ShoppingBagIcon />,
+                            path: '/purchased-item-inventory',
+                        },
+                    ],
+                };
+            case 'master':
+                return {
+                    items: [
+                        {
+                            text: '製品管理',
+                            icon: <InventoryIcon />,
+                            path: '/products',
+                        },
+                        {
+                            text: '部品管理',
+                            icon: <ShoppingCartIcon />,
+                            path: '/parts',
+                        },
+                    ],
+                };
+            case 'trading':
+                return {
+                    items: [],
+                    nested: [
+                        {
+                            text: '顧客管理',
+                            icon: <PersonOutlineIcon />,
+                            items: [
+                                {
+                                    text: '顧客一覧',
+                                    icon: <PersonOutlineIcon />,
+                                    path: '/customers',
+                                },
+                                {
+                                    text: '顧客拠点',
+                                    icon: <StoreIcon />,
+                                    path: '/customers/branches',
+                                },
+                                {
+                                    text: '顧客担当者',
+                                    icon: <ContactPhoneIcon />,
+                                    path: '/customers/contacts',
+                                },
+                            ],
+                        },
+                        {
+                            text: '仕入先管理',
+                            icon: <BusinessIcon />,
+                            items: [
+                                {
+                                    text: '仕入先一覧',
+                                    icon: <BusinessIcon />,
+                                    path: '/suppliers',
+                                },
+                                {
+                                    text: '仕入先担当者',
+                                    icon: <ContactPhoneIcon />,
+                                    path: '/suppliers/contacts',
+                                },
+                            ],
+                        },
+                    ],
+                };
+            case 'system':
+                return {
+                    items: [
+                        {
+                            text: 'ユーザー管理',
+                            icon: <PeopleIcon />,
+                            path: '/users',
+                            show: isAdmin,
+                        },
+                        {
+                            text: '一括登録',
+                            icon: <CloudUploadIcon />,
+                            path: '/bulk-import',
+                        },
+                    ].filter(item => item.show !== false),
+                };
+            case 'dashboard':
+            default:
+                return {
+                    items: [
+                        {
+                            text: 'ダッシュボード',
+                            icon: <DashboardIcon />,
+                            path: '/dashboard',
+                        },
+                    ],
+                };
+        }
     };
 
-    const menuItems = [
-        {
-            text: 'ダッシュボード',
-            icon: <DashboardIcon />,
-            path: '/dashboard',
-            show: true,
-        },
-        {
-            text: '一括登録',
-            icon: <CloudUploadIcon />,
-            path: '/bulk-import',
-            show: true,
-        },
-        {
-            text: '支給品在庫管理',
-            icon: <Inventory2Icon />,
-            path: '/supplied-item-inventory',
-            show: true,
-        },
-        {
-            text: '購入品管理',
-            icon: <ShoppingBagIcon />,
-            path: '/purchased-item-inventory',
-            show: true,
-        },
-        {
-            text: 'ユーザー管理',
-            icon: <PeopleIcon />,
-            path: '/users',
-            show: isAdmin,
-        },
-    ];
-
-    const supplierMenuItems = [
-        {
-            text: '仕入先一覧',
-            icon: <BusinessIcon />,
-            path: '/suppliers',
-        },
-        {
-            text: '仕入先担当者',
-            icon: <ContactPhoneIcon />,
-            path: '/suppliers/contacts',
-        },
-    ];
-
-    const customerMenuItems = [
-        {
-            text: '顧客一覧',
-            icon: <PersonOutlineIcon />,
-            path: '/customers',
-        },
-        {
-            text: '顧客拠点',
-            icon: <StoreIcon />,
-            path: '/customers/branches',
-        },
-        {
-            text: '顧客担当者',
-            icon: <ContactPhoneIcon />,
-            path: '/customers/contacts',
-        },
-    ];
-
-    const masterMenuItems = [
-        {
-            text: '製品管理',
-            icon: <InventoryIcon />,
-            path: '/products',
-        },
-        {
-            text: '部品管理',
-            icon: <ShoppingCartIcon />,
-            path: '/parts',
-        },
-    ];
+    const menuConfig = getMenuForCategory(currentCategory);
 
     const drawer = (
         <>
             <Toolbar>
                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'center', py: 1 }}>
-                    {/* TODO: 企業ロゴ画像のパスを設定してください */}
-                    {/* 例: <Box component="img" src="/logo.png" alt="企業ロゴ" sx={{ height: 40, objectFit: 'contain' }} /> */}
                     <Typography variant='h6' noWrap component='div' sx={{ fontWeight: 'bold' }}>
                         Meiwa Product
                     </Typography>
@@ -205,94 +238,87 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
             </Toolbar>
             <Divider />
 
-            {/* メインメニュー */}
-            <List>
-                {menuItems
-                    .filter((item) => item.show)
-                    .map((item) => (
-                        <ListItem key={item.text} disablePadding>
-                            <ListItemButton
-                                selected={pathname === item.path}
-                                onClick={() => handleNavigation(item.path)}
-                            >
-                                <ListItemIcon>{item.icon}</ListItemIcon>
-                                <ListItemText primary={item.text} />
-                            </ListItemButton>
-                        </ListItem>
-                    ))}
-            </List>
-            <Divider />
-
-            {/* マスタ管理 */}
-            <List>
-                <ListItem disablePadding>
-                    <ListItemButton onClick={handleMasterToggle}>
-                        <ListItemIcon>
-                            <InventoryIcon />
-                        </ListItemIcon>
-                        <ListItemText primary="マスタ管理" />
-                        {masterOpen ? <ExpandLess /> : <ExpandMore />}
-                    </ListItemButton>
-                </ListItem>
-                <Collapse in={masterOpen} timeout="auto" unmountOnExit>
-                    <List component="div" disablePadding>
-                        {masterMenuItems.map((item) => (
-                            <ListItem key={item.text} disablePadding>
-                                <ListItemButton
-                                    sx={{ pl: 4 }}
-                                    selected={pathname === item.path}
-                                    onClick={() => handleNavigation(item.path)}
-                                >
-                                    <ListItemIcon>{item.icon}</ListItemIcon>
-                                    <ListItemText primary={item.text} />
-                                </ListItemButton>
-                            </ListItem>
-                        ))}
-                    </List>
-                    < Divider/>
-                    {/* カスタマー管理 */}
+            {/* ダッシュボードに戻るボタン（ダッシュボード以外のカテゴリで表示） */}
+            {currentCategory !== 'dashboard' && (
+                <>
                     <List>
                         <ListItem disablePadding>
-                            <ListItemButton onClick={handleCustomerToggle}>
+                            <ListItemButton
+                                onClick={() => handleNavigation('/dashboard')}
+                                sx={{
+                                    backgroundColor: 'action.hover',
+                                }}
+                            >
                                 <ListItemIcon>
-                                    <PersonOutlineIcon />
+                                    <HomeIcon />
                                 </ListItemIcon>
-                                <ListItemText primary="顧客管理" />
-                                {customerOpen ? <ExpandLess /> : <ExpandMore />}
+                                <ListItemText primary="ダッシュボード" />
                             </ListItemButton>
                         </ListItem>
-                        <Collapse in={customerOpen} timeout="auto" unmountOnExit>
-                            <List component="div" disablePadding>
-                                {customerMenuItems.map((item) => (
-                                    <ListItem key={item.text} disablePadding>
-                                        <ListItemButton
-                                            sx={{ pl: 4 }}
-                                            selected={pathname === item.path}
-                                            onClick={() => handleNavigation(item.path)}
-                                        >
-                                            <ListItemIcon>{item.icon}</ListItemIcon>
-                                            <ListItemText primary={item.text} />
-                                        </ListItemButton>
-                                    </ListItem>
-                                ))}
-                            </List>
-                        </Collapse>
                     </List>
                     <Divider />
-                    {/* サプライヤー管理 */}
+                </>
+            )}
+
+            {/* カテゴリヘッダー */}
+            {currentCategory !== 'dashboard' && currentCategoryInfo && (
+                <Box sx={{ px: 2, py: 1.5, backgroundColor: `${currentCategoryInfo.color}10` }}>
+                    <Chip
+                        icon={
+                            currentCategory === 'inventory' ? <Inventory2Icon fontSize="small" /> :
+                            currentCategory === 'master' ? <InventoryIcon fontSize="small" /> :
+                            currentCategory === 'trading' ? <BusinessIcon fontSize="small" /> :
+                            <SettingsIcon fontSize="small" />
+                        }
+                        label={currentCategoryInfo.name}
+                        size="small"
+                        sx={{
+                            backgroundColor: currentCategoryInfo.color,
+                            color: 'white',
+                            fontWeight: 'bold',
+                        }}
+                    />
+                </Box>
+            )}
+
+            {/* メインメニュー */}
+            <List>
+                {menuConfig.items.map((item) => (
+                    <ListItem key={item.text} disablePadding>
+                        <ListItemButton
+                            selected={pathname === item.path || pathname?.startsWith(item.path + '/')}
+                            onClick={() => handleNavigation(item.path)}
+                        >
+                            <ListItemIcon>{item.icon}</ListItemIcon>
+                            <ListItemText primary={item.text} />
+                        </ListItemButton>
+                    </ListItem>
+                ))}
+            </List>
+
+            {/* ネストメニュー（取引先管理用） */}
+            {menuConfig.nested && menuConfig.nested.map((nestedMenu, index) => (
+                <React.Fragment key={nestedMenu.text}>
+                    {index > 0 && <Divider />}
                     <List>
                         <ListItem disablePadding>
-                            <ListItemButton onClick={handleSupplierToggle}>
+                            <ListItemButton
+                                onClick={nestedMenu.text === '顧客管理' ? handleCustomerToggle : handleSupplierToggle}
+                            >
                                 <ListItemIcon>
-                                    <BusinessIcon />
+                                    {nestedMenu.icon}
                                 </ListItemIcon>
-                                <ListItemText primary="仕入先管理" />
-                                {supplierOpen ? <ExpandLess /> : <ExpandMore />}
+                                <ListItemText primary={nestedMenu.text} />
+                                {(nestedMenu.text === '顧客管理' ? customerOpen : supplierOpen) ? <ExpandLess /> : <ExpandMore />}
                             </ListItemButton>
                         </ListItem>
-                        <Collapse in={supplierOpen} timeout="auto" unmountOnExit>
+                        <Collapse
+                            in={nestedMenu.text === '顧客管理' ? customerOpen : supplierOpen}
+                            timeout="auto"
+                            unmountOnExit
+                        >
                             <List component="div" disablePadding>
-                                {supplierMenuItems.map((item) => (
+                                {nestedMenu.items.map((item) => (
                                     <ListItem key={item.text} disablePadding>
                                         <ListItemButton
                                             sx={{ pl: 4 }}
@@ -307,8 +333,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                             </List>
                         </Collapse>
                     </List>
-                </Collapse>
-            </List>
+                </React.Fragment>
+            ))}
         </>
     );
 

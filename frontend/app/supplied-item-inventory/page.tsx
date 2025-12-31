@@ -192,7 +192,7 @@ export default function SuppliedItemInventoryPage() {
         // 完了済み = すべての項目が員数確認済み（count_confirmed_items_count === total_items && total_items > 0）またはステータスが completed
         return lists.filter(list => {
             const isCompleted = list.status === 'completed' ||
-                (list.total_items > 0 && list.count_confirmed_items_count === list.total_items);
+                ((list.total_items ?? 0) > 0 && list.count_confirmed_items_count === list.total_items);
             return !isCompleted;
         });
     }, [lists, showCompletedLists]);
