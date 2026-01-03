@@ -31,8 +31,6 @@ import {
     InputLabel,
     Select,
     MenuItem,
-    Tabs,
-    Tab,
 } from '@mui/material';
 import {
     Refresh as RefreshIcon,
@@ -78,26 +76,6 @@ const setDefaultProductId = (productId: number | null): void => {
         localStorage.removeItem(DEFAULT_PRODUCT_KEY);
     }
 };
-
-// タブパネル
-interface TabPanelProps {
-    children?: React.ReactNode;
-    index: number;
-    value: number;
-}
-
-function TabPanel(props: TabPanelProps) {
-    const { children, value, index, ...other } = props;
-    return (
-        <div
-            role="tabpanel"
-            hidden={value !== index}
-            {...other}
-        >
-            {value === index && <Box sx={{ pt: 2 }}>{children}</Box>}
-        </div>
-    );
-}
 
 // ステータスチップ（購入発注用）
 function PurchaseStatusChip({ status, statusDisplay }: { status: PurchaseOrderStatus; statusDisplay?: string }) {
@@ -499,7 +477,7 @@ export default function InventoryDashboardPage() {
                 <>
                     {/* サマリーカード */}
                     <Grid container spacing={3} sx={{ mb: 4 }}>
-                        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <Grid item xs={12} sm={6} md={3}>
                             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                                 <CardContent sx={{ flexGrow: 1 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -524,7 +502,7 @@ export default function InventoryDashboardPage() {
                             </Card>
                         </Grid>
 
-                        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <Grid item xs={12} sm={6} md={3}>
                             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                                 <CardContent sx={{ flexGrow: 1 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -549,7 +527,7 @@ export default function InventoryDashboardPage() {
                             </Card>
                         </Grid>
 
-                        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <Grid item xs={12} sm={6} md={3}>
                             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                                 <CardContent sx={{ flexGrow: 1 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -568,7 +546,7 @@ export default function InventoryDashboardPage() {
                             </Card>
                         </Grid>
 
-                        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <Grid item xs={12} sm={6} md={3}>
                             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                                 <CardContent sx={{ flexGrow: 1 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
