@@ -126,6 +126,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                 return {
                     items: [
                         {
+                            text: '在庫管理',
+                            icon: <Inventory2Icon />,
+                            path: '/inventory',
+                        },
+                        {
                             text: '支給品在庫管理',
                             icon: <Inventory2Icon />,
                             path: '/supplied-item-inventory',

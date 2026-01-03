@@ -816,3 +816,137 @@ export interface BulkConfirmPurchaseCountResult {
     message: string;
     order: PurchaseOrder;
 }
+
+// ===== 在庫管理ダッシュボード関連の型定義 =====
+
+// 支給品リストサマリー（ダッシュボード用）
+export interface PendingSuppliedItemList {
+    id: number;
+    list_number: string;
+    product_id: number | null;
+    product_name: string | null;
+    product_number: string | null;
+    issue_date: string;
+    delivery_date: string | null;
+    status: SuppliedItemListStatus;
+    status_display: string;
+    total_items: number;
+    received_items_count: number;
+    count_confirmed_items_count: number;
+}
+
+// 購入発注サマリー（ダッシュボード用）
+export interface PendingPurchaseOrder {
+    id: number;
+    order_number: string;
+    product_id: number | null;
+    product_name: string | null;
+    product_number: string | null;
+    supplier_name: string | null;
+    supplier_branch_name: string | null;
+    order_date: string;
+    requested_delivery_date: string | null;
+    confirmed_delivery_date: string | null;
+    status: PurchaseOrderStatus;
+    status_display: string;
+    total_items: number;
+    total_quantity: number;
+    received_quantity: number;
+    unreceived_quantity: number;
+    received_items_count: number;
+    count_confirmed_items_count: number;
+}
+
+// 未受領品目（ダッシュボード用）
+export interface UnreceivedPurchaseItem {
+    order_id: number;
+    order_number: string;
+    order_item_id: number;
+    part_id: number;
+    part_number: string;
+    part_name: string;
+    product_id?: number;
+    product_name: string | null;
+    product_number?: string | null;
+    supplier_branch_id?: number;
+    supplier_name: string | null;
+    supplier_branch_name?: string | null;
+    ordered_quantity: number;
+    received_quantity: number;
+    unreceived_quantity: number;
+    unit: string;
+    unit_price?: number | null;
+    order_date: string;
+    requested_delivery_date: string | null;
+    confirmed_delivery_date?: string | null;
+    order_status?: PurchaseOrderStatus;
+    order_status_display?: string;
+}
+
+// 在庫管理ダッシュボードデータ
+export interface InventoryDashboardData {
+    supplied_item_lists: {
+        pending_count: number;
+        pending_lists: PendingSuppliedItemList[];
+    };
+    purchase_orders: {
+        pending_count: number;
+        pending_orders: PendingPurchaseOrder[];
+        unreceived_items: UnreceivedPurchaseItem[];
+    };
+    inventory_summary: {
+        supplied_items_total: number;
+        purchased_items_total: number;
+    };
+}
+
+// ===== 購入品受領処理関連の型定義 =====
+
+// 受領リクエスト（個別）
+export interface ReceivePurchaseItemRequest {
+    received_quantity: number;
+    lot_number?: string;
+    notes?: string;
+}
+
+// 受領レスポンス（個別）
+export interface ReceivePurchaseItemResponse {
+    message: string;
+    order_item: {
+        id: number;
+        part_number: string;
+        part_name: string;
+        quantity: number;
+        received_quantity: number;
+        unreceived_quantity: number;
+        receiving_confirmed: boolean;
+    };
+    order: {
+        id: number;
+        order_number: string;
+        status: PurchaseOrderStatus;
+        status_display: string;
+    };
+}
+
+// 一括受領リクエスト
+export interface BulkReceivePurchaseOrderRequest {
+    items: {
+        order_item_id: number;
+        received_quantity: number;
+        lot_number?: string;
+    }[];
+    notes?: string;
+}
+
+// 一括受領レスポンス
+export interface BulkReceivePurchaseOrderResponse {
+    message: string;
+    order: PurchaseOrder;
+}
+
+// 未受領購入品リストレスポンス
+export interface UnreceivedPurchaseItemsResponse {
+    count: number;
+    items: UnreceivedPurchaseItem[];
+}

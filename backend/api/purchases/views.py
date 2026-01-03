@@ -3613,3 +3613,467 @@ def bulk_confirm_purchase_order_count(request, pk):
         'message': f'{confirmed_count}件の員数確認が完了し、在庫に移動しました',
         'order': serializer.data
     }, status=status.HTTP_200_OK)
+
+
+# ===== 在庫管理ダッシュボードAPI =====
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_inventory_dashboard(request):
+    """在庫管理ダッシュボードのデータを取得
+
+    レスポンス:
+    {
+        "supplied_item_lists": {  // 支給品リスト
+            "pending_count": 5,  // 未完了数
+            "pending_lists": [...],  // 未完了リスト（直近10件）
+        },
+        "purchase_orders": {  // 購入発注
+            "pending_count": 10,  // 未完了数
+            "pending_orders": [...],  // 未完了発注（直近10件）
+            "unreceived_items": [...]  // 未受領品リスト
+        },
+        "inventory_summary": {  // 在庫サマリー
+            "supplied_items_total": 100,  // 支給品在庫合計
+            "purchased_items_total": 200  // 購入品在庫合計
+        }
+    }
+    """
+    from django.db.models import Sum, F
+
+    # 支給品リストの未完了数とリスト
+    pending_supplied_lists = SuppliedItemList.objects.exclude(
+        status=SuppliedItemList.ListStatus.COMPLETED
+    ).exclude(
+        status=SuppliedItemList.ListStatus.CANCELLED
+    ).select_related('product').prefetch_related('items').order_by('-created_at')[:10]
+
+    pending_supplied_count = SuppliedItemList.objects.exclude(
+        status=SuppliedItemList.ListStatus.COMPLETED
+    ).exclude(
+        status=SuppliedItemList.ListStatus.CANCELLED
+    ).count()
+
+    supplied_list_data = []
+    for sl in pending_supplied_lists:
+        supplied_list_data.append({
+            'id': sl.id,
+            'list_number': sl.list_number,
+            'product_id': sl.product_id,
+            'product_name': sl.product.product_name if sl.product else None,
+            'product_number': sl.product.product_number if sl.product else None,
+            'issue_date': sl.issue_date,
+            'delivery_date': sl.delivery_date,
+            'status': sl.status,
+            'status_display': sl.get_status_display(),
+            'total_items': sl.total_items,
+            'received_items_count': sl.received_items_count,
+            'count_confirmed_items_count': sl.count_confirmed_items_count,
+        })
+
+    # 購入発注の未完了数とリスト
+    pending_purchase_orders = PurchaseOrder.objects.exclude(
+        status=PurchaseOrder.OrderStatus.COMPLETED
+    ).exclude(
+        status=PurchaseOrder.OrderStatus.CANCELLED
+    ).select_related(
+        'product', 'supplier_branch', 'supplier_branch__supplier'
+    ).prefetch_related('items').order_by('-created_at')[:10]
+
+    pending_purchase_count = PurchaseOrder.objects.exclude(
+        status=PurchaseOrder.OrderStatus.COMPLETED
+    ).exclude(
+        status=PurchaseOrder.OrderStatus.CANCELLED
+    ).count()
+
+    purchase_order_data = []
+    unreceived_items = []
+
+    for po in pending_purchase_orders:
+        # 発注データ
+        total_quantity = sum(item.quantity for item in po.items.all())
+        received_quantity = sum(item.received_quantity or 0 for item in po.items.all())
+        unreceived_quantity = total_quantity - received_quantity
+
+        purchase_order_data.append({
+            'id': po.id,
+            'order_number': po.order_number,
+            'product_id': po.product_id,
+            'product_name': po.product.product_name if po.product else None,
+            'product_number': po.product.product_number if po.product else None,
+            'supplier_name': po.supplier_branch.supplier.company_name if po.supplier_branch else None,
+            'supplier_branch_name': po.supplier_branch.branch_name if po.supplier_branch else None,
+            'order_date': po.order_date,
+            'requested_delivery_date': po.requested_delivery_date,
+            'confirmed_delivery_date': po.confirmed_delivery_date,
+            'status': po.status,
+            'status_display': po.get_status_display(),
+            'total_items': po.total_items,
+            'total_quantity': total_quantity,
+            'received_quantity': received_quantity,
+            'unreceived_quantity': unreceived_quantity,
+            'received_items_count': po.received_items_count,
+            'count_confirmed_items_count': po.count_confirmed_items_count,
+        })
+
+        # 未受領品目を収集
+        for item in po.items.all():
+            received_qty = item.received_quantity or 0
+            if received_qty < item.quantity:
+                unreceived_items.append({
+                    'order_id': po.id,
+                    'order_number': po.order_number,
+                    'order_item_id': item.id,
+                    'part_id': item.part_id,
+                    'part_number': item.part_number,
+                    'part_name': item.part_name,
+                    'product_name': po.product.product_name if po.product else None,
+                    'supplier_name': po.supplier_branch.supplier.company_name if po.supplier_branch else None,
+                    'ordered_quantity': item.quantity,
+                    'received_quantity': received_qty,
+                    'unreceived_quantity': item.quantity - received_qty,
+                    'unit': item.unit,
+                    'order_date': po.order_date,
+                    'requested_delivery_date': po.requested_delivery_date,
+                })
+
+    # 在庫サマリー
+    supplied_total = SuppliedItemInventory.objects.aggregate(
+        total=Sum('quantity')
+    )['total'] or 0
+
+    purchased_total = PurchasedItemInventory.objects.aggregate(
+        total=Sum('quantity')
+    )['total'] or 0
+
+    return Response({
+        'supplied_item_lists': {
+            'pending_count': pending_supplied_count,
+            'pending_lists': supplied_list_data,
+        },
+        'purchase_orders': {
+            'pending_count': pending_purchase_count,
+            'pending_orders': purchase_order_data,
+            'unreceived_items': unreceived_items,
+        },
+        'inventory_summary': {
+            'supplied_items_total': supplied_total,
+            'purchased_items_total': purchased_total,
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def receive_purchase_order_item(request, item_pk):
+    """購入発注明細の受領処理
+
+    リクエストボディ:
+    {
+        "received_quantity": 100,  // 受領数量
+        "lot_number": "LOT001",  // ロット番号（オプション）
+        "notes": ""  // 備考（オプション）
+    }
+
+    処理内容:
+    1. 受領数量を発注明細に記録
+    2. 購入品在庫に追加
+    3. 発注残を更新
+    4. 全数量受領の場合、発注ステータスを「完了」に変更
+    """
+    from django.utils import timezone
+
+    try:
+        order_item = PurchaseOrderItem.objects.select_related(
+            'purchase_order', 'part'
+        ).get(pk=item_pk)
+    except PurchaseOrderItem.DoesNotExist:
+        return Response(
+            {"error": "発注明細が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    received_quantity = request.data.get('received_quantity')
+    lot_number = request.data.get('lot_number', '')
+    notes = request.data.get('notes', '')
+
+    if received_quantity is None:
+        return Response(
+            {"error": "受領数量を指定してください"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        received_quantity = int(received_quantity)
+        if received_quantity < 1:
+            raise ValueError()
+    except (ValueError, TypeError):
+        return Response(
+            {"error": "受領数量は1以上の整数を指定してください"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    order = order_item.purchase_order
+    now = timezone.now()
+
+    with transaction.atomic():
+        # 1. 受領数量を更新（累積）
+        current_received = order_item.received_quantity or 0
+        new_received = current_received + received_quantity
+        order_item.received_quantity = new_received
+
+        # 受入確認フラグを立てる
+        if not order_item.receiving_confirmed:
+            order_item.receiving_confirmed = True
+            order_item.receiving_confirmed_at = now
+            order_item.receiving_confirmed_by = request.user
+
+        order_item.save()
+
+        # 2. 購入品在庫に追加
+        if order_item.part:
+            received_date = order.confirmed_delivery_date or now.date()
+
+            PurchasedItemInventory.objects.create(
+                part=order_item.part,
+                order_item=order_item,
+                quantity=received_quantity,
+                lot_number=lot_number,
+                received_date=received_date,
+                created_by=request.user,
+                notes=notes or f"受領登録（発注番号: {order.order_number}）"
+            )
+
+        # 3. 発注の全品目の受領状況をチェック
+        all_items = order.items.all()
+        all_fully_received = True
+        any_received = False
+
+        for item in all_items:
+            item_received = item.received_quantity or 0
+            if item_received > 0:
+                any_received = True
+            if item_received < item.quantity:
+                all_fully_received = False
+
+        # 4. 発注ステータスを更新
+        if all_fully_received:
+            # 全数量受領完了
+            order.status = PurchaseOrder.OrderStatus.COMPLETED
+            order.save()
+        elif any_received and order.status == PurchaseOrder.OrderStatus.ORDERED:
+            # 一部受領
+            order.status = PurchaseOrder.OrderStatus.PARTIALLY_RECEIVED
+            order.save()
+
+    # レスポンスデータ
+    order.refresh_from_db()
+    order_item.refresh_from_db()
+
+    return Response({
+        'message': f'{received_quantity}個を受領し、在庫に追加しました',
+        'order_item': {
+            'id': order_item.id,
+            'part_number': order_item.part_number,
+            'part_name': order_item.part_name,
+            'quantity': order_item.quantity,
+            'received_quantity': order_item.received_quantity,
+            'unreceived_quantity': order_item.quantity - (order_item.received_quantity or 0),
+            'receiving_confirmed': order_item.receiving_confirmed,
+        },
+        'order': {
+            'id': order.id,
+            'order_number': order.order_number,
+            'status': order.status,
+            'status_display': order.get_status_display(),
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_receive_purchase_order(request, pk):
+    """発注の一括受領処理
+
+    リクエストボディ:
+    {
+        "items": [
+            {
+                "order_item_id": 1,
+                "received_quantity": 100,
+                "lot_number": "LOT001"
+            },
+            ...
+        ],
+        "notes": ""  // 備考（オプション）
+    }
+    """
+    from django.utils import timezone
+
+    try:
+        order = PurchaseOrder.objects.prefetch_related(
+            'items', 'items__part'
+        ).select_related(
+            'product', 'supplier_branch', 'supplier_branch__supplier'
+        ).get(pk=pk)
+    except PurchaseOrder.DoesNotExist:
+        return Response(
+            {"error": "発注が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    items_data = request.data.get('items', [])
+    notes = request.data.get('notes', '')
+
+    if not items_data:
+        return Response(
+            {"error": "受領する品目を指定してください"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    now = timezone.now()
+    received_count = 0
+    total_quantity_received = 0
+
+    with transaction.atomic():
+        for item_data in items_data:
+            order_item_id = item_data.get('order_item_id')
+            received_quantity = item_data.get('received_quantity', 0)
+            lot_number = item_data.get('lot_number', '')
+
+            if not order_item_id or received_quantity < 1:
+                continue
+
+            try:
+                order_item = order.items.get(id=order_item_id)
+            except PurchaseOrderItem.DoesNotExist:
+                continue
+
+            # 受領数量を更新（累積）
+            current_received = order_item.received_quantity or 0
+            new_received = current_received + received_quantity
+            order_item.received_quantity = new_received
+
+            # 受入確認フラグを立てる
+            if not order_item.receiving_confirmed:
+                order_item.receiving_confirmed = True
+                order_item.receiving_confirmed_at = now
+                order_item.receiving_confirmed_by = request.user
+
+            order_item.save()
+
+            # 購入品在庫に追加
+            if order_item.part:
+                received_date = order.confirmed_delivery_date or now.date()
+
+                PurchasedItemInventory.objects.create(
+                    part=order_item.part,
+                    order_item=order_item,
+                    quantity=received_quantity,
+                    lot_number=lot_number,
+                    received_date=received_date,
+                    created_by=request.user,
+                    notes=notes or f"一括受領登録（発注番号: {order.order_number}）"
+                )
+
+            received_count += 1
+            total_quantity_received += received_quantity
+
+        # 発注の全品目の受領状況をチェック
+        all_items = order.items.all()
+        all_fully_received = True
+        any_received = False
+
+        for item in all_items:
+            item_received = item.received_quantity or 0
+            if item_received > 0:
+                any_received = True
+            if item_received < item.quantity:
+                all_fully_received = False
+
+        # 発注ステータスを更新
+        if all_fully_received:
+            order.status = PurchaseOrder.OrderStatus.COMPLETED
+            order.save()
+        elif any_received and order.status == PurchaseOrder.OrderStatus.ORDERED:
+            order.status = PurchaseOrder.OrderStatus.PARTIALLY_RECEIVED
+            order.save()
+
+    # レスポンスデータ
+    order.refresh_from_db()
+    serializer = PurchaseOrderDetailSerializer(order)
+
+    return Response({
+        'message': f'{received_count}品目、合計{total_quantity_received}個を受領し、在庫に追加しました',
+        'order': serializer.data
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_unreceived_purchase_items(request):
+    """未受領の購入品リストを取得
+
+    クエリパラメータ:
+    - product: 製品ID（オプション）
+    - supplier_branch: 仕入先支店ID（オプション）
+    """
+    from django.db.models import F
+
+    product_id = request.query_params.get('product')
+    supplier_branch_id = request.query_params.get('supplier_branch')
+
+    # 発注済み（未キャンセル・未完了）の発注を取得
+    orders = PurchaseOrder.objects.exclude(
+        status__in=[
+            PurchaseOrder.OrderStatus.COMPLETED,
+            PurchaseOrder.OrderStatus.CANCELLED,
+            PurchaseOrder.OrderStatus.DRAFT
+        ]
+    ).select_related(
+        'product', 'supplier_branch', 'supplier_branch__supplier'
+    ).prefetch_related('items')
+
+    if product_id:
+        orders = orders.filter(product_id=product_id)
+    if supplier_branch_id:
+        orders = orders.filter(supplier_branch_id=supplier_branch_id)
+
+    unreceived_items = []
+
+    for order in orders:
+        for item in order.items.all():
+            received_qty = item.received_quantity or 0
+            if received_qty < item.quantity:
+                unreceived_items.append({
+                    'order_id': order.id,
+                    'order_number': order.order_number,
+                    'order_item_id': item.id,
+                    'part_id': item.part_id,
+                    'part_number': item.part_number,
+                    'part_name': item.part_name,
+                    'product_id': order.product_id,
+                    'product_name': order.product.product_name if order.product else None,
+                    'product_number': order.product.product_number if order.product else None,
+                    'supplier_branch_id': order.supplier_branch_id,
+                    'supplier_name': order.supplier_branch.supplier.company_name if order.supplier_branch else None,
+                    'supplier_branch_name': order.supplier_branch.branch_name if order.supplier_branch else None,
+                    'ordered_quantity': item.quantity,
+                    'received_quantity': received_qty,
+                    'unreceived_quantity': item.quantity - received_qty,
+                    'unit': item.unit,
+                    'unit_price': float(item.unit_price) if item.unit_price else None,
+                    'order_date': order.order_date,
+                    'requested_delivery_date': order.requested_delivery_date,
+                    'confirmed_delivery_date': order.confirmed_delivery_date,
+                    'order_status': order.status,
+                    'order_status_display': order.get_status_display(),
+                })
+
+    # 未受領数量で降順ソート
+    unreceived_items.sort(key=lambda x: x['unreceived_quantity'], reverse=True)
+
+    return Response({
+        'count': len(unreceived_items),
+        'items': unreceived_items
+    }, status=status.HTTP_200_OK)
