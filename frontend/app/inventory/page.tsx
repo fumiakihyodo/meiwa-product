@@ -500,8 +500,8 @@ export default function InventoryDashboardPage() {
                     {/* サマリーカード */}
                     <Grid container spacing={3} sx={{ mb: 4 }}>
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                            <Card>
-                                <CardContent>
+                            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <CardContent sx={{ flexGrow: 1 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                         <ShippingIcon color="primary" />
                                         <Typography variant="subtitle2" color="text.secondary">
@@ -525,8 +525,8 @@ export default function InventoryDashboardPage() {
                         </Grid>
 
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                            <Card>
-                                <CardContent>
+                            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <CardContent sx={{ flexGrow: 1 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                         <InventoryIcon color="secondary" />
                                         <Typography variant="subtitle2" color="text.secondary">
@@ -550,8 +550,8 @@ export default function InventoryDashboardPage() {
                         </Grid>
 
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                            <Card>
-                                <CardContent>
+                            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <CardContent sx={{ flexGrow: 1 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                         <WarningIcon color="warning" />
                                         <Typography variant="subtitle2" color="text.secondary">
@@ -562,12 +562,15 @@ export default function InventoryDashboardPage() {
                                         {filteredSummary.unreceivedItemsCount}
                                     </Typography>
                                 </CardContent>
+                                <CardActions>
+                                    <Box sx={{ height: 30.75 }} />
+                                </CardActions>
                             </Card>
                         </Grid>
 
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                            <Card>
-                                <CardContent>
+                            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <CardContent sx={{ flexGrow: 1 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                         <CheckCircleIcon color="success" />
                                         <Typography variant="subtitle2" color="text.secondary">
@@ -583,6 +586,9 @@ export default function InventoryDashboardPage() {
                                         </Typography>
                                     </Box>
                                 </CardContent>
+                                <CardActions>
+                                    <Box sx={{ height: 30.75 }} />
+                                </CardActions>
                             </Card>
                         </Grid>
                     </Grid>

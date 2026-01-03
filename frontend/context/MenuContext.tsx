@@ -49,6 +49,7 @@ export const MENU_CATEGORIES: CategoryInfo[] = [
 // パスとカテゴリのマッピング
 const PATH_TO_CATEGORY: Record<string, MenuCategory> = {
     '/dashboard': 'dashboard',
+    '/inventory': 'inventory',
     '/supplied-item-inventory': 'inventory',
     '/purchased-item-inventory': 'inventory',
     '/products': 'master',

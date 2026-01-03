@@ -32,7 +32,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 // カテゴリごとの初期遷移先
 const CATEGORY_PATHS: Record<MenuCategory, string> = {
   dashboard: '/dashboard',
-  inventory: '/supplied-item-inventory',
+  inventory: '/inventory',
   master: '/products',
   trading: '/customers',
   system: '/users',
