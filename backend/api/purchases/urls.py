@@ -131,4 +131,12 @@ urlpatterns = [
     # 発注作成サポート
     path('parts-by-supplier/', views.get_parts_grouped_by_supplier, name='parts_by_supplier'),
     path('create-orders-from-parts/', views.create_purchase_orders_from_parts, name='create_orders_from_parts'),
+
+    # ===== 在庫管理ダッシュボード =====
+    path('inventory-dashboard/', views.get_inventory_dashboard, name='inventory_dashboard'),
+
+    # 購入品受領処理
+    path('purchase-order-items/<int:item_pk>/receive/', views.receive_purchase_order_item, name='receive_purchase_order_item'),
+    path('purchase-orders/<int:pk>/bulk-receive/', views.bulk_receive_purchase_order, name='bulk_receive_purchase_order'),
+    path('unreceived-purchase-items/', views.get_unreceived_purchase_items, name='unreceived_purchase_items'),
 ]

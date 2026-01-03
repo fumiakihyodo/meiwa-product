@@ -1343,7 +1343,7 @@ class PurchaseOrder(models.Model):
 
     # 発注日
     order_date = models.DateField(
-        default=timezone.now,
+        default=timezone.localdate,
         verbose_name="発注日"
     )
 

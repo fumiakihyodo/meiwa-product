@@ -56,6 +56,13 @@ import {
     CreateOrdersFromPartsResponse,
     BulkConfirmPurchaseReceivingResult,
     BulkConfirmPurchaseCountResult,
+    // ダッシュボード・受領処理用
+    InventoryDashboardData,
+    ReceivePurchaseItemRequest,
+    ReceivePurchaseItemResponse,
+    BulkReceivePurchaseOrderRequest,
+    BulkReceivePurchaseOrderResponse,
+    UnreceivedPurchaseItemsResponse,
 } from '@/types/purchases';
 
 import {
@@ -883,6 +890,52 @@ export const purchasesApi = {
         const response = await apiClient.post<CreateOrdersFromPartsResponse>(
             '/purchases/create-orders-from-parts/',
             data
+        );
+        return response.data;
+    },
+
+    // ===== 在庫管理ダッシュボード =====
+
+    // ダッシュボードデータ取得
+    getInventoryDashboard: async (): Promise<InventoryDashboardData> => {
+        const response = await apiClient.get<InventoryDashboardData>('/purchases/inventory-dashboard/');
+        return response.data;
+    },
+
+    // ===== 購入品受領処理 =====
+
+    // 発注明細の受領処理（個別）
+    receivePurchaseOrderItem: async (
+        itemId: number,
+        data: ReceivePurchaseItemRequest
+    ): Promise<ReceivePurchaseItemResponse> => {
+        const response = await apiClient.post<ReceivePurchaseItemResponse>(
+            `/purchases/purchase-order-items/${itemId}/receive/`,
+            data
+        );
+        return response.data;
+    },
+
+    // 発注の一括受領処理
+    bulkReceivePurchaseOrder: async (
+        orderId: number,
+        data: BulkReceivePurchaseOrderRequest
+    ): Promise<BulkReceivePurchaseOrderResponse> => {
+        const response = await apiClient.post<BulkReceivePurchaseOrderResponse>(
+            `/purchases/purchase-orders/${orderId}/bulk-receive/`,
+            data
+        );
+        return response.data;
+    },
+
+    // 未受領購入品リスト取得
+    getUnreceivedPurchaseItems: async (params?: {
+        product?: number;
+        supplier_branch?: number;
+    }): Promise<UnreceivedPurchaseItemsResponse> => {
+        const response = await apiClient.get<UnreceivedPurchaseItemsResponse>(
+            '/purchases/unreceived-purchase-items/',
+            { params }
         );
         return response.data;
     },
