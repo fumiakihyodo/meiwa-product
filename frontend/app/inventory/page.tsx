@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Box,
     Typography,
@@ -27,6 +27,12 @@ import {
     DialogActions,
     TextField,
     Divider,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem,
+    Tabs,
+    Tab,
 } from '@mui/material';
 import {
     Refresh as RefreshIcon,
@@ -36,9 +42,13 @@ import {
     CheckCircle as CheckCircleIcon,
     ArrowForward as ArrowForwardIcon,
     Add as AddIcon,
+    Clear as ClearIcon,
+    Star as StarIcon,
+    StarBorder as StarBorderIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { purchasesApi } from '@/services/apiPurchases';
+import { productApi } from '@/services/apiProduct';
 import {
     InventoryDashboardData,
     PendingSuppliedItemList,
@@ -47,6 +57,47 @@ import {
     PurchaseOrderStatus,
     SuppliedItemListStatus,
 } from '@/types/purchases';
+import { Product } from '@/types/product';
+
+// localStorage キー
+const DEFAULT_PRODUCT_KEY = 'inventory_dashboard_default_product';
+
+// デフォルト製品をlocalStorageから取得
+const getDefaultProductId = (): number | null => {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem(DEFAULT_PRODUCT_KEY);
+    return stored ? parseInt(stored, 10) : null;
+};
+
+// デフォルト製品をlocalStorageに保存
+const setDefaultProductId = (productId: number | null): void => {
+    if (typeof window === 'undefined') return;
+    if (productId !== null) {
+        localStorage.setItem(DEFAULT_PRODUCT_KEY, productId.toString());
+    } else {
+        localStorage.removeItem(DEFAULT_PRODUCT_KEY);
+    }
+};
+
+// タブパネル
+interface TabPanelProps {
+    children?: React.ReactNode;
+    index: number;
+    value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+    const { children, value, index, ...other } = props;
+    return (
+        <div
+            role="tabpanel"
+            hidden={value !== index}
+            {...other}
+        >
+            {value === index && <Box sx={{ pt: 2 }}>{children}</Box>}
+        </div>
+    );
+}
 
 // ステータスチップ（購入発注用）
 function PurchaseStatusChip({ status, statusDisplay }: { status: PurchaseOrderStatus; statusDisplay?: string }) {
@@ -227,17 +278,39 @@ export default function InventoryDashboardPage() {
     const [error, setError] = useState<string | null>(null);
     const [dashboardData, setDashboardData] = useState<InventoryDashboardData | null>(null);
 
+    // 製品一覧
+    const [products, setProducts] = useState<Product[]>([]);
+
+    // 製品フィルタ
+    const [productFilter, setProductFilter] = useState<number | ''>('');
+    const [defaultProductInitialized, setDefaultProductInitialized] = useState(false);
+
     // 受領ダイアログ
     const [receiveDialogOpen, setReceiveDialogOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<UnreceivedPurchaseItem | null>(null);
+
+    // デフォルト製品を初期化（products読み込み後1回のみ）
+    useEffect(() => {
+        if (!defaultProductInitialized && products.length > 0) {
+            const defaultId = getDefaultProductId();
+            if (defaultId && products.some(p => p.id === defaultId)) {
+                setProductFilter(defaultId);
+            }
+            setDefaultProductInitialized(true);
+        }
+    }, [products, defaultProductInitialized]);
 
     // データ取得
     const fetchDashboardData = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const data = await purchasesApi.getInventoryDashboard();
-            setDashboardData(data);
+            const [dashboardDataResult, productsData] = await Promise.all([
+                purchasesApi.getInventoryDashboard(),
+                productApi.getProducts(),
+            ]);
+            setDashboardData(dashboardDataResult);
+            setProducts(productsData);
         } catch (e) {
             console.error('Failed to fetch dashboard data:', e);
             setError('データの取得に失敗しました');
@@ -249,6 +322,66 @@ export default function InventoryDashboardPage() {
     useEffect(() => {
         fetchDashboardData();
     }, [fetchDashboardData]);
+
+    // フィルタリングされた未受領購入品
+    const filteredUnreceivedItems = useMemo(() => {
+        if (!dashboardData) return [];
+        if (!productFilter) return dashboardData.purchase_orders.unreceived_items;
+        return dashboardData.purchase_orders.unreceived_items.filter(
+            item => item.product_id === productFilter
+        );
+    }, [dashboardData, productFilter]);
+
+    // フィルタリングされた未完了の支給品リスト
+    const filteredPendingLists = useMemo(() => {
+        if (!dashboardData) return [];
+        if (!productFilter) return dashboardData.supplied_item_lists.pending_lists;
+        return dashboardData.supplied_item_lists.pending_lists.filter(
+            list => list.product_id === productFilter
+        );
+    }, [dashboardData, productFilter]);
+
+    // フィルタリングされた未完了の購入発注
+    const filteredPendingOrders = useMemo(() => {
+        if (!dashboardData) return [];
+        if (!productFilter) return dashboardData.purchase_orders.pending_orders;
+        return dashboardData.purchase_orders.pending_orders.filter(
+            order => order.product_id === productFilter
+        );
+    }, [dashboardData, productFilter]);
+
+    // フィルタリングされたサマリー数値
+    const filteredSummary = useMemo(() => {
+        if (!dashboardData) return null;
+        if (!productFilter) {
+            return {
+                suppliedListsPending: dashboardData.supplied_item_lists.pending_count,
+                purchaseOrdersPending: dashboardData.purchase_orders.pending_count,
+                unreceivedItemsCount: dashboardData.purchase_orders.unreceived_items.length,
+            };
+        }
+        return {
+            suppliedListsPending: filteredPendingLists.length,
+            purchaseOrdersPending: filteredPendingOrders.length,
+            unreceivedItemsCount: filteredUnreceivedItems.length,
+        };
+    }, [dashboardData, productFilter, filteredPendingLists, filteredPendingOrders, filteredUnreceivedItems]);
+
+    // デフォルト製品を設定/解除
+    const handleToggleDefaultProduct = (productId: number) => {
+        const currentDefault = getDefaultProductId();
+        if (currentDefault === productId) {
+            setDefaultProductId(null);
+        } else {
+            setDefaultProductId(productId);
+            setProductFilter(productId);
+        }
+    };
+
+    // 製品フィルタを変更
+    const handleProductFilterChange = (value: number | '') => {
+        setProductFilter(value);
+    };
 
     // 受領処理
     const handleReceiveItem = async (itemId: number, quantity: number, lotNumber: string) => {
@@ -280,9 +413,14 @@ export default function InventoryDashboardPage() {
                 <Typography variant="h4" component="h1">
                     在庫管理
                 </Typography>
-                <IconButton onClick={fetchDashboardData} disabled={loading}>
-                    <RefreshIcon />
-                </IconButton>
+                <Button
+                    variant="outlined"
+                    startIcon={<RefreshIcon />}
+                    onClick={fetchDashboardData}
+                    disabled={loading}
+                >
+                    更新
+                </Button>
             </Box>
 
             {error && (
@@ -291,7 +429,73 @@ export default function InventoryDashboardPage() {
                 </Alert>
             )}
 
-            {dashboardData && (
+            {/* 製品フィルタ */}
+            <Paper sx={{ p: 2, mb: 3 }}>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <FormControl size="small" sx={{ minWidth: 300 }}>
+                        <InputLabel>製品を選択</InputLabel>
+                        <Select
+                            value={productFilter}
+                            label="製品を選択"
+                            onChange={(e) => handleProductFilterChange(e.target.value as number | '')}
+                            renderValue={(selected) => {
+                                if (!selected) return 'すべて';
+                                const product = products.find(p => p.id === selected);
+                                if (!product) return 'すべて';
+                                const isDefault = getDefaultProductId() === product.id;
+                                return (
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
+                                        {product.product_number} - {product.product_name}
+                                    </Box>
+                                );
+                            }}
+                        >
+                            <MenuItem value="">すべて</MenuItem>
+                            {products.map((p) => {
+                                const isDefault = getDefaultProductId() === p.id;
+                                return (
+                                    <MenuItem key={p.id} value={p.id}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                            <Tooltip title={isDefault ? 'デフォルト解除' : 'デフォルトに設定'}>
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleToggleDefaultProduct(p.id);
+                                                    }}
+                                                    sx={{ p: 0.5 }}
+                                                >
+                                                    {isDefault ? (
+                                                        <StarIcon sx={{ color: 'warning.main' }} />
+                                                    ) : (
+                                                        <StarBorderIcon sx={{ color: 'action.disabled' }} />
+                                                    )}
+                                                </IconButton>
+                                            </Tooltip>
+                                            <span>{p.product_number} - {p.product_name}</span>
+                                        </Box>
+                                    </MenuItem>
+                                );
+                            })}
+                        </Select>
+                    </FormControl>
+                    {productFilter && (
+                        <Button
+                            size="small"
+                            startIcon={<ClearIcon />}
+                            onClick={() => handleProductFilterChange('')}
+                        >
+                            フィルタ解除
+                        </Button>
+                    )}
+                    <Typography variant="caption" color="text.secondary">
+                        ★をクリックするとデフォルト製品に設定できます
+                    </Typography>
+                </Box>
+            </Paper>
+
+            {dashboardData && filteredSummary && (
                 <>
                     {/* サマリーカード */}
                     <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -305,7 +509,7 @@ export default function InventoryDashboardPage() {
                                         </Typography>
                                     </Box>
                                     <Typography variant="h3" sx={{ mt: 1 }}>
-                                        {dashboardData.supplied_item_lists.pending_count}
+                                        {filteredSummary.suppliedListsPending}
                                     </Typography>
                                 </CardContent>
                                 <CardActions>
@@ -330,7 +534,7 @@ export default function InventoryDashboardPage() {
                                         </Typography>
                                     </Box>
                                     <Typography variant="h3" sx={{ mt: 1 }}>
-                                        {dashboardData.purchase_orders.pending_count}
+                                        {filteredSummary.purchaseOrdersPending}
                                     </Typography>
                                 </CardContent>
                                 <CardActions>
@@ -355,7 +559,7 @@ export default function InventoryDashboardPage() {
                                         </Typography>
                                     </Box>
                                     <Typography variant="h3" sx={{ mt: 1 }}>
-                                        {dashboardData.purchase_orders.unreceived_items.length}
+                                        {filteredSummary.unreceivedItemsCount}
                                     </Typography>
                                 </CardContent>
                             </Card>
@@ -389,10 +593,17 @@ export default function InventoryDashboardPage() {
                             <Typography variant="h6">
                                 <WarningIcon sx={{ verticalAlign: 'middle', mr: 1 }} color="warning" />
                                 未受領の購入品
+                                {productFilter && (
+                                    <Chip
+                                        label={`${filteredUnreceivedItems.length}件`}
+                                        size="small"
+                                        sx={{ ml: 1 }}
+                                    />
+                                )}
                             </Typography>
                         </Box>
 
-                        {dashboardData.purchase_orders.unreceived_items.length === 0 ? (
+                        {filteredUnreceivedItems.length === 0 ? (
                             <Alert severity="success">
                                 未受領の購入品はありません
                             </Alert>
@@ -414,7 +625,7 @@ export default function InventoryDashboardPage() {
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {dashboardData.purchase_orders.unreceived_items.slice(0, 20).map((item) => (
+                                        {filteredUnreceivedItems.slice(0, 20).map((item) => (
                                             <TableRow key={`${item.order_id}-${item.order_item_id}`}>
                                                 <TableCell>
                                                     <Button
@@ -468,6 +679,13 @@ export default function InventoryDashboardPage() {
                             <Typography variant="h6">
                                 <ShippingIcon sx={{ verticalAlign: 'middle', mr: 1 }} color="primary" />
                                 未完了の支給品リスト
+                                {productFilter && (
+                                    <Chip
+                                        label={`${filteredPendingLists.length}件`}
+                                        size="small"
+                                        sx={{ ml: 1 }}
+                                    />
+                                )}
                             </Typography>
                             <Button
                                 size="small"
@@ -478,7 +696,7 @@ export default function InventoryDashboardPage() {
                             </Button>
                         </Box>
 
-                        {dashboardData.supplied_item_lists.pending_lists.length === 0 ? (
+                        {filteredPendingLists.length === 0 ? (
                             <Alert severity="success">
                                 未完了の支給品リストはありません
                             </Alert>
@@ -497,7 +715,7 @@ export default function InventoryDashboardPage() {
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {dashboardData.supplied_item_lists.pending_lists.map((list) => (
+                                        {filteredPendingLists.map((list) => (
                                             <TableRow key={list.id}>
                                                 <TableCell>
                                                     <Button
@@ -539,6 +757,13 @@ export default function InventoryDashboardPage() {
                             <Typography variant="h6">
                                 <InventoryIcon sx={{ verticalAlign: 'middle', mr: 1 }} color="secondary" />
                                 未完了の購入発注
+                                {productFilter && (
+                                    <Chip
+                                        label={`${filteredPendingOrders.length}件`}
+                                        size="small"
+                                        sx={{ ml: 1 }}
+                                    />
+                                )}
                             </Typography>
                             <Button
                                 size="small"
@@ -549,7 +774,7 @@ export default function InventoryDashboardPage() {
                             </Button>
                         </Box>
 
-                        {dashboardData.purchase_orders.pending_orders.length === 0 ? (
+                        {filteredPendingOrders.length === 0 ? (
                             <Alert severity="success">
                                 未完了の購入発注はありません
                             </Alert>
@@ -569,7 +794,7 @@ export default function InventoryDashboardPage() {
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {dashboardData.purchase_orders.pending_orders.map((order) => (
+                                        {filteredPendingOrders.map((order) => (
                                             <TableRow key={order.id}>
                                                 <TableCell>
                                                     <Button

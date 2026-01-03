@@ -1,14 +1,11 @@
-import { Metadata } from 'next';
+'use client';
 
-export const metadata: Metadata = {
-    title: '在庫管理 | Meiwa Product',
-    description: '在庫管理ダッシュボード',
-};
+import MainLayout from '@/components/layout/MainLayout';
 
 export default function InventoryLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
-    return <>{children}</>;
+    return <MainLayout>{children}</MainLayout>;
 }
