@@ -950,3 +950,29 @@ export interface UnreceivedPurchaseItemsResponse {
     count: number;
     items: UnreceivedPurchaseItem[];
 }
+
+// ===== 在庫調整関連の型定義 =====
+
+// 在庫調整理由
+export type InventoryAdjustmentReason =
+    | 'stocktaking'      // 棚卸
+    | 'non_conformance'  // 不適合
+    | 'damage'           // 破損
+    | 'correction'       // 訂正
+    | 'other';           // その他
+
+// 在庫調整理由の表示名
+export const InventoryAdjustmentReasonLabels: Record<InventoryAdjustmentReason, string> = {
+    stocktaking: '棚卸',
+    non_conformance: '不適合',
+    damage: '破損',
+    correction: '訂正',
+    other: 'その他',
+};
+
+// 在庫調整データ
+export interface InventoryAdjustmentData {
+    quantity_change: number;          // 増減数（正: 増加、負: 減少）
+    reason: InventoryAdjustmentReason;
+    notes?: string;
+}

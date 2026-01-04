@@ -31,7 +31,15 @@ import {
     InputLabel,
     Select,
     MenuItem,
+    Tabs,
+    Tab,
+    ToggleButton,
+    ToggleButtonGroup,
+    Accordion,
+    AccordionSummary,
+    AccordionDetails,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
     Refresh as RefreshIcon,
     Inventory as InventoryIcon,
@@ -43,6 +51,8 @@ import {
     Clear as ClearIcon,
     Star as StarIcon,
     StarBorder as StarBorderIcon,
+    ViewList as ViewListIcon,
+    ViewModule as ViewModuleIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { purchasesApi } from '@/services/apiPurchases';
@@ -54,6 +64,8 @@ import {
     UnreceivedPurchaseItem,
     PurchaseOrderStatus,
     SuppliedItemListStatus,
+    SuppliedItemInventory,
+    PurchasedItemInventory,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
 
@@ -267,6 +279,14 @@ export default function InventoryDashboardPage() {
     const [receiveDialogOpen, setReceiveDialogOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<UnreceivedPurchaseItem | null>(null);
 
+    // 表示モード: 'dashboard' | 'product'
+    const [viewMode, setViewMode] = useState<'dashboard' | 'product'>('dashboard');
+
+    // 在庫データ（製品別表示用）
+    const [suppliedInventories, setSuppliedInventories] = useState<SuppliedItemInventory[]>([]);
+    const [purchasedInventories, setPurchasedInventories] = useState<PurchasedItemInventory[]>([]);
+    const [loadingInventories, setLoadingInventories] = useState(false);
+
     // デフォルト製品を初期化（products読み込み後1回のみ）
     useEffect(() => {
         if (!defaultProductInitialized && products.length > 0) {
@@ -300,6 +320,98 @@ export default function InventoryDashboardPage() {
     useEffect(() => {
         fetchDashboardData();
     }, [fetchDashboardData]);
+
+    // 在庫データ取得（製品別表示モード用）
+    const fetchInventoriesData = useCallback(async () => {
+        setLoadingInventories(true);
+        try {
+            const [suppliedData, purchasedData] = await Promise.all([
+                purchasesApi.getSuppliedItemInventories(),
+                purchasesApi.getPurchasedItemInventories(),
+            ]);
+            setSuppliedInventories(suppliedData);
+            setPurchasedInventories(purchasedData);
+        } catch (e) {
+            console.error('Failed to fetch inventories:', e);
+        } finally {
+            setLoadingInventories(false);
+        }
+    }, []);
+
+    // 製品別表示モードに切り替えた時に在庫データを取得
+    useEffect(() => {
+        if (viewMode === 'product' && suppliedInventories.length === 0 && purchasedInventories.length === 0) {
+            fetchInventoriesData();
+        }
+    }, [viewMode, suppliedInventories.length, purchasedInventories.length, fetchInventoriesData]);
+
+    // 製品別在庫サマリーの型定義
+    interface ProductInventorySummary {
+        productId: number;
+        productNumber: string;
+        productName: string;
+        suppliedItems: SuppliedItemInventory[];
+        purchasedItems: PurchasedItemInventory[];
+        totalSuppliedQuantity: number;
+        totalPurchasedQuantity: number;
+        totalSuppliedCount: number;
+        totalPurchasedCount: number;
+    }
+
+    // 製品別在庫サマリー
+    const productInventorySummaries = useMemo((): ProductInventorySummary[] => {
+        const summaryMap = new Map<number, ProductInventorySummary>();
+
+        // 支給品在庫を集計
+        suppliedInventories.forEach((inv: SuppliedItemInventory) => {
+            const productId = inv.product || 0;
+            if (!summaryMap.has(productId)) {
+                summaryMap.set(productId, {
+                    productId,
+                    productNumber: inv.product_number || '-',
+                    productName: inv.product_name || '製品未設定',
+                    suppliedItems: [],
+                    purchasedItems: [],
+                    totalSuppliedQuantity: 0,
+                    totalPurchasedQuantity: 0,
+                    totalSuppliedCount: 0,
+                    totalPurchasedCount: 0,
+                });
+            }
+            const summary = summaryMap.get(productId)!;
+            summary.suppliedItems.push(inv);
+            summary.totalSuppliedQuantity += inv.quantity || 0;
+            summary.totalSuppliedCount += 1;
+        });
+
+        // 購入品在庫を集計
+        purchasedInventories.forEach((inv: PurchasedItemInventory) => {
+            const productId = inv.product || 0;
+            if (!summaryMap.has(productId)) {
+                summaryMap.set(productId, {
+                    productId,
+                    productNumber: inv.product_number || '-',
+                    productName: inv.product_name || '製品未設定',
+                    suppliedItems: [],
+                    purchasedItems: [],
+                    totalSuppliedQuantity: 0,
+                    totalPurchasedQuantity: 0,
+                    totalSuppliedCount: 0,
+                    totalPurchasedCount: 0,
+                });
+            }
+            const summary = summaryMap.get(productId)!;
+            summary.purchasedItems.push(inv);
+            summary.totalPurchasedQuantity += inv.quantity || 0;
+            summary.totalPurchasedCount += 1;
+        });
+
+        return Array.from(summaryMap.values()).sort((a, b) => {
+            if (a.productId === 0) return 1;
+            if (b.productId === 0) return -1;
+            return a.productNumber.localeCompare(b.productNumber);
+        });
+    }, [suppliedInventories, purchasedInventories]);
 
     // フィルタリングされた未受領購入品
     const filteredUnreceivedItems = useMemo(() => {
@@ -391,14 +503,39 @@ export default function InventoryDashboardPage() {
                 <Typography variant="h4" component="h1">
                     在庫管理
                 </Typography>
-                <Button
-                    variant="outlined"
-                    startIcon={<RefreshIcon />}
-                    onClick={fetchDashboardData}
-                    disabled={loading}
-                >
-                    更新
-                </Button>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <ToggleButtonGroup
+                        value={viewMode}
+                        exclusive
+                        onChange={(_, newMode) => newMode && setViewMode(newMode)}
+                        size="small"
+                    >
+                        <ToggleButton value="dashboard">
+                            <Tooltip title="ダッシュボード表示">
+                                <ViewListIcon />
+                            </Tooltip>
+                        </ToggleButton>
+                        <ToggleButton value="product">
+                            <Tooltip title="製品別表示">
+                                <ViewModuleIcon />
+                            </Tooltip>
+                        </ToggleButton>
+                    </ToggleButtonGroup>
+                    <Button
+                        variant="outlined"
+                        startIcon={<RefreshIcon />}
+                        onClick={() => {
+                            if (viewMode === 'dashboard') {
+                                fetchDashboardData();
+                            } else {
+                                fetchInventoriesData();
+                            }
+                        }}
+                        disabled={loading || loadingInventories}
+                    >
+                        更新
+                    </Button>
+                </Box>
             </Box>
 
             {error && (
@@ -407,73 +544,76 @@ export default function InventoryDashboardPage() {
                 </Alert>
             )}
 
-            {/* 製品フィルタ */}
-            <Paper sx={{ p: 2, mb: 3 }}>
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <FormControl size="small" sx={{ minWidth: 300 }}>
-                        <InputLabel>製品を選択</InputLabel>
-                        <Select
-                            value={productFilter}
-                            label="製品を選択"
-                            onChange={(e) => handleProductFilterChange(e.target.value as number | '')}
-                            renderValue={(selected) => {
-                                if (!selected) return 'すべて';
-                                const product = products.find(p => p.id === selected);
-                                if (!product) return 'すべて';
-                                const isDefault = getDefaultProductId() === product.id;
-                                return (
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
-                                        {product.product_number} - {product.product_name}
-                                    </Box>
-                                );
-                            }}
-                        >
-                            <MenuItem value="">すべて</MenuItem>
-                            {products.map((p) => {
-                                const isDefault = getDefaultProductId() === p.id;
-                                return (
-                                    <MenuItem key={p.id} value={p.id}>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-                                            <Tooltip title={isDefault ? 'デフォルト解除' : 'デフォルトに設定'}>
-                                                <IconButton
-                                                    size="small"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleToggleDefaultProduct(p.id);
-                                                    }}
-                                                    sx={{ p: 0.5 }}
-                                                >
-                                                    {isDefault ? (
-                                                        <StarIcon sx={{ color: 'warning.main' }} />
-                                                    ) : (
-                                                        <StarBorderIcon sx={{ color: 'action.disabled' }} />
-                                                    )}
-                                                </IconButton>
-                                            </Tooltip>
-                                            <span>{p.product_number} - {p.product_name}</span>
+            {/* 製品フィルタ（ダッシュボード表示のみ） */}
+            {viewMode === 'dashboard' && (
+                <Paper sx={{ p: 2, mb: 3 }}>
+                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <FormControl size="small" sx={{ minWidth: 300 }}>
+                            <InputLabel>製品を選択</InputLabel>
+                            <Select
+                                value={productFilter}
+                                label="製品を選択"
+                                onChange={(e) => handleProductFilterChange(e.target.value as number | '')}
+                                renderValue={(selected) => {
+                                    if (!selected) return 'すべて';
+                                    const product = products.find(p => p.id === selected);
+                                    if (!product) return 'すべて';
+                                    const isDefault = getDefaultProductId() === product.id;
+                                    return (
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
+                                            {product.product_number} - {product.product_name}
                                         </Box>
-                                    </MenuItem>
-                                );
-                            })}
-                        </Select>
-                    </FormControl>
-                    {productFilter && (
-                        <Button
-                            size="small"
-                            startIcon={<ClearIcon />}
-                            onClick={() => handleProductFilterChange('')}
-                        >
-                            フィルタ解除
-                        </Button>
-                    )}
-                    <Typography variant="caption" color="text.secondary">
-                        ★をクリックするとデフォルト製品に設定できます
-                    </Typography>
-                </Box>
-            </Paper>
+                                    );
+                                }}
+                            >
+                                <MenuItem value="">すべて</MenuItem>
+                                {products.map((p) => {
+                                    const isDefault = getDefaultProductId() === p.id;
+                                    return (
+                                        <MenuItem key={p.id} value={p.id}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                                <Tooltip title={isDefault ? 'デフォルト解除' : 'デフォルトに設定'}>
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleToggleDefaultProduct(p.id);
+                                                        }}
+                                                        sx={{ p: 0.5 }}
+                                                    >
+                                                        {isDefault ? (
+                                                            <StarIcon sx={{ color: 'warning.main' }} />
+                                                        ) : (
+                                                            <StarBorderIcon sx={{ color: 'action.disabled' }} />
+                                                        )}
+                                                    </IconButton>
+                                                </Tooltip>
+                                                <span>{p.product_number} - {p.product_name}</span>
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
+                            </Select>
+                        </FormControl>
+                        {productFilter && (
+                            <Button
+                                size="small"
+                                startIcon={<ClearIcon />}
+                                onClick={() => handleProductFilterChange('')}
+                            >
+                                フィルタ解除
+                            </Button>
+                        )}
+                        <Typography variant="caption" color="text.secondary">
+                            ★をクリックするとデフォルト製品に設定できます
+                        </Typography>
+                    </Box>
+                </Paper>
+            )}
 
-            {dashboardData && filteredSummary && (
+            {/* ダッシュボード表示 */}
+            {viewMode === 'dashboard' && dashboardData && filteredSummary && (
                 <>
                     {/* サマリーカード */}
                     <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -831,6 +971,128 @@ export default function InventoryDashboardPage() {
                         )}
                     </Paper>
                 </>
+            )}
+
+            {/* 製品別表示 */}
+            {viewMode === 'product' && (
+                <Box>
+                    {loadingInventories ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                            <CircularProgress />
+                        </Box>
+                    ) : productInventorySummaries.length === 0 ? (
+                        <Alert severity="info">
+                            在庫データがありません
+                        </Alert>
+                    ) : (
+                        <Box>
+                            <Typography variant="h6" sx={{ mb: 2 }}>
+                                製品別在庫一覧
+                            </Typography>
+                            {productInventorySummaries.map((summary) => (
+                                <Accordion key={summary.productId} defaultExpanded={productInventorySummaries.length <= 3}>
+                                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                                            <Typography variant="subtitle1" fontWeight="bold">
+                                                {summary.productNumber} - {summary.productName}
+                                            </Typography>
+                                            <Box sx={{ display: 'flex', gap: 1, ml: 'auto', mr: 2 }}>
+                                                <Chip
+                                                    icon={<ShippingIcon />}
+                                                    label={`支給品: ${summary.totalSuppliedCount}品目 / ${summary.totalSuppliedQuantity.toLocaleString()}`}
+                                                    size="small"
+                                                    color="primary"
+                                                    variant="outlined"
+                                                />
+                                                <Chip
+                                                    icon={<InventoryIcon />}
+                                                    label={`購入品: ${summary.totalPurchasedCount}品目 / ${summary.totalPurchasedQuantity.toLocaleString()}`}
+                                                    size="small"
+                                                    color="secondary"
+                                                    variant="outlined"
+                                                />
+                                            </Box>
+                                        </Box>
+                                    </AccordionSummary>
+                                    <AccordionDetails>
+                                        <Grid container spacing={2}>
+                                            {/* 支給品在庫 */}
+                                            <Grid item xs={12} md={6}>
+                                                <Paper sx={{ p: 2, bgcolor: 'primary.50' }}>
+                                                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                                                        <ShippingIcon sx={{ verticalAlign: 'middle', mr: 1 }} color="primary" />
+                                                        支給品在庫
+                                                    </Typography>
+                                                    {summary.suppliedItems.length === 0 ? (
+                                                        <Typography color="text.secondary" variant="body2">
+                                                            支給品在庫はありません
+                                                        </Typography>
+                                                    ) : (
+                                                        <TableContainer sx={{ maxHeight: 300 }}>
+                                                            <Table size="small">
+                                                                <TableHead>
+                                                                    <TableRow>
+                                                                        <TableCell>品番</TableCell>
+                                                                        <TableCell>品名</TableCell>
+                                                                        <TableCell align="right">在庫数</TableCell>
+                                                                    </TableRow>
+                                                                </TableHead>
+                                                                <TableBody>
+                                                                    {summary.suppliedItems.map((item) => (
+                                                                        <TableRow key={item.id}>
+                                                                            <TableCell>{item.item_number}</TableCell>
+                                                                            <TableCell>{item.item_name}</TableCell>
+                                                                            <TableCell align="right">{item.quantity} {item.unit || ''}</TableCell>
+                                                                        </TableRow>
+                                                                    ))}
+                                                                </TableBody>
+                                                            </Table>
+                                                        </TableContainer>
+                                                    )}
+                                                </Paper>
+                                            </Grid>
+                                            {/* 購入品在庫 */}
+                                            <Grid item xs={12} md={6}>
+                                                <Paper sx={{ p: 2, bgcolor: 'secondary.50' }}>
+                                                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                                                        <InventoryIcon sx={{ verticalAlign: 'middle', mr: 1 }} color="secondary" />
+                                                        購入品在庫
+                                                    </Typography>
+                                                    {summary.purchasedItems.length === 0 ? (
+                                                        <Typography color="text.secondary" variant="body2">
+                                                            購入品在庫はありません
+                                                        </Typography>
+                                                    ) : (
+                                                        <TableContainer sx={{ maxHeight: 300 }}>
+                                                            <Table size="small">
+                                                                <TableHead>
+                                                                    <TableRow>
+                                                                        <TableCell>部品番号</TableCell>
+                                                                        <TableCell>部品名</TableCell>
+                                                                        <TableCell align="right">在庫数</TableCell>
+                                                                    </TableRow>
+                                                                </TableHead>
+                                                                <TableBody>
+                                                                    {summary.purchasedItems.map((item) => (
+                                                                        <TableRow key={item.id}>
+                                                                            <TableCell>{item.part_number}</TableCell>
+                                                                            <TableCell>{item.part_name}</TableCell>
+                                                                            <TableCell align="right">{item.quantity} {item.unit || ''}</TableCell>
+                                                                        </TableRow>
+                                                                    ))}
+                                                                </TableBody>
+                                                            </Table>
+                                                        </TableContainer>
+                                                    )}
+                                                </Paper>
+                                            </Grid>
+                                        </Grid>
+                                    </AccordionDetails>
+                                </Accordion>
+                            ))}
+                        </Box>
+                    )}
+                </Box>
             )}
 
             {/* 受領ダイアログ */}

@@ -50,6 +50,7 @@ import {
     Send as SendIcon,
     Inventory as InventoryIcon,
     LocalShipping as ReceivingIcon,
+    Edit as EditIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { SelectChangeEvent } from '@mui/material/Select';
@@ -62,6 +63,8 @@ import {
     PurchasedItemInventory,
     SupplierPartsGroup,
     PartForOrder,
+    InventoryAdjustmentReason,
+    InventoryAdjustmentReasonLabels,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
 
@@ -167,6 +170,7 @@ export default function PurchasedItemInventoryPage() {
     const [loadingParts, setLoadingParts] = useState(false);
     const [creatingOrder, setCreatingOrder] = useState(false);
     const [orderError, setOrderError] = useState<string | null>(null);
+    const [supplierFilter, setSupplierFilter] = useState<number | ''>(''); // サプライヤーフィルタ
 
     // 発注詳細モーダル関連
     const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -176,6 +180,20 @@ export default function PurchasedItemInventoryPage() {
     // 削除ダイアログ関連
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [deletingOrder, setDeletingOrder] = useState<PurchaseOrder | null>(null);
+
+    // 個別受入確認関連
+    const [receivingItemId, setReceivingItemId] = useState<number | null>(null);
+    const [receivingQuantity, setReceivingQuantity] = useState<number>(0);
+    const [receivingLotNumber, setReceivingLotNumber] = useState<string>('');
+    const [receivingInProgress, setReceivingInProgress] = useState(false);
+
+    // 在庫調整ダイアログ関連
+    const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
+    const [adjustingInventory, setAdjustingInventory] = useState<PurchasedItemInventory | null>(null);
+    const [adjustmentQuantity, setAdjustmentQuantity] = useState<number>(0);
+    const [adjustmentReason, setAdjustmentReason] = useState<InventoryAdjustmentReason>('stocktaking');
+    const [adjustmentNotes, setAdjustmentNotes] = useState<string>('');
+    const [adjustingInProgress, setAdjustingInProgress] = useState(false);
 
     // デフォルト製品の初期化済みフラグ
     const [defaultProductInitialized, setDefaultProductInitialized] = useState(false);
@@ -205,6 +223,48 @@ export default function PurchasedItemInventoryPage() {
         if (!inventoryProductFilter) return inventories;
         return inventories.filter((inv: PurchasedItemInventory) => inv.product === inventoryProductFilter);
     }, [inventories, inventoryProductFilter]);
+
+    // サプライヤーフィルタリングされた部品グループ
+    const filteredSupplierPartsGroups = useMemo(() => {
+        if (!supplierFilter) return supplierPartsGroups;
+        return supplierPartsGroups.filter(
+            (group: SupplierPartsGroup) => group.supplier_branch_id === supplierFilter
+        );
+    }, [supplierPartsGroups, supplierFilter]);
+
+    // 製品別在庫サマリー
+    interface ProductInventorySummary {
+        productId: number;
+        productNumber: string;
+        productName: string;
+        itemCount: number;
+        totalQuantity: number;
+    }
+
+    const productInventorySummaries = useMemo((): ProductInventorySummary[] => {
+        const summaryMap = new Map<number, ProductInventorySummary>();
+
+        inventories.forEach((inv: PurchasedItemInventory) => {
+            const productId = inv.product || 0;
+            if (summaryMap.has(productId)) {
+                const existing = summaryMap.get(productId)!;
+                existing.itemCount += 1;
+                existing.totalQuantity += inv.quantity || 0;
+            } else {
+                summaryMap.set(productId, {
+                    productId,
+                    productNumber: inv.product_number || '-',
+                    productName: inv.product_name || '製品未設定',
+                    itemCount: 1,
+                    totalQuantity: inv.quantity || 0,
+                });
+            }
+        });
+
+        return Array.from(summaryMap.values()).sort((a, b) =>
+            a.productNumber.localeCompare(b.productNumber)
+        );
+    }, [inventories]);
 
     // デフォルト製品を初期化（products読み込み後1回のみ）
     useEffect(() => {
@@ -388,6 +448,99 @@ export default function PurchasedItemInventoryPage() {
         }
     };
 
+    // 個別受入確認開始
+    const handleStartItemReceiving = (item: PurchaseOrderItem) => {
+        setReceivingItemId(item.id);
+        // 未受領数量を初期値として設定
+        const unreceived = item.quantity - (item.received_quantity || 0);
+        setReceivingQuantity(unreceived > 0 ? unreceived : 0);
+        setReceivingLotNumber('');
+    };
+
+    // 個別受入確認キャンセル
+    const handleCancelItemReceiving = () => {
+        setReceivingItemId(null);
+        setReceivingQuantity(0);
+        setReceivingLotNumber('');
+    };
+
+    // 個別受入確認実行
+    const handleConfirmItemReceiving = async () => {
+        if (!receivingItemId || receivingQuantity <= 0) return;
+
+        setReceivingInProgress(true);
+        try {
+            await purchasesApi.receivePurchaseOrderItem(receivingItemId, {
+                received_quantity: receivingQuantity,
+                lot_number: receivingLotNumber || undefined,
+            });
+
+            // 発注詳細を再取得
+            if (selectedOrder) {
+                const updated = await purchasesApi.getPurchaseOrder(selectedOrder.id);
+                setSelectedOrder(updated);
+            }
+            await fetchData();
+            handleCancelItemReceiving();
+        } catch (error) {
+            console.error('Failed to receive item:', error);
+            alert('受入確認に失敗しました');
+        } finally {
+            setReceivingInProgress(false);
+        }
+    };
+
+    // 在庫調整開始
+    const handleOpenAdjustmentDialog = (inventory: PurchasedItemInventory) => {
+        setAdjustingInventory(inventory);
+        setAdjustmentQuantity(0);
+        setAdjustmentReason('stocktaking');
+        setAdjustmentNotes('');
+        setAdjustmentDialogOpen(true);
+    };
+
+    // 在庫調整キャンセル
+    const handleCloseAdjustmentDialog = () => {
+        setAdjustmentDialogOpen(false);
+        setAdjustingInventory(null);
+        setAdjustmentQuantity(0);
+        setAdjustmentReason('stocktaking');
+        setAdjustmentNotes('');
+    };
+
+    // 在庫調整実行
+    const handleConfirmAdjustment = async () => {
+        if (!adjustingInventory || adjustmentQuantity === 0) return;
+
+        setAdjustingInProgress(true);
+        try {
+            const newQuantity = adjustingInventory.quantity + adjustmentQuantity;
+            if (newQuantity < 0) {
+                alert('調整後の在庫数が負の値になります');
+                return;
+            }
+
+            const reasonLabel = InventoryAdjustmentReasonLabels[adjustmentReason];
+            const adjustmentNote = `[在庫調整] ${reasonLabel}: ${adjustmentQuantity > 0 ? '+' : ''}${adjustmentQuantity} (${new Date().toLocaleDateString('ja-JP')})${adjustmentNotes ? ` - ${adjustmentNotes}` : ''}`;
+            const existingNotes = adjustingInventory.notes || '';
+            const newNotes = existingNotes ? `${existingNotes}\n${adjustmentNote}` : adjustmentNote;
+
+            await purchasesApi.updatePurchasedItemInventory(adjustingInventory.id, {
+                quantity: newQuantity,
+                notes: newNotes,
+            });
+
+            await fetchData();
+            handleCloseAdjustmentDialog();
+            alert(`在庫を調整しました: ${adjustingInventory.part_number} (${adjustmentQuantity > 0 ? '+' : ''}${adjustmentQuantity})`);
+        } catch (error) {
+            console.error('Failed to adjust inventory:', error);
+            alert('在庫調整に失敗しました');
+        } finally {
+            setAdjustingInProgress(false);
+        }
+    };
+
     // 発注一覧カラム定義
     const orderColumns: GridColDef[] = [
         {
@@ -557,6 +710,23 @@ export default function PurchasedItemInventoryPage() {
             headerName: '発注番号',
             width: 160,
         },
+        {
+            field: 'actions',
+            headerName: '操作',
+            width: 100,
+            sortable: false,
+            renderCell: (params: GridRenderCellParams<PurchasedItemInventory>) => (
+                <Tooltip title="在庫調整">
+                    <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => handleOpenAdjustmentDialog(params.row)}
+                    >
+                        <EditIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            ),
+        },
     ];
 
     return (
@@ -695,6 +865,42 @@ export default function PurchasedItemInventoryPage() {
                             </FormControl>
                         </Box>
 
+                        {/* 製品別在庫サマリー */}
+                        {productInventorySummaries.length > 0 && (
+                            <Paper sx={{ p: 2, mb: 2 }}>
+                                <Typography variant="subtitle2" sx={{ mb: 1 }}>製品別在庫サマリー</Typography>
+                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                    {productInventorySummaries.map((summary) => (
+                                        <Paper
+                                            key={summary.productId}
+                                            variant="outlined"
+                                            sx={{
+                                                p: 1.5,
+                                                cursor: 'pointer',
+                                                bgcolor: inventoryProductFilter === summary.productId ? 'primary.light' : 'background.paper',
+                                                '&:hover': { bgcolor: 'action.hover' },
+                                                minWidth: 180,
+                                            }}
+                                            onClick={() => {
+                                                const newVal = inventoryProductFilter === summary.productId ? '' : summary.productId;
+                                                setInventoryProductFilter(newVal);
+                                                if (newVal) {
+                                                    setDefaultProductId(newVal as number);
+                                                }
+                                            }}
+                                        >
+                                            <Typography variant="body2" fontWeight="bold">
+                                                {summary.productNumber} - {summary.productName}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {summary.itemCount}品目 / 総在庫: {summary.totalQuantity.toLocaleString()}
+                                            </Typography>
+                                        </Paper>
+                                    ))}
+                                </Box>
+                            </Paper>
+                        )}
+
                         {/* 在庫一覧DataGrid */}
                         <DataGrid
                             rows={filteredInventories}
@@ -720,6 +926,7 @@ export default function PurchasedItemInventoryPage() {
                     setSelectedProductForOrder('');
                     setOrderQuantities({});
                     setOrderError(null);
+                    setSupplierFilter('');
                 }}
                 maxWidth="lg"
                 fullWidth
@@ -738,7 +945,10 @@ export default function PurchasedItemInventoryPage() {
                             <Select
                                 value={selectedProductForOrder}
                                 label="製品を選択"
-                                onChange={(e: SelectChangeEvent<number | ''>) => setSelectedProductForOrder(e.target.value as number)}
+                                onChange={(e: SelectChangeEvent<number | ''>) => {
+                                    setSelectedProductForOrder(e.target.value as number);
+                                    setSupplierFilter(''); // 製品変更時にサプライヤーフィルタをリセット
+                                }}
                             >
                                 {products.map((p: Product) => (
                                     <MenuItem key={p.id} value={p.id}>
@@ -749,18 +959,46 @@ export default function PurchasedItemInventoryPage() {
                         </FormControl>
                     </Box>
 
+                    {/* サプライヤーフィルタ */}
+                    {supplierPartsGroups.length > 0 && (
+                        <Box sx={{ mb: 2 }}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel>仕入先でフィルタ</InputLabel>
+                                <Select
+                                    value={supplierFilter}
+                                    label="仕入先でフィルタ"
+                                    onChange={(e: SelectChangeEvent<number | ''>) => setSupplierFilter(e.target.value as number | '')}
+                                >
+                                    <MenuItem value="">すべての仕入先</MenuItem>
+                                    {supplierPartsGroups.map((group: SupplierPartsGroup) => (
+                                        <MenuItem key={group.supplier_branch_id} value={group.supplier_branch_id}>
+                                            {group.supplier_name} ({group.branch_name}) - {group.parts.length}品目
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Box>
+                    )}
+
                     {loadingParts && (
                         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                             <CircularProgress />
                         </Box>
                     )}
 
-                    {!loadingParts && supplierPartsGroups.length > 0 && (
+                    {!loadingParts && filteredSupplierPartsGroups.length > 0 && (
                         <Box>
                             <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
                                 仕入先別部品リスト
+                                {supplierFilter && (
+                                    <Chip
+                                        size="small"
+                                        label={`フィルタ中: ${filteredSupplierPartsGroups.length}件`}
+                                        sx={{ ml: 1 }}
+                                    />
+                                )}
                             </Typography>
-                            {supplierPartsGroups.map((group: SupplierPartsGroup) => (
+                            {filteredSupplierPartsGroups.map((group: SupplierPartsGroup) => (
                                 <Accordion key={group.supplier_branch_id} defaultExpanded>
                                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                                         <Typography>
@@ -832,6 +1070,7 @@ export default function PurchasedItemInventoryPage() {
                             setSelectedProductForOrder('');
                             setOrderQuantities({});
                             setOrderError(null);
+                            setSupplierFilter('');
                         }}
                     >
                         キャンセル
@@ -954,48 +1193,122 @@ export default function PurchasedItemInventoryPage() {
                                             <TableCell>部品番号</TableCell>
                                             <TableCell>部品名</TableCell>
                                             <TableCell align="right">発注数量</TableCell>
+                                            <TableCell align="right">受領済み</TableCell>
+                                            <TableCell align="right">未受領</TableCell>
                                             <TableCell align="right">単価</TableCell>
-                                            <TableCell align="right">金額</TableCell>
-                                            <TableCell align="center">受入確認</TableCell>
-                                            <TableCell align="center">員数確認</TableCell>
+                                            <TableCell align="center">ステータス</TableCell>
+                                            <TableCell align="center">操作</TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {selectedOrder.items?.map((item: PurchaseOrderItem) => (
-                                            <TableRow key={item.id}>
-                                                <TableCell>{item.part_number}</TableCell>
-                                                <TableCell>{item.part_name}</TableCell>
-                                                <TableCell align="right">{item.quantity} {item.unit}</TableCell>
-                                                <TableCell align="right">
-                                                    {item.unit_price
-                                                        ? `¥${item.unit_price.toLocaleString()}`
-                                                        : '-'}
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    {item.amount
-                                                        ? `¥${item.amount.toLocaleString()}`
-                                                        : '-'}
-                                                </TableCell>
-                                                <TableCell align="center">
-                                                    {item.receiving_confirmed ? (
-                                                        <Tooltip title={`${item.receiving_confirmed_at} by ${item.receiving_confirmed_by_name}`}>
-                                                            <CheckCircleIcon color="success" />
-                                                        </Tooltip>
-                                                    ) : (
-                                                        <PendingIcon color="disabled" />
-                                                    )}
-                                                </TableCell>
-                                                <TableCell align="center">
-                                                    {item.count_confirmed ? (
-                                                        <Tooltip title={`${item.count_confirmed_at} by ${item.count_confirmed_by_name}`}>
-                                                            <CheckCircleIcon color="success" />
-                                                        </Tooltip>
-                                                    ) : (
-                                                        <PendingIcon color="disabled" />
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
+                                        {selectedOrder.items?.map((item: PurchaseOrderItem) => {
+                                            const receivedQty = item.received_quantity || 0;
+                                            const unreceivedQty = item.quantity - receivedQty;
+                                            const isReceivingThis = receivingItemId === item.id;
+
+                                            return (
+                                                <TableRow key={item.id} sx={{ bgcolor: isReceivingThis ? 'action.selected' : 'inherit' }}>
+                                                    <TableCell>{item.part_number}</TableCell>
+                                                    <TableCell>{item.part_name}</TableCell>
+                                                    <TableCell align="right">{item.quantity} {item.unit}</TableCell>
+                                                    <TableCell align="right">
+                                                        <Chip
+                                                            size="small"
+                                                            label={`${receivedQty} ${item.unit}`}
+                                                            color={receivedQty >= item.quantity ? 'success' : receivedQty > 0 ? 'warning' : 'default'}
+                                                            variant="outlined"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                        {unreceivedQty > 0 ? (
+                                                            <Chip
+                                                                size="small"
+                                                                label={`${unreceivedQty} ${item.unit}`}
+                                                                color="error"
+                                                                variant="outlined"
+                                                            />
+                                                        ) : (
+                                                            <CheckCircleIcon color="success" fontSize="small" />
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                        {item.unit_price
+                                                            ? `¥${item.unit_price.toLocaleString()}`
+                                                            : '-'}
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                                                            <Tooltip title={item.receiving_confirmed ? '受入確認済み' : '受入未確認'}>
+                                                                {item.receiving_confirmed ? (
+                                                                    <CheckCircleIcon color="success" fontSize="small" />
+                                                                ) : (
+                                                                    <PendingIcon color="disabled" fontSize="small" />
+                                                                )}
+                                                            </Tooltip>
+                                                            <Tooltip title={item.count_confirmed ? '員数確認済み' : '員数未確認'}>
+                                                                {item.count_confirmed ? (
+                                                                    <InventoryIcon color="success" fontSize="small" />
+                                                                ) : (
+                                                                    <InventoryIcon color="disabled" fontSize="small" />
+                                                                )}
+                                                            </Tooltip>
+                                                        </Box>
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {isReceivingThis ? (
+                                                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                                                                <TextField
+                                                                    type="number"
+                                                                    size="small"
+                                                                    value={receivingQuantity}
+                                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                                        setReceivingQuantity(parseInt(e.target.value, 10) || 0)
+                                                                    }
+                                                                    inputProps={{ min: 1, max: unreceivedQty }}
+                                                                    sx={{ width: 80 }}
+                                                                />
+                                                                <TextField
+                                                                    size="small"
+                                                                    placeholder="ロット"
+                                                                    value={receivingLotNumber}
+                                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                                        setReceivingLotNumber(e.target.value)
+                                                                    }
+                                                                    sx={{ width: 100 }}
+                                                                />
+                                                                <IconButton
+                                                                    size="small"
+                                                                    color="success"
+                                                                    onClick={handleConfirmItemReceiving}
+                                                                    disabled={receivingInProgress || receivingQuantity <= 0}
+                                                                >
+                                                                    {receivingInProgress ? <CircularProgress size={20} /> : <CheckCircleIcon />}
+                                                                </IconButton>
+                                                                <IconButton
+                                                                    size="small"
+                                                                    onClick={handleCancelItemReceiving}
+                                                                    disabled={receivingInProgress}
+                                                                >
+                                                                    <DeleteIcon />
+                                                                </IconButton>
+                                                            </Box>
+                                                        ) : (
+                                                            unreceivedQty > 0 && !item.receiving_confirmed && (
+                                                                <Tooltip title="個別受入">
+                                                                    <IconButton
+                                                                        size="small"
+                                                                        color="primary"
+                                                                        onClick={() => handleStartItemReceiving(item)}
+                                                                    >
+                                                                        <ReceivingIcon fontSize="small" />
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                            )
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                     </TableBody>
                                 </Table>
                             </TableContainer>
@@ -1006,6 +1319,7 @@ export default function PurchasedItemInventoryPage() {
                     <Button onClick={() => {
                         setDetailDialogOpen(false);
                         setSelectedOrder(null);
+                        handleCancelItemReceiving();
                     }}>
                         閉じる
                     </Button>
@@ -1039,6 +1353,97 @@ export default function PurchasedItemInventoryPage() {
                         onClick={handleDeleteOrder}
                     >
                         削除
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* 在庫調整ダイアログ */}
+            <Dialog
+                open={adjustmentDialogOpen}
+                onClose={handleCloseAdjustmentDialog}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>在庫調整</DialogTitle>
+                <DialogContent>
+                    {adjustingInventory && (
+                        <Box sx={{ mt: 1 }}>
+                            <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                                <Typography variant="subtitle2" color="text.secondary">対象在庫</Typography>
+                                <Typography variant="body1" fontWeight="bold">
+                                    {adjustingInventory.part_number} - {adjustingInventory.part_name}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    製品: {adjustingInventory.product_number || '-'}
+                                </Typography>
+                                <Typography variant="h6" sx={{ mt: 1 }}>
+                                    現在の在庫: {adjustingInventory.quantity} {adjustingInventory.unit || ''}
+                                </Typography>
+                            </Paper>
+
+                            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                                <InputLabel>調整理由</InputLabel>
+                                <Select
+                                    value={adjustmentReason}
+                                    label="調整理由"
+                                    onChange={(e: SelectChangeEvent<InventoryAdjustmentReason>) =>
+                                        setAdjustmentReason(e.target.value as InventoryAdjustmentReason)
+                                    }
+                                >
+                                    {(Object.keys(InventoryAdjustmentReasonLabels) as InventoryAdjustmentReason[]).map((key) => (
+                                        <MenuItem key={key} value={key}>
+                                            {InventoryAdjustmentReasonLabels[key]}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+
+                            <TextField
+                                fullWidth
+                                label="調整数量（増加: +, 減少: -）"
+                                type="number"
+                                value={adjustmentQuantity}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                    setAdjustmentQuantity(parseInt(e.target.value, 10) || 0)
+                                }
+                                sx={{ mb: 2 }}
+                                helperText={`調整後の在庫: ${adjustingInventory.quantity + adjustmentQuantity} ${adjustingInventory.unit || ''}`}
+                            />
+
+                            <TextField
+                                fullWidth
+                                label="備考"
+                                multiline
+                                rows={2}
+                                value={adjustmentNotes}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                    setAdjustmentNotes(e.target.value)
+                                }
+                            />
+
+                            {adjustingInventory.quantity + adjustmentQuantity < 0 && (
+                                <Alert severity="error" sx={{ mt: 2 }}>
+                                    調整後の在庫数が負の値になります
+                                </Alert>
+                            )}
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseAdjustmentDialog}>
+                        キャンセル
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleConfirmAdjustment}
+                        disabled={
+                            adjustingInProgress ||
+                            adjustmentQuantity === 0 ||
+                            (adjustingInventory && adjustingInventory.quantity + adjustmentQuantity < 0)
+                        }
+                    >
+                        {adjustingInProgress ? <CircularProgress size={20} /> : '調整実行'}
                     </Button>
                 </DialogActions>
             </Dialog>
