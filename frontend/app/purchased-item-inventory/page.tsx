@@ -9,6 +9,7 @@ import {
     TextField,
     InputAdornment,
     FormControl,
+    FormLabel,
     InputLabel,
     Select,
     MenuItem,
@@ -32,6 +33,9 @@ import {
     TableContainer,
     TableHead,
     TableRow,
+    Radio,
+    RadioGroup,
+    FormControlLabel,
 } from '@mui/material';
 import {
     DataGrid,
@@ -51,6 +55,7 @@ import {
     Inventory as InventoryIcon,
     LocalShipping as ReceivingIcon,
     Edit as EditIcon,
+    History as HistoryIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { SelectChangeEvent } from '@mui/material/Select';
@@ -191,9 +196,14 @@ export default function PurchasedItemInventoryPage() {
     const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
     const [adjustingInventory, setAdjustingInventory] = useState<PurchasedItemInventory | null>(null);
     const [adjustmentQuantity, setAdjustmentQuantity] = useState<number>(0);
+    const [adjustmentType, setAdjustmentType] = useState<'increase' | 'decrease'>('increase');
     const [adjustmentReason, setAdjustmentReason] = useState<InventoryAdjustmentReason>('stocktaking');
     const [adjustmentNotes, setAdjustmentNotes] = useState<string>('');
     const [adjustingInProgress, setAdjustingInProgress] = useState(false);
+
+    // 履歴モーダル関連
+    const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+    const [historyInventory, setHistoryInventory] = useState<PurchasedItemInventory | null>(null);
 
     // デフォルト製品の初期化済みフラグ
     const [defaultProductInitialized, setDefaultProductInitialized] = useState(false);
@@ -494,6 +504,7 @@ export default function PurchasedItemInventoryPage() {
     const handleOpenAdjustmentDialog = (inventory: PurchasedItemInventory) => {
         setAdjustingInventory(inventory);
         setAdjustmentQuantity(0);
+        setAdjustmentType('increase');
         setAdjustmentReason('stocktaking');
         setAdjustmentNotes('');
         setAdjustmentDialogOpen(true);
@@ -504,24 +515,41 @@ export default function PurchasedItemInventoryPage() {
         setAdjustmentDialogOpen(false);
         setAdjustingInventory(null);
         setAdjustmentQuantity(0);
+        setAdjustmentType('increase');
         setAdjustmentReason('stocktaking');
         setAdjustmentNotes('');
     };
 
+    // 履歴表示
+    const handleOpenHistoryDialog = (inventory: PurchasedItemInventory) => {
+        setHistoryInventory(inventory);
+        setHistoryDialogOpen(true);
+    };
+
+    // 履歴閉じる
+    const handleCloseHistoryDialog = () => {
+        setHistoryDialogOpen(false);
+        setHistoryInventory(null);
+    };
+
     // 在庫調整実行
     const handleConfirmAdjustment = async () => {
-        if (!adjustingInventory || adjustmentQuantity === 0) return;
+        if (!adjustingInventory || adjustmentQuantity <= 0) return;
 
         setAdjustingInProgress(true);
         try {
-            const newQuantity = adjustingInventory.quantity + adjustmentQuantity;
+            // 増減量を計算（減少の場合は負の値）
+            const changeAmount = adjustmentType === 'increase' ? adjustmentQuantity : -adjustmentQuantity;
+            const newQuantity = adjustingInventory.quantity + changeAmount;
+
             if (newQuantity < 0) {
                 alert('調整後の在庫数が負の値になります');
+                setAdjustingInProgress(false);
                 return;
             }
 
             const reasonLabel = InventoryAdjustmentReasonLabels[adjustmentReason];
-            const adjustmentNote = `[在庫調整] ${reasonLabel}: ${adjustmentQuantity > 0 ? '+' : ''}${adjustmentQuantity} (${new Date().toLocaleDateString('ja-JP')})${adjustmentNotes ? ` - ${adjustmentNotes}` : ''}`;
+            const adjustmentNote = `[在庫調整] ${reasonLabel}: ${changeAmount > 0 ? '+' : ''}${changeAmount} (${new Date().toLocaleDateString('ja-JP')})${adjustmentNotes ? ` - ${adjustmentNotes}` : ''}`;
             const existingNotes = adjustingInventory.notes || '';
             const newNotes = existingNotes ? `${existingNotes}\n${adjustmentNote}` : adjustmentNote;
 
@@ -532,10 +560,10 @@ export default function PurchasedItemInventoryPage() {
 
             await fetchData();
             handleCloseAdjustmentDialog();
-            alert(`在庫を調整しました: ${adjustingInventory.part_number} (${adjustmentQuantity > 0 ? '+' : ''}${adjustmentQuantity})`);
+            alert(`在庫を調整しました: ${adjustingInventory.part_number} (${changeAmount > 0 ? '+' : ''}${changeAmount})`);
         } catch (error) {
             console.error('Failed to adjust inventory:', error);
-            alert('在庫調整に失敗しました');
+            alert('在庫調整に失敗しました。APIエラーが発生しました。');
         } finally {
             setAdjustingInProgress(false);
         }
@@ -670,7 +698,7 @@ export default function PurchasedItemInventoryPage() {
         {
             field: 'part_name',
             headerName: '部品名',
-            width: 200,
+            width: 250,
         },
         {
             field: 'product_name',
@@ -682,49 +710,47 @@ export default function PurchasedItemInventoryPage() {
         {
             field: 'supplier_name',
             headerName: '仕入先',
-            width: 150,
+            width: 180,
         },
         {
             field: 'quantity',
-            headerName: '数量',
-            width: 100,
+            headerName: '在庫数量',
+            width: 120,
             type: 'number',
             renderCell: (params: GridRenderCellParams<PurchasedItemInventory>) => (
-                <Typography>
-                    {params.value}{params.row.unit || ''}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%', width: '100%' }}>
+                    <Typography fontWeight="bold">
+                        {params.value}{params.row.unit || ''}
+                    </Typography>
+                </Box>
             ),
-        },
-        {
-            field: 'lot_number',
-            headerName: 'ロット番号',
-            width: 120,
-        },
-        {
-            field: 'received_date',
-            headerName: '入庫日',
-            width: 120,
-        },
-        {
-            field: 'order_number',
-            headerName: '発注番号',
-            width: 160,
         },
         {
             field: 'actions',
             headerName: '操作',
-            width: 100,
+            width: 120,
             sortable: false,
             renderCell: (params: GridRenderCellParams<PurchasedItemInventory>) => (
-                <Tooltip title="在庫調整">
-                    <IconButton
-                        size="small"
-                        color="primary"
-                        onClick={() => handleOpenAdjustmentDialog(params.row)}
-                    >
-                        <EditIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Tooltip title="在庫調整">
+                        <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handleOpenAdjustmentDialog(params.row)}
+                        >
+                            <EditIcon fontSize="small" />
+                        </IconButton>
+                    </Tooltip>
+                    <Tooltip title="履歴">
+                        <IconButton
+                            size="small"
+                            color="info"
+                            onClick={() => handleOpenHistoryDialog(params.row)}
+                        >
+                            <HistoryIcon fontSize="small" />
+                        </IconButton>
+                    </Tooltip>
+                </Box>
             ),
         },
     ];
@@ -1381,6 +1407,29 @@ export default function PurchasedItemInventoryPage() {
                                 </Typography>
                             </Paper>
 
+                            {/* 増加/減少 ラジオボタン */}
+                            <FormControl component="fieldset" sx={{ mb: 2 }}>
+                                <FormLabel component="legend">調整タイプ</FormLabel>
+                                <RadioGroup
+                                    row
+                                    value={adjustmentType}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                        setAdjustmentType(e.target.value as 'increase' | 'decrease')
+                                    }
+                                >
+                                    <FormControlLabel
+                                        value="increase"
+                                        control={<Radio color="success" />}
+                                        label="増加（+）"
+                                    />
+                                    <FormControlLabel
+                                        value="decrease"
+                                        control={<Radio color="error" />}
+                                        label="減少（-）"
+                                    />
+                                </RadioGroup>
+                            </FormControl>
+
                             <FormControl fullWidth size="small" sx={{ mb: 2 }}>
                                 <InputLabel>調整理由</InputLabel>
                                 <Select
@@ -1389,6 +1438,13 @@ export default function PurchasedItemInventoryPage() {
                                     onChange={(e: SelectChangeEvent<InventoryAdjustmentReason>) =>
                                         setAdjustmentReason(e.target.value as InventoryAdjustmentReason)
                                     }
+                                    onKeyDown={(e: React.KeyboardEvent) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            const quantityInput = document.getElementById('adjustment-quantity-input');
+                                            if (quantityInput) quantityInput.focus();
+                                        }
+                                    }}
                                 >
                                     {(Object.keys(InventoryAdjustmentReasonLabels) as InventoryAdjustmentReason[]).map((key) => (
                                         <MenuItem key={key} value={key}>
@@ -1399,18 +1455,33 @@ export default function PurchasedItemInventoryPage() {
                             </FormControl>
 
                             <TextField
+                                id="adjustment-quantity-input"
                                 fullWidth
-                                label="調整数量（増加: +, 減少: -）"
+                                label="調整数量"
                                 type="number"
-                                value={adjustmentQuantity}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                    setAdjustmentQuantity(parseInt(e.target.value, 10) || 0)
-                                }
+                                value={adjustmentQuantity || ''}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                    const val = Math.abs(parseInt(e.target.value, 10) || 0);
+                                    setAdjustmentQuantity(val);
+                                }}
+                                onKeyDown={(e: React.KeyboardEvent) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        const notesInput = document.getElementById('adjustment-notes-input');
+                                        if (notesInput) notesInput.focus();
+                                    }
+                                }}
+                                inputProps={{ min: 0 }}
                                 sx={{ mb: 2 }}
-                                helperText={`調整後の在庫: ${adjustingInventory.quantity + adjustmentQuantity} ${adjustingInventory.unit || ''}`}
+                                helperText={(() => {
+                                    const changeAmount = adjustmentType === 'increase' ? adjustmentQuantity : -adjustmentQuantity;
+                                    const newQty = adjustingInventory.quantity + changeAmount;
+                                    return `調整後の在庫: ${newQty} ${adjustingInventory.unit || ''}`;
+                                })()}
                             />
 
                             <TextField
+                                id="adjustment-notes-input"
                                 fullWidth
                                 label="備考"
                                 multiline
@@ -1419,13 +1490,27 @@ export default function PurchasedItemInventoryPage() {
                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                                     setAdjustmentNotes(e.target.value)
                                 }
+                                onKeyDown={(e: React.KeyboardEvent) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        const confirmButton = document.getElementById('adjustment-confirm-button');
+                                        if (confirmButton) confirmButton.focus();
+                                    }
+                                }}
                             />
 
-                            {adjustingInventory.quantity + adjustmentQuantity < 0 && (
-                                <Alert severity="error" sx={{ mt: 2 }}>
-                                    調整後の在庫数が負の値になります
-                                </Alert>
-                            )}
+                            {(() => {
+                                const changeAmount = adjustmentType === 'increase' ? adjustmentQuantity : -adjustmentQuantity;
+                                const newQty = adjustingInventory.quantity + changeAmount;
+                                if (newQty < 0) {
+                                    return (
+                                        <Alert severity="error" sx={{ mt: 2 }}>
+                                            調整後の在庫数が負の値になります
+                                        </Alert>
+                                    );
+                                }
+                                return null;
+                            })()}
                         </Box>
                     )}
                 </DialogContent>
@@ -1434,16 +1519,110 @@ export default function PurchasedItemInventoryPage() {
                         キャンセル
                     </Button>
                     <Button
+                        id="adjustment-confirm-button"
                         variant="contained"
                         color="primary"
                         onClick={handleConfirmAdjustment}
-                        disabled={
-                            adjustingInProgress ||
-                            adjustmentQuantity === 0 ||
-                            (adjustingInventory && adjustingInventory.quantity + adjustmentQuantity < 0)
-                        }
+                        disabled={(() => {
+                            if (adjustingInProgress || adjustmentQuantity <= 0 || !adjustingInventory) return true;
+                            const changeAmount = adjustmentType === 'increase' ? adjustmentQuantity : -adjustmentQuantity;
+                            const newQty = adjustingInventory.quantity + changeAmount;
+                            return newQty < 0;
+                        })()}
                     >
                         {adjustingInProgress ? <CircularProgress size={20} /> : '調整実行'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* 履歴モーダル */}
+            <Dialog
+                open={historyDialogOpen}
+                onClose={handleCloseHistoryDialog}
+                maxWidth="md"
+                fullWidth
+            >
+                <DialogTitle>
+                    入出庫・調整履歴
+                    {historyInventory && (
+                        <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block' }}>
+                            {historyInventory.part_number} - {historyInventory.part_name}
+                        </Typography>
+                    )}
+                </DialogTitle>
+                <DialogContent>
+                    {historyInventory && (
+                        <Box sx={{ mt: 1 }}>
+                            {/* 在庫情報サマリー */}
+                            <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">製品</Typography>
+                                        <Typography>{historyInventory.product_number || '-'}</Typography>
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">仕入先</Typography>
+                                        <Typography>{historyInventory.supplier_name || '-'}</Typography>
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">現在の在庫数量</Typography>
+                                        <Typography variant="h6" fontWeight="bold">
+                                            {historyInventory.quantity} {historyInventory.unit || ''}
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </Paper>
+
+                            {/* 履歴表示 */}
+                            <Typography variant="subtitle2" sx={{ mb: 1 }}>履歴</Typography>
+                            <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                                {historyInventory.notes ? (
+                                    <Box>
+                                        {historyInventory.notes.split('\n').map((line, index) => {
+                                            const isAdjustment = line.includes('[在庫調整]');
+                                            return (
+                                                <Box
+                                                    key={index}
+                                                    sx={{
+                                                        p: 1,
+                                                        mb: 1,
+                                                        borderLeft: isAdjustment ? '3px solid' : 'none',
+                                                        borderColor: line.includes('+') ? 'success.main' : 'error.main',
+                                                        bgcolor: isAdjustment ? 'action.hover' : 'transparent',
+                                                    }}
+                                                >
+                                                    <Typography
+                                                        variant="body2"
+                                                        sx={{
+                                                            fontFamily: 'monospace',
+                                                            whiteSpace: 'pre-wrap',
+                                                        }}
+                                                    >
+                                                        {line}
+                                                    </Typography>
+                                                </Box>
+                                            );
+                                        })}
+                                    </Box>
+                                ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                        履歴はありません
+                                    </Typography>
+                                )}
+                            </Paper>
+
+                            {/* 追加情報 */}
+                            <Box sx={{ mt: 2 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                    ※ 在庫調整を行うと、自動的に履歴が記録されます。
+                                </Typography>
+                            </Box>
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseHistoryDialog}>
+                        閉じる
                     </Button>
                 </DialogActions>
             </Dialog>
