@@ -775,16 +775,16 @@ export default function PurchasedItemInventoryPage() {
                     </IconButton>
                 </Box>
             </Box>
+            <Tabs
+                value={tabValue}
+                onChange={(_: React.SyntheticEvent, newValue: number) => setTabValue(newValue)}
+                sx={{ mb: 2 }}
+            >
+                <Tab label="発注一覧" />
+                <Tab label="在庫一覧" />
+            </Tabs>
 
             <Paper sx={{ mb: 3 }}>
-                <Tabs
-                    value={tabValue}
-                    onChange={(_: React.SyntheticEvent, newValue: number) => setTabValue(newValue)}
-                    sx={{ borderBottom: 1, borderColor: 'divider' }}
-                >
-                    <Tab label="発注一覧" />
-                    <Tab label="在庫一覧" />
-                </Tabs>
 
                 {/* 発注一覧タブ */}
                 <TabPanel value={tabValue} index={0}>
