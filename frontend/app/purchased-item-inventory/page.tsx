@@ -389,6 +389,74 @@ export default function PurchasedItemInventoryPage() {
         }
     }, [selectedProductForOrder, fetchPartsForOrder]);
 
+    // 発注数量の自動計算
+    // MOQ: 最低発注数量以上ならどの値でもOK（最低発注数量未満の場合は最低発注数量に）
+    // SPQ: 最低発注数量が1ロットとなるため、最低発注数量の倍数に切り上げ
+    const calculateOrderQuantity = useCallback((
+        inputQuantity: number,
+        orderType: string,
+        minimumOrderQuantity: number
+    ): number => {
+        if (inputQuantity <= 0) return 0;
+
+        // 最低発注数量より少ない場合は最低発注数量にする
+        if (inputQuantity < minimumOrderQuantity) {
+            return minimumOrderQuantity;
+        }
+
+        // SPQの場合は最低発注数量の倍数に切り上げ
+        if (orderType === 'SPQ') {
+            const lots = Math.ceil(inputQuantity / minimumOrderQuantity);
+            return lots * minimumOrderQuantity;
+        }
+
+        // MOQ・その他の場合はそのまま
+        return inputQuantity;
+    }, []);
+
+    // 発注数量確定時の処理（Enter押下またはフォーカス離脱時）
+    const handleQuantityConfirm = useCallback((part: PartForOrder) => {
+        const currentQuantity = orderQuantities[part.id] || 0;
+        const calculatedQuantity = calculateOrderQuantity(
+            currentQuantity,
+            part.order_type,
+            part.minimum_order_quantity
+        );
+
+        if (calculatedQuantity !== currentQuantity) {
+            setOrderQuantities((prev: Record<number, number>) => ({
+                ...prev,
+                [part.id]: calculatedQuantity,
+            }));
+        }
+    }, [orderQuantities, calculateOrderQuantity]);
+
+    // Enterキーで次の入力フィールドに移動
+    const handleQuantityKeyDown = useCallback((
+        e: React.KeyboardEvent<HTMLInputElement>,
+        part: PartForOrder
+    ) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+
+            // 数量確定処理を実行
+            handleQuantityConfirm(part);
+
+            // 次のテキストフィールドにフォーカスを移動
+            // data-order-indexを使用して次のフィールドを特定
+            const currentElement = e.currentTarget;
+            const allInputs = document.querySelectorAll<HTMLInputElement>('[data-order-index]');
+            const inputsArray = Array.from(allInputs);
+            const currentIndex = inputsArray.indexOf(currentElement);
+
+            if (currentIndex !== -1 && currentIndex < inputsArray.length - 1) {
+                const nextInput = inputsArray[currentIndex + 1];
+                nextInput.focus();
+                nextInput.select();
+            }
+        }
+    }, [handleQuantityConfirm]);
+
     // 発注作成
     const handleCreateOrders = async () => {
         if (!selectedProductForOrder) return;
@@ -1224,17 +1292,26 @@ export default function PurchasedItemInventoryPage() {
                                                         <TableCell>部品番号</TableCell>
                                                         <TableCell>部品名</TableCell>
                                                         <TableCell>単位</TableCell>
+                                                        <TableCell>発注区分</TableCell>
                                                         <TableCell align="right">最小発注数</TableCell>
                                                         <TableCell align="right">単価</TableCell>
                                                         <TableCell align="right" sx={{ width: 120 }}>発注数量</TableCell>
                                                     </TableRow>
                                                 </TableHead>
                                                 <TableBody>
-                                                    {group.parts.map((part: PartForOrder) => (
+                                                    {group.parts.map((part: PartForOrder, partIndex: number) => (
                                                         <TableRow key={part.id}>
                                                             <TableCell>{part.part_number}</TableCell>
                                                             <TableCell>{part.part_name}</TableCell>
                                                             <TableCell>{part.unit}</TableCell>
+                                                            <TableCell>
+                                                                <Chip
+                                                                    label={part.order_type}
+                                                                    size="small"
+                                                                    color={part.order_type === 'SPQ' ? 'primary' : 'default'}
+                                                                    variant="outlined"
+                                                                />
+                                                            </TableCell>
                                                             <TableCell align="right">{part.minimum_order_quantity}</TableCell>
                                                             <TableCell align="right">
                                                                 {part.current_price
@@ -1253,7 +1330,14 @@ export default function PurchasedItemInventoryPage() {
                                                                             [part.id]: val,
                                                                         }));
                                                                     }}
-                                                                    inputProps={{ min: 0 }}
+                                                                    onBlur={() => handleQuantityConfirm(part)}
+                                                                    onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                                                        handleQuantityKeyDown(e, part);
+                                                                    }}
+                                                                    inputProps={{
+                                                                        min: 0,
+                                                                        'data-order-index': `${filteredSupplierPartsGroups.indexOf(group)}-${partIndex}`,
+                                                                    }}
                                                                     sx={{ width: 100 }}
                                                                 />
                                                             </TableCell>

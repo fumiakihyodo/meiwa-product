@@ -812,6 +812,7 @@ export interface PartForOrder {
     supplier_part_name?: string;
     specification?: string;
     unit: string;
+    order_type: 'MOQ' | 'SPQ' | 'SNP' | 'OTHER';
     minimum_order_quantity: number;
     current_price?: number;
     is_active: boolean;
