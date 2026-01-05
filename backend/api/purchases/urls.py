@@ -138,6 +138,7 @@ urlpatterns = [
 
     # 購入品受領処理
     path('purchase-order-items/<int:item_pk>/receive/', views.receive_purchase_order_item, name='receive_purchase_order_item'),
+    path('purchase-order-items/<int:item_pk>/cancel-receiving/', views.cancel_purchase_order_item_receiving, name='cancel_purchase_order_item_receiving'),
     path('purchase-orders/<int:pk>/bulk-receive/', views.bulk_receive_purchase_order, name='bulk_receive_purchase_order'),
     path('unreceived-purchase-items/', views.get_unreceived_purchase_items, name='unreceived_purchase_items'),
 ]

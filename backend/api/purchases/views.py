@@ -4208,3 +4208,98 @@ def get_unreceived_purchase_items(request):
         'count': len(unreceived_items),
         'items': unreceived_items
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_purchase_order_item_receiving(request, item_pk):
+    """購入発注明細の受入キャンセル処理
+
+    受領済み数量と関連する在庫レコードを削除し、
+    発注明細の状態をリセットする
+
+    処理内容:
+    1. 発注明細に紐づく在庫レコードを全て削除
+    2. 受領数量をリセット（0に戻す）
+    3. 受入確認フラグをリセット
+    4. 発注ステータスを更新
+    """
+    from django.utils import timezone
+
+    try:
+        order_item = PurchaseOrderItem.objects.select_related(
+            'purchase_order', 'part'
+        ).get(pk=item_pk)
+    except PurchaseOrderItem.DoesNotExist:
+        return Response(
+            {"error": "発注明細が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    order = order_item.purchase_order
+    cancelled_quantity = order_item.received_quantity or 0
+
+    if cancelled_quantity == 0:
+        return Response(
+            {"error": "この明細には受領済み数量がありません"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    with transaction.atomic():
+        # 1. 発注明細に紐づく在庫レコードを全て削除
+        deleted_inventory_count = PurchasedItemInventory.objects.filter(
+            order_item=order_item
+        ).delete()[0]
+
+        # 2. 受領数量をリセット
+        order_item.received_quantity = 0
+
+        # 3. 受入確認フラグをリセット
+        order_item.receiving_confirmed = False
+        order_item.receiving_confirmed_at = None
+        order_item.receiving_confirmed_by = None
+
+        order_item.save()
+
+        # 4. 発注ステータスを更新
+        all_items = order.items.all()
+        any_received = False
+
+        for item in all_items:
+            item_received = item.received_quantity or 0
+            if item_received > 0:
+                any_received = True
+                break
+
+        # ステータスを適切な状態に更新
+        if order.status in [PurchaseOrder.OrderStatus.PARTIALLY_RECEIVED,
+                           PurchaseOrder.OrderStatus.RECEIVED,
+                           PurchaseOrder.OrderStatus.COMPLETED]:
+            if any_received:
+                order.status = PurchaseOrder.OrderStatus.PARTIALLY_RECEIVED
+            else:
+                order.status = PurchaseOrder.OrderStatus.ORDERED
+            order.save()
+
+    # レスポンスデータ
+    order.refresh_from_db()
+    order_item.refresh_from_db()
+
+    return Response({
+        'message': f'受入をキャンセルしました（{cancelled_quantity}個、在庫レコード{deleted_inventory_count}件削除）',
+        'order_item': {
+            'id': order_item.id,
+            'part_number': order_item.part_number,
+            'part_name': order_item.part_name,
+            'quantity': order_item.quantity,
+            'received_quantity': order_item.received_quantity,
+            'unreceived_quantity': order_item.quantity - (order_item.received_quantity or 0),
+            'receiving_confirmed': order_item.receiving_confirmed,
+        },
+        'order': {
+            'id': order.id,
+            'order_number': order.order_number,
+            'status': order.status,
+            'status_display': order.get_status_display(),
+        }
+    }, status=status.HTTP_200_OK)

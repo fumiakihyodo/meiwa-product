@@ -56,6 +56,9 @@ import {
     LocalShipping as ReceivingIcon,
     Edit as EditIcon,
     History as HistoryIcon,
+    Star as StarIcon,
+    StarBorder as StarBorderIcon,
+    Clear as ClearIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { SelectChangeEvent } from '@mui/material/Select';
@@ -196,6 +199,9 @@ export default function PurchasedItemInventoryPage() {
     const [receivingLotNumber, setReceivingLotNumber] = useState<string>('');
     const [receivingInProgress, setReceivingInProgress] = useState(false);
 
+    // 受入キャンセル関連
+    const [cancellingItemId, setCancellingItemId] = useState<number | null>(null);
+
     // 在庫調整ダイアログ関連
     const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
     const [adjustingInventory, setAdjustingInventory] = useState<PurchasedItemInventory | null>(null);
@@ -212,6 +218,11 @@ export default function PurchasedItemInventoryPage() {
     // 部品詳細モーダル関連
     const [partDetailDialogOpen, setPartDetailDialogOpen] = useState(false);
     const [selectedPartWithInventory, setSelectedPartWithInventory] = useState<PartWithInventory | null>(null);
+
+    // 在庫レコード削除関連
+    const [deleteRecordDialogOpen, setDeleteRecordDialogOpen] = useState(false);
+    const [deletingRecordId, setDeletingRecordId] = useState<number | null>(null);
+    const [deletingRecordInProgress, setDeletingRecordInProgress] = useState(false);
 
     // デフォルト製品の初期化済みフラグ
     const [defaultProductInitialized, setDefaultProductInitialized] = useState(false);
@@ -534,6 +545,31 @@ export default function PurchasedItemInventoryPage() {
         }
     };
 
+    // 受入キャンセル処理（受領済み数量をリセット）
+    const handleCancelItemReceivingRecord = async (item: PurchaseOrderItem) => {
+        if (!window.confirm(`${item.part_name}の受入をキャンセルしますか？\n受領済み数量と関連する在庫レコードが削除されます。`)) {
+            return;
+        }
+
+        setCancellingItemId(item.id);
+        try {
+            await purchasesApi.cancelPurchaseOrderItemReceiving(item.id);
+
+            // 発注詳細を再取得
+            if (selectedOrder) {
+                const updated = await purchasesApi.getPurchaseOrder(selectedOrder.id);
+                setSelectedOrder(updated);
+            }
+            await fetchData();
+            alert('受入をキャンセルしました');
+        } catch (error) {
+            console.error('Failed to cancel receiving:', error);
+            alert('受入キャンセルに失敗しました');
+        } finally {
+            setCancellingItemId(null);
+        }
+    };
+
     // 在庫調整開始
     const handleOpenAdjustmentDialog = (inventory: PurchasedItemInventory) => {
         setAdjustingInventory(inventory);
@@ -566,6 +602,20 @@ export default function PurchasedItemInventoryPage() {
         setHistoryInventory(null);
     };
 
+    // デフォルト製品を設定/解除
+    const handleSetDefaultProductForFilters = (productId: number) => {
+        const currentDefault = getDefaultProductId();
+        if (currentDefault === productId) {
+            // 既にデフォルトならば解除
+            setDefaultProductId(null);
+        } else {
+            // デフォルトに設定
+            setDefaultProductId(productId);
+        }
+        // UIを更新するためにre-render（forceUpdate）
+        setInventoryProductFilter(prev => prev);
+    };
+
     // 部品詳細ダイアログを開く
     const handleOpenPartDetailDialog = (part: PartWithInventory) => {
         setSelectedPartWithInventory(part);
@@ -576,6 +626,43 @@ export default function PurchasedItemInventoryPage() {
     const handleClosePartDetailDialog = () => {
         setPartDetailDialogOpen(false);
         setSelectedPartWithInventory(null);
+    };
+
+    // 在庫レコード削除ダイアログを開く
+    const handleOpenDeleteRecordDialog = (recordId: number) => {
+        setDeletingRecordId(recordId);
+        setDeleteRecordDialogOpen(true);
+    };
+
+    // 在庫レコード削除ダイアログを閉じる
+    const handleCloseDeleteRecordDialog = () => {
+        setDeleteRecordDialogOpen(false);
+        setDeletingRecordId(null);
+    };
+
+    // 在庫レコード削除実行
+    const handleConfirmDeleteRecord = async () => {
+        if (!deletingRecordId) return;
+
+        setDeletingRecordInProgress(true);
+        try {
+            await purchasesApi.deletePurchasedItemInventory(deletingRecordId);
+
+            // 成功したらデータを再取得
+            if (inventoryProductFilter) {
+                await fetchPartsWithInventory(inventoryProductFilter);
+            }
+
+            // 部品詳細ダイアログを閉じる（データが古くなるため）
+            handleClosePartDetailDialog();
+            handleCloseDeleteRecordDialog();
+            alert('在庫レコードを削除しました');
+        } catch (error) {
+            console.error('Failed to delete inventory record:', error);
+            alert('在庫レコードの削除に失敗しました');
+        } finally {
+            setDeletingRecordInProgress(false);
+        }
     };
 
     // 在庫調整実行
@@ -918,7 +1005,7 @@ export default function PurchasedItemInventoryPage() {
                         {/* 製品フィルタ */}
                         <Paper sx={{ p: 2, mb: 2 }}>
                             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-                                <FormControl size="small" sx={{ minWidth: 280 }}>
+                                <FormControl size="small" sx={{ minWidth: 320 }}>
                                     <InputLabel>製品を選択</InputLabel>
                                     <Select
                                         value={inventoryProductFilter}
@@ -926,19 +1013,56 @@ export default function PurchasedItemInventoryPage() {
                                         onChange={(e: SelectChangeEvent<number | ''>) => {
                                             const val = e.target.value as number | '';
                                             setInventoryProductFilter(val);
-                                            if (val) {
-                                                setDefaultProductId(val as number);
-                                            }
+                                        }}
+                                        renderValue={(selected) => {
+                                            if (!selected) return '-- 製品を選択してください --';
+                                            const product = products.find((p: Product) => p.id === selected);
+                                            if (!product) return '-- 製品を選択してください --';
+                                            const isDefault = getDefaultProductId() === product.id;
+                                            return (
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
+                                                    {product.product_number} - {product.product_name}
+                                                </Box>
+                                            );
                                         }}
                                     >
                                         <MenuItem value="">-- 製品を選択してください --</MenuItem>
-                                        {products.map((p: Product) => (
-                                            <MenuItem key={p.id} value={p.id}>
-                                                {p.product_number} - {p.product_name}
-                                            </MenuItem>
-                                        ))}
+                                        {products.map((p: Product) => {
+                                            const isDefault = getDefaultProductId() === p.id;
+                                            return (
+                                                <MenuItem key={p.id} value={p.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    <Tooltip title={isDefault ? 'デフォルトを解除' : 'デフォルトに設定'}>
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSetDefaultProductForFilters(p.id);
+                                                            }}
+                                                            sx={{ p: 0.5 }}
+                                                        >
+                                                            {isDefault ? (
+                                                                <StarIcon sx={{ color: 'warning.main' }} />
+                                                            ) : (
+                                                                <StarBorderIcon sx={{ color: 'action.disabled' }} />
+                                                            )}
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <span>{p.product_number} - {p.product_name}</span>
+                                                </MenuItem>
+                                            );
+                                        })}
                                     </Select>
                                 </FormControl>
+                                {inventoryProductFilter && (
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => setInventoryProductFilter('')}
+                                        title="選択解除"
+                                    >
+                                        <ClearIcon />
+                                    </IconButton>
+                                )}
                                 <IconButton onClick={fetchData} disabled={loading}>
                                     <RefreshIcon />
                                 </IconButton>
@@ -1194,6 +1318,8 @@ export default function PurchasedItemInventoryPage() {
                 onConfirmItemReceiving={handleConfirmItemReceiving}
                 onReceivingQuantityChange={setReceivingQuantity}
                 onReceivingLotNumberChange={setReceivingLotNumber}
+                onCancelItemReceivingRecord={handleCancelItemReceivingRecord}
+                cancellingItemId={cancellingItemId}
             />
 
             {/* 削除確認ダイアログ */}
@@ -1530,6 +1656,7 @@ export default function PurchasedItemInventoryPage() {
                                                 <TableCell>発注番号</TableCell>
                                                 <TableCell>備考</TableCell>
                                                 <TableCell>登録者</TableCell>
+                                                <TableCell align="center">操作</TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -1556,6 +1683,17 @@ export default function PurchasedItemInventoryPage() {
                                                         ) : '-'}
                                                     </TableCell>
                                                     <TableCell>{record.created_by_name || '-'}</TableCell>
+                                                    <TableCell align="center">
+                                                        <Tooltip title="削除">
+                                                            <IconButton
+                                                                size="small"
+                                                                color="error"
+                                                                onClick={() => handleOpenDeleteRecordDialog(record.id)}
+                                                            >
+                                                                <DeleteIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Tooltip>
+                                                    </TableCell>
                                                 </TableRow>
                                             ))}
                                         </TableBody>
@@ -1572,6 +1710,33 @@ export default function PurchasedItemInventoryPage() {
                 <DialogActions>
                     <Button onClick={handleClosePartDetailDialog}>
                         閉じる
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* 在庫レコード削除確認ダイアログ */}
+            <Dialog
+                open={deleteRecordDialogOpen}
+                onClose={handleCloseDeleteRecordDialog}
+            >
+                <DialogTitle>在庫レコード削除確認</DialogTitle>
+                <DialogContent>
+                    <Alert severity="warning" sx={{ mt: 1 }}>
+                        この在庫レコードを削除しますか？<br />
+                        削除すると元に戻すことはできません。
+                    </Alert>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseDeleteRecordDialog}>
+                        キャンセル
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="error"
+                        onClick={handleConfirmDeleteRecord}
+                        disabled={deletingRecordInProgress}
+                    >
+                        {deletingRecordInProgress ? <CircularProgress size={20} /> : '削除'}
                     </Button>
                 </DialogActions>
             </Dialog>

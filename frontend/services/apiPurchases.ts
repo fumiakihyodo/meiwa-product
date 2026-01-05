@@ -945,6 +945,16 @@ export const purchasesApi = {
         return response.data;
     },
 
+    // 発注明細の受入キャンセル処理
+    cancelPurchaseOrderItemReceiving: async (
+        itemId: number
+    ): Promise<ReceivePurchaseItemResponse> => {
+        const response = await apiClient.post<ReceivePurchaseItemResponse>(
+            `/purchases/purchase-order-items/${itemId}/cancel-receiving/`
+        );
+        return response.data;
+    },
+
     // 未受領購入品リスト取得
     getUnreceivedPurchaseItems: async (params?: {
         product?: number;
