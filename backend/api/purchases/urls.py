@@ -127,6 +127,7 @@ urlpatterns = [
     # 購入品在庫
     path('purchased-item-inventories/', PurchasedItemInventoryListCreateView.as_view(), name='purchased_item_inventory_list_create'),
     path('purchased-item-inventories/<int:pk>/', PurchasedItemInventoryDetailView.as_view(), name='purchased_item_inventory_detail'),
+    path('purchased-item-inventory-with-parts/', views.get_purchased_item_inventory_with_parts, name='purchased_item_inventory_with_parts'),
 
     # 発注作成サポート
     path('parts-by-supplier/', views.get_parts_grouped_by_supplier, name='parts_by_supplier'),

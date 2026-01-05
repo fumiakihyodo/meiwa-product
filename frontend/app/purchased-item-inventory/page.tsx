@@ -70,8 +70,10 @@ import {
     PartForOrder,
     InventoryAdjustmentReason,
     InventoryAdjustmentReasonLabels,
+    PartWithInventory,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
+import { PurchasedItemOrderModal } from '@/components/PurchasedItemInventory';
 
 // localStorage キー
 const DEFAULT_PRODUCT_KEY = 'purchased_item_inventory_default_product';
@@ -158,8 +160,10 @@ export default function PurchasedItemInventoryPage() {
     // データ
     const [orders, setOrders] = useState<PurchaseOrder[]>([]);
     const [inventories, setInventories] = useState<PurchasedItemInventory[]>([]);
+    const [partsWithInventory, setPartsWithInventory] = useState<PartWithInventory[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingInventory, setLoadingInventory] = useState(false);
 
     // フィルタ
     const [searchText, setSearchText] = useState('');
@@ -205,6 +209,10 @@ export default function PurchasedItemInventoryPage() {
     const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
     const [historyInventory, setHistoryInventory] = useState<PurchasedItemInventory | null>(null);
 
+    // 部品詳細モーダル関連
+    const [partDetailDialogOpen, setPartDetailDialogOpen] = useState(false);
+    const [selectedPartWithInventory, setSelectedPartWithInventory] = useState<PartWithInventory | null>(null);
+
     // デフォルト製品の初期化済みフラグ
     const [defaultProductInitialized, setDefaultProductInitialized] = useState(false);
 
@@ -228,11 +236,10 @@ export default function PurchasedItemInventoryPage() {
         return result;
     }, [orders, searchText, statusFilter, productFilter]);
 
-    // フィルタリングされた在庫一覧
-    const filteredInventories = useMemo(() => {
-        if (!inventoryProductFilter) return inventories;
-        return inventories.filter((inv: PurchasedItemInventory) => inv.product === inventoryProductFilter);
-    }, [inventories, inventoryProductFilter]);
+    // フィルタリングされた在庫一覧（partsWithInventoryを使用）
+    const filteredPartsWithInventory = useMemo(() => {
+        return partsWithInventory;
+    }, [partsWithInventory]);
 
     // サプライヤーフィルタリングされた部品グループ
     const filteredSupplierPartsGroups = useMemo(() => {
@@ -254,19 +261,20 @@ export default function PurchasedItemInventoryPage() {
     const productInventorySummaries = useMemo((): ProductInventorySummary[] => {
         const summaryMap = new Map<number, ProductInventorySummary>();
 
-        inventories.forEach((inv: PurchasedItemInventory) => {
-            const productId = inv.product || 0;
+        // partsWithInventory を使用してサマリーを計算
+        partsWithInventory.forEach((part: PartWithInventory) => {
+            const productId = part.product_id || 0;
             if (summaryMap.has(productId)) {
                 const existing = summaryMap.get(productId)!;
                 existing.itemCount += 1;
-                existing.totalQuantity += inv.quantity || 0;
+                existing.totalQuantity += part.total_quantity || 0;
             } else {
                 summaryMap.set(productId, {
                     productId,
-                    productNumber: inv.product_number || '-',
-                    productName: inv.product_name || '製品未設定',
+                    productNumber: part.product_number || '-',
+                    productName: part.product_name || '製品未設定',
                     itemCount: 1,
-                    totalQuantity: inv.quantity || 0,
+                    totalQuantity: part.total_quantity || 0,
                 });
             }
         });
@@ -274,7 +282,7 @@ export default function PurchasedItemInventoryPage() {
         return Array.from(summaryMap.values()).sort((a, b) =>
             a.productNumber.localeCompare(b.productNumber)
         );
-    }, [inventories]);
+    }, [partsWithInventory]);
 
     // デフォルト製品を初期化（products読み込み後1回のみ）
     useEffect(() => {
@@ -310,6 +318,32 @@ export default function PurchasedItemInventoryPage() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // 在庫一覧用：製品ごとの全active部品と在庫数を取得
+    const fetchPartsWithInventory = useCallback(async (productId: number) => {
+        setLoadingInventory(true);
+        try {
+            const data = await purchasesApi.getPurchasedItemInventoryWithParts({
+                product: productId,
+                include_records: true,
+            });
+            setPartsWithInventory(data);
+        } catch (error) {
+            console.error('Failed to fetch parts with inventory:', error);
+            setPartsWithInventory([]);
+        } finally {
+            setLoadingInventory(false);
+        }
+    }, []);
+
+    // 在庫タブの製品フィルタ変更時にデータを取得
+    useEffect(() => {
+        if (inventoryProductFilter) {
+            fetchPartsWithInventory(inventoryProductFilter);
+        } else {
+            setPartsWithInventory([]);
+        }
+    }, [inventoryProductFilter, fetchPartsWithInventory]);
 
     // 発注作成用の部品取得
     const fetchPartsForOrder = useCallback(async (productId: number) => {
@@ -532,6 +566,18 @@ export default function PurchasedItemInventoryPage() {
         setHistoryInventory(null);
     };
 
+    // 部品詳細ダイアログを開く
+    const handleOpenPartDetailDialog = (part: PartWithInventory) => {
+        setSelectedPartWithInventory(part);
+        setPartDetailDialogOpen(true);
+    };
+
+    // 部品詳細ダイアログを閉じる
+    const handleClosePartDetailDialog = () => {
+        setPartDetailDialogOpen(false);
+        setSelectedPartWithInventory(null);
+    };
+
     // 在庫調整実行
     const handleConfirmAdjustment = async () => {
         if (!adjustingInventory || adjustmentQuantity <= 0) return;
@@ -688,7 +734,7 @@ export default function PurchasedItemInventoryPage() {
         },
     ];
 
-    // 在庫一覧カラム定義
+    // 在庫一覧カラム定義（PartWithInventory用）
     const inventoryColumns: GridColDef[] = [
         {
             field: 'part_number',
@@ -698,54 +744,57 @@ export default function PurchasedItemInventoryPage() {
         {
             field: 'part_name',
             headerName: '部品名',
-            width: 250,
+            width: 200,
         },
         {
-            field: 'product_name',
-            headerName: '製品',
+            field: 'supplier_part_name',
+            headerName: '仕入れ先部品名称',
             width: 180,
-            valueGetter: (value: string, row: PurchasedItemInventory) =>
-                row.product_number ? `${row.product_number}` : '-',
+            valueGetter: (value: string, row: PartWithInventory) =>
+                row.supplier_part_name || '-',
         },
         {
             field: 'supplier_name',
             headerName: '仕入先',
             width: 180,
+            valueGetter: (value: string, row: PartWithInventory) =>
+                row.supplier_branch_name
+                    ? `${row.supplier_name} (${row.supplier_branch_name})`
+                    : row.supplier_name || '-',
         },
         {
-            field: 'quantity',
+            field: 'total_quantity',
             headerName: '在庫数量',
             width: 120,
             type: 'number',
-            renderCell: (params: GridRenderCellParams<PurchasedItemInventory>) => (
+            renderCell: (params: GridRenderCellParams<PartWithInventory>) => (
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%', width: '100%' }}>
-                    <Typography fontWeight="bold">
-                        {params.value}{params.row.unit || ''}
-                    </Typography>
+                    <Chip
+                        size="small"
+                        label={`${params.value || 0} ${params.row.unit || ''}`}
+                        color={params.value && params.value > 0 ? 'primary' : 'default'}
+                        variant={params.value && params.value > 0 ? 'filled' : 'outlined'}
+                    />
                 </Box>
             ),
+        },
+        {
+            field: 'unit',
+            headerName: '単位',
+            width: 80,
         },
         {
             field: 'actions',
             headerName: '操作',
             width: 120,
             sortable: false,
-            renderCell: (params: GridRenderCellParams<PurchasedItemInventory>) => (
+            renderCell: (params: GridRenderCellParams<PartWithInventory>) => (
                 <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Tooltip title="在庫調整">
-                        <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={() => handleOpenAdjustmentDialog(params.row)}
-                        >
-                            <EditIcon fontSize="small" />
-                        </IconButton>
-                    </Tooltip>
-                    <Tooltip title="履歴">
+                    <Tooltip title="詳細・履歴">
                         <IconButton
                             size="small"
                             color="info"
-                            onClick={() => handleOpenHistoryDialog(params.row)}
+                            onClick={() => handleOpenPartDetailDialog(params.row)}
                         >
                             <HistoryIcon fontSize="small" />
                         </IconButton>
@@ -867,79 +916,91 @@ export default function PurchasedItemInventoryPage() {
                 <TabPanel value={tabValue} index={1}>
                     <Box sx={{ p: 2 }}>
                         {/* 製品フィルタ */}
-                        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                            <FormControl size="small" sx={{ minWidth: 200 }}>
-                                <InputLabel>製品</InputLabel>
-                                <Select
-                                    value={inventoryProductFilter}
-                                    label="製品"
-                                    onChange={(e: SelectChangeEvent<number | ''>) => {
-                                        const val = e.target.value as number | '';
-                                        setInventoryProductFilter(val);
-                                        if (val) {
-                                            setDefaultProductId(val as number);
-                                        }
-                                    }}
-                                >
-                                    <MenuItem value="">すべて</MenuItem>
-                                    {products.map((p: Product) => (
-                                        <MenuItem key={p.id} value={p.id}>
-                                            {p.product_number} - {p.product_name}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        </Box>
+                        <Paper sx={{ p: 2, mb: 2 }}>
+                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <FormControl size="small" sx={{ minWidth: 280 }}>
+                                    <InputLabel>製品を選択</InputLabel>
+                                    <Select
+                                        value={inventoryProductFilter}
+                                        label="製品を選択"
+                                        onChange={(e: SelectChangeEvent<number | ''>) => {
+                                            const val = e.target.value as number | '';
+                                            setInventoryProductFilter(val);
+                                            if (val) {
+                                                setDefaultProductId(val as number);
+                                            }
+                                        }}
+                                    >
+                                        <MenuItem value="">-- 製品を選択してください --</MenuItem>
+                                        {products.map((p: Product) => (
+                                            <MenuItem key={p.id} value={p.id}>
+                                                {p.product_number} - {p.product_name}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                                <IconButton onClick={fetchData} disabled={loading}>
+                                    <RefreshIcon />
+                                </IconButton>
+                            </Box>
+                        </Paper>
+
+                        {/* 製品未選択時のメッセージ */}
+                        {!inventoryProductFilter && (
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                                製品を選択すると、登録されている部品の在庫一覧が表示されます。
+                            </Alert>
+                        )}
 
                         {/* 製品別在庫サマリー */}
-                        {productInventorySummaries.length > 0 && (
-                            <Paper sx={{ p: 2, mb: 2 }}>
-                                <Typography variant="subtitle2" sx={{ mb: 1 }}>製品別在庫サマリー</Typography>
-                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                                    {productInventorySummaries.map((summary) => (
-                                        <Paper
-                                            key={summary.productId}
-                                            variant="outlined"
-                                            sx={{
-                                                p: 1.5,
-                                                cursor: 'pointer',
-                                                bgcolor: inventoryProductFilter === summary.productId ? 'primary.light' : 'background.paper',
-                                                '&:hover': { bgcolor: 'action.hover' },
-                                                minWidth: 180,
-                                            }}
-                                            onClick={() => {
-                                                const newVal = inventoryProductFilter === summary.productId ? '' : summary.productId;
-                                                setInventoryProductFilter(newVal);
-                                                if (newVal) {
-                                                    setDefaultProductId(newVal as number);
-                                                }
-                                            }}
-                                        >
-                                            <Typography variant="body2" fontWeight="bold">
-                                                {summary.productNumber} - {summary.productName}
-                                            </Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                                {summary.itemCount}品目 / 総在庫: {summary.totalQuantity.toLocaleString()}
-                                            </Typography>
-                                        </Paper>
-                                    ))}
+                        {inventoryProductFilter && productInventorySummaries.length > 0 && (
+                            <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                                <Typography variant="subtitle2" sx={{ mb: 1 }}>在庫サマリー</Typography>
+                                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">部品数</Typography>
+                                        <Typography variant="h6" fontWeight="bold">
+                                            {filteredPartsWithInventory.length} 品目
+                                        </Typography>
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">在庫あり</Typography>
+                                        <Typography variant="h6" fontWeight="bold" color="success.main">
+                                            {filteredPartsWithInventory.filter(p => p.total_quantity > 0).length} 品目
+                                        </Typography>
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">在庫なし</Typography>
+                                        <Typography variant="h6" fontWeight="bold" color="error.main">
+                                            {filteredPartsWithInventory.filter(p => p.total_quantity === 0).length} 品目
+                                        </Typography>
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">合計在庫数量</Typography>
+                                        <Typography variant="h6" fontWeight="bold">
+                                            {filteredPartsWithInventory.reduce((acc, p) => acc + (p.total_quantity || 0), 0).toLocaleString()}
+                                        </Typography>
+                                    </Box>
                                 </Box>
                             </Paper>
                         )}
 
                         {/* 在庫一覧DataGrid */}
-                        <DataGrid
-                            rows={filteredInventories}
-                            columns={inventoryColumns}
-                            loading={loading}
-                            autoHeight
-                            pageSizeOptions={[10, 25, 50]}
-                            initialState={{
-                                pagination: { paginationModel: { pageSize: 10 } },
-                            }}
-                            disableRowSelectionOnClick
-                            sx={{ minHeight: 400 }}
-                        />
+                        {inventoryProductFilter && (
+                            <DataGrid
+                                rows={filteredPartsWithInventory}
+                                columns={inventoryColumns}
+                                loading={loadingInventory}
+                                getRowId={(row: PartWithInventory) => row.part_id}
+                                autoHeight
+                                pageSizeOptions={[10, 25, 50, 100]}
+                                initialState={{
+                                    pagination: { paginationModel: { pageSize: 25 } },
+                                }}
+                                disableRowSelectionOnClick
+                                sx={{ minHeight: 400 }}
+                            />
+                        )}
                     </Box>
                 </TabPanel>
             </Paper>
@@ -1112,245 +1173,28 @@ export default function PurchasedItemInventoryPage() {
                 </DialogActions>
             </Dialog>
 
-            {/* 発注詳細ダイアログ */}
-            <Dialog
+            {/* 発注詳細モーダル */}
+            <PurchasedItemOrderModal
                 open={detailDialogOpen}
                 onClose={() => {
                     setDetailDialogOpen(false);
                     setSelectedOrder(null);
                 }}
-                maxWidth="lg"
-                fullWidth
-            >
-                <DialogTitle>
-                    発注詳細
-                    {selectedOrder && (
-                        <Typography component="span" sx={{ ml: 2 }}>
-                            {selectedOrder.order_number}
-                        </Typography>
-                    )}
-                </DialogTitle>
-                <DialogContent>
-                    {loadingDetail && (
-                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                            <CircularProgress />
-                        </Box>
-                    )}
-
-                    {!loadingDetail && selectedOrder && (
-                        <Box>
-                            {/* 発注情報サマリー */}
-                            <Paper sx={{ p: 2, mb: 3 }}>
-                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">ステータス</Typography>
-                                        <Box sx={{ mt: 0.5 }}>
-                                            <StatusChip status={selectedOrder.status} statusDisplay={selectedOrder.status_display} />
-                                        </Box>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">製品</Typography>
-                                        <Typography>{selectedOrder.product_number} - {selectedOrder.product_name}</Typography>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">仕入先</Typography>
-                                        <Typography>{selectedOrder.supplier_name} ({selectedOrder.supplier_branch_name})</Typography>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">発注日</Typography>
-                                        <Typography>{selectedOrder.order_date}</Typography>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">品目数</Typography>
-                                        <Typography>{selectedOrder.total_items}</Typography>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">合計金額</Typography>
-                                        <Typography>
-                                            {selectedOrder.total_amount
-                                                ? `¥${selectedOrder.total_amount.toLocaleString()}`
-                                                : '-'}
-                                        </Typography>
-                                    </Box>
-                                </Box>
-
-                                {/* アクションボタン */}
-                                <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-                                    {selectedOrder.status === 'draft' && (
-                                        <Button
-                                            variant="contained"
-                                            color="primary"
-                                            onClick={() => handleUpdateStatus(selectedOrder.id, 'ordered')}
-                                        >
-                                            発注確定
-                                        </Button>
-                                    )}
-                                    {selectedOrder.status === 'ordered' && (
-                                        <Button
-                                            variant="contained"
-                                            color="info"
-                                            startIcon={<ReceivingIcon />}
-                                            onClick={() => handleBulkReceiving(selectedOrder.id)}
-                                        >
-                                            一括受入確認
-                                        </Button>
-                                    )}
-                                    {selectedOrder.status === 'received' && (
-                                        <Button
-                                            variant="contained"
-                                            color="success"
-                                            startIcon={<InventoryIcon />}
-                                            onClick={() => handleBulkCount(selectedOrder.id)}
-                                        >
-                                            一括員数確認（在庫移動）
-                                        </Button>
-                                    )}
-                                </Box>
-                            </Paper>
-
-                            {/* 発注明細一覧 */}
-                            <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'bold' }}>
-                                発注明細
-                            </Typography>
-                            <TableContainer component={Paper}>
-                                <Table size="small">
-                                    <TableHead>
-                                        <TableRow>
-                                            <TableCell>部品番号</TableCell>
-                                            <TableCell>部品名</TableCell>
-                                            <TableCell align="right">発注数量</TableCell>
-                                            <TableCell align="right">受領済み</TableCell>
-                                            <TableCell align="right">未受領</TableCell>
-                                            <TableCell align="right">単価</TableCell>
-                                            <TableCell align="center">ステータス</TableCell>
-                                            <TableCell align="center">操作</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {selectedOrder.items?.map((item: PurchaseOrderItem) => {
-                                            const receivedQty = item.received_quantity || 0;
-                                            const unreceivedQty = item.quantity - receivedQty;
-                                            const isReceivingThis = receivingItemId === item.id;
-
-                                            return (
-                                                <TableRow key={item.id} sx={{ bgcolor: isReceivingThis ? 'action.selected' : 'inherit' }}>
-                                                    <TableCell>{item.part_number}</TableCell>
-                                                    <TableCell>{item.part_name}</TableCell>
-                                                    <TableCell align="right">{item.quantity} {item.unit}</TableCell>
-                                                    <TableCell align="right">
-                                                        <Chip
-                                                            size="small"
-                                                            label={`${receivedQty} ${item.unit}`}
-                                                            color={receivedQty >= item.quantity ? 'success' : receivedQty > 0 ? 'warning' : 'default'}
-                                                            variant="outlined"
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell align="right">
-                                                        {unreceivedQty > 0 ? (
-                                                            <Chip
-                                                                size="small"
-                                                                label={`${unreceivedQty} ${item.unit}`}
-                                                                color="error"
-                                                                variant="outlined"
-                                                            />
-                                                        ) : (
-                                                            <CheckCircleIcon color="success" fontSize="small" />
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell align="right">
-                                                        {item.unit_price
-                                                            ? `¥${item.unit_price.toLocaleString()}`
-                                                            : '-'}
-                                                    </TableCell>
-                                                    <TableCell align="center">
-                                                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                                                            <Tooltip title={item.receiving_confirmed ? '受入確認済み' : '受入未確認'}>
-                                                                {item.receiving_confirmed ? (
-                                                                    <CheckCircleIcon color="success" fontSize="small" />
-                                                                ) : (
-                                                                    <PendingIcon color="disabled" fontSize="small" />
-                                                                )}
-                                                            </Tooltip>
-                                                            <Tooltip title={item.count_confirmed ? '員数確認済み' : '員数未確認'}>
-                                                                {item.count_confirmed ? (
-                                                                    <InventoryIcon color="success" fontSize="small" />
-                                                                ) : (
-                                                                    <InventoryIcon color="disabled" fontSize="small" />
-                                                                )}
-                                                            </Tooltip>
-                                                        </Box>
-                                                    </TableCell>
-                                                    <TableCell align="center">
-                                                        {isReceivingThis ? (
-                                                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                                                                <TextField
-                                                                    type="number"
-                                                                    size="small"
-                                                                    value={receivingQuantity}
-                                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                                                        setReceivingQuantity(parseInt(e.target.value, 10) || 0)
-                                                                    }
-                                                                    inputProps={{ min: 1, max: unreceivedQty }}
-                                                                    sx={{ width: 80 }}
-                                                                />
-                                                                <TextField
-                                                                    size="small"
-                                                                    placeholder="ロット"
-                                                                    value={receivingLotNumber}
-                                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                                                        setReceivingLotNumber(e.target.value)
-                                                                    }
-                                                                    sx={{ width: 100 }}
-                                                                />
-                                                                <IconButton
-                                                                    size="small"
-                                                                    color="success"
-                                                                    onClick={handleConfirmItemReceiving}
-                                                                    disabled={receivingInProgress || receivingQuantity <= 0}
-                                                                >
-                                                                    {receivingInProgress ? <CircularProgress size={20} /> : <CheckCircleIcon />}
-                                                                </IconButton>
-                                                                <IconButton
-                                                                    size="small"
-                                                                    onClick={handleCancelItemReceiving}
-                                                                    disabled={receivingInProgress}
-                                                                >
-                                                                    <DeleteIcon />
-                                                                </IconButton>
-                                                            </Box>
-                                                        ) : (
-                                                            unreceivedQty > 0 && !item.receiving_confirmed && (
-                                                                <Tooltip title="個別受入">
-                                                                    <IconButton
-                                                                        size="small"
-                                                                        color="primary"
-                                                                        onClick={() => handleStartItemReceiving(item)}
-                                                                    >
-                                                                        <ReceivingIcon fontSize="small" />
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                            )
-                                                        )}
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                        </Box>
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => {
-                        setDetailDialogOpen(false);
-                        setSelectedOrder(null);
-                        handleCancelItemReceiving();
-                    }}>
-                        閉じる
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                order={selectedOrder}
+                loading={loadingDetail}
+                onUpdateStatus={handleUpdateStatus}
+                onBulkReceiving={handleBulkReceiving}
+                onBulkCount={handleBulkCount}
+                receivingItemId={receivingItemId}
+                receivingQuantity={receivingQuantity}
+                receivingLotNumber={receivingLotNumber}
+                receivingInProgress={receivingInProgress}
+                onStartItemReceiving={handleStartItemReceiving}
+                onCancelItemReceiving={handleCancelItemReceiving}
+                onConfirmItemReceiving={handleConfirmItemReceiving}
+                onReceivingQuantityChange={setReceivingQuantity}
+                onReceivingLotNumberChange={setReceivingLotNumber}
+            />
 
             {/* 削除確認ダイアログ */}
             <Dialog
@@ -1622,6 +1466,111 @@ export default function PurchasedItemInventoryPage() {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={handleCloseHistoryDialog}>
+                        閉じる
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* 部品詳細ダイアログ */}
+            <Dialog
+                open={partDetailDialogOpen}
+                onClose={handleClosePartDetailDialog}
+                maxWidth="md"
+                fullWidth
+            >
+                <DialogTitle>
+                    部品詳細・在庫履歴
+                    {selectedPartWithInventory && (
+                        <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block' }}>
+                            {selectedPartWithInventory.part_number} - {selectedPartWithInventory.part_name}
+                        </Typography>
+                    )}
+                </DialogTitle>
+                <DialogContent>
+                    {selectedPartWithInventory && (
+                        <Box sx={{ mt: 1 }}>
+                            {/* 部品情報サマリー */}
+                            <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">製品</Typography>
+                                        <Typography>{selectedPartWithInventory.product_number || '-'}</Typography>
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">仕入先</Typography>
+                                        <Typography>
+                                            {selectedPartWithInventory.supplier_branch_name
+                                                ? `${selectedPartWithInventory.supplier_name} (${selectedPartWithInventory.supplier_branch_name})`
+                                                : selectedPartWithInventory.supplier_name || '-'}
+                                        </Typography>
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">仕入れ先部品名称</Typography>
+                                        <Typography>{selectedPartWithInventory.supplier_part_name || '-'}</Typography>
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">現在の在庫数量</Typography>
+                                        <Typography variant="h6" fontWeight="bold">
+                                            {selectedPartWithInventory.total_quantity} {selectedPartWithInventory.unit || ''}
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </Paper>
+
+                            {/* 在庫レコード一覧 */}
+                            <Typography variant="subtitle2" sx={{ mb: 1 }}>在庫レコード履歴</Typography>
+                            {selectedPartWithInventory.inventory_records && selectedPartWithInventory.inventory_records.length > 0 ? (
+                                <TableContainer component={Paper}>
+                                    <Table size="small">
+                                        <TableHead>
+                                            <TableRow sx={{ bgcolor: 'grey.100' }}>
+                                                <TableCell>入庫日</TableCell>
+                                                <TableCell align="right">数量</TableCell>
+                                                <TableCell>ロット番号</TableCell>
+                                                <TableCell>発注番号</TableCell>
+                                                <TableCell>備考</TableCell>
+                                                <TableCell>登録者</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {selectedPartWithInventory.inventory_records.map((record) => (
+                                                <TableRow key={record.id}>
+                                                    <TableCell>{record.received_date || '-'}</TableCell>
+                                                    <TableCell align="right">
+                                                        <Chip
+                                                            size="small"
+                                                            label={`${record.quantity} ${selectedPartWithInventory.unit || ''}`}
+                                                            color={record.quantity > 0 ? 'primary' : 'default'}
+                                                            variant="outlined"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>{record.lot_number || '-'}</TableCell>
+                                                    <TableCell>{record.order_number || '-'}</TableCell>
+                                                    <TableCell>
+                                                        {record.notes ? (
+                                                            <Tooltip title={record.notes}>
+                                                                <Typography variant="body2" sx={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                    {record.notes}
+                                                                </Typography>
+                                                            </Tooltip>
+                                                        ) : '-'}
+                                                    </TableCell>
+                                                    <TableCell>{record.created_by_name || '-'}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            ) : (
+                                <Alert severity="info">
+                                    在庫レコードはありません。
+                                </Alert>
+                            )}
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleClosePartDetailDialog}>
                         閉じる
                     </Button>
                 </DialogActions>

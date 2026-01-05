@@ -51,6 +51,7 @@ import {
     PurchasedItemInventory,
     PurchasedItemInventoryCreateData,
     PurchasedItemInventoryUpdateData,
+    PartWithInventory,
     SupplierPartsGroup,
     CreateOrdersFromPartsRequest,
     CreateOrdersFromPartsResponse,
@@ -873,6 +874,22 @@ export const purchasesApi = {
     // 購入品在庫削除
     deletePurchasedItemInventory: async (id: number): Promise<void> => {
         await apiClient.delete(`/purchases/purchased-item-inventories/${id}/`);
+    },
+
+    // 購入品在庫（部品マスターごと）取得 - 在庫0も含む
+    getPurchasedItemInventoryWithParts: async (params: {
+        product: number;
+        search?: string;
+        include_records?: boolean;
+    }): Promise<PartWithInventory[]> => {
+        const response = await apiClient.get<PartWithInventory[]>('/purchases/purchased-item-inventory-with-parts/', {
+            params: {
+                product: params.product,
+                search: params.search,
+                include_records: params.include_records ? 'true' : 'false',
+            }
+        });
+        return response.data;
     },
 
     // ===== 発注作成サポート =====

@@ -618,6 +618,7 @@ export interface PurchaseOrderItem {
     part: number;
     part_number: string;
     part_name: string;
+    supplier_part_name?: string;
     quantity: number;
     unit_price?: number;
     amount?: number;
@@ -765,6 +766,35 @@ export interface PurchasedItemInventoryCreateData {
 }
 
 export type PurchasedItemInventoryUpdateData = Partial<PurchasedItemInventoryCreateData>;
+
+// 購入品在庫（部品マスター付き）- 在庫0含む
+export interface PartWithInventory {
+    part_id: number;
+    part_number: string;
+    part_name: string;
+    supplier_part_name?: string;
+    unit: string;
+    product_id: number;
+    product_number?: string;
+    product_name?: string;
+    supplier_name?: string;
+    supplier_branch_name?: string;
+    customer_name?: string;
+    total_quantity: number;
+    inventory_records?: InventoryRecord[];
+}
+
+// 在庫レコード
+export interface InventoryRecord {
+    id: number;
+    quantity: number;
+    lot_number?: string;
+    received_date?: string;
+    order_number?: string;
+    notes?: string;
+    created_at?: string;
+    created_by_name?: string;
+}
 
 // 発注作成用：サプライヤー別部品グループ
 export interface SupplierPartsGroup {

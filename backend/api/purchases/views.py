@@ -3317,6 +3317,137 @@ class PurchasedItemInventoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_purchased_item_inventory_with_parts(request):
+    """製品IDに基づいて、全ての有効な部品とその在庫数量を取得
+
+    在庫数量が0の部品も含めて、製品に登録されたis_active=trueの
+    部品マスターをすべて表示する。
+
+    Query Parameters:
+        product: 製品ID（必須）
+        search: 検索文字列（品番・品名でフィルタ）
+
+    Returns:
+        [
+            {
+                "part_id": 1,
+                "part_number": "ABC-001",
+                "part_name": "部品名",
+                "supplier_part_name": "仕入先部品名",
+                "unit": "個",
+                "product_id": 1,
+                "product_number": "P001",
+                "product_name": "製品名",
+                "supplier_name": "仕入先名",
+                "supplier_branch_name": "拠点名",
+                "customer_name": "顧客名",
+                "total_quantity": 100,  # 在庫合計（0の場合もあり）
+                "inventory_records": [...]  # 個別の在庫レコード（オプション）
+            }
+        ]
+    """
+    product_id = request.query_params.get('product', None)
+    search = request.query_params.get('search', None)
+    include_records = request.query_params.get('include_records', 'false').lower() == 'true'
+
+    if not product_id:
+        return Response(
+            {"error": "製品IDが必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 製品に紐づくis_active=trueの部品を取得
+    parts_queryset = Part.objects.filter(
+        product_id=product_id,
+        is_active=True
+    ).select_related(
+        'product',
+        'product__customer_branch',
+        'product__customer_branch__customer',
+        'supplier_branch',
+        'supplier_branch__supplier'
+    )
+
+    if search:
+        parts_queryset = parts_queryset.filter(
+            Q(part_number__icontains=search) |
+            Q(part_name__icontains=search) |
+            Q(supplier_part_name__icontains=search)
+        )
+
+    # 各部品の在庫合計を取得（Subqueryを使用）
+    from django.db.models import Subquery, OuterRef, Value
+    from django.db.models.functions import Coalesce
+
+    # 部品ごとの在庫合計をアノテーション
+    parts_with_inventory = parts_queryset.annotate(
+        total_quantity=Coalesce(
+            Subquery(
+                PurchasedItemInventory.objects.filter(
+                    part=OuterRef('pk')
+                ).values('part').annotate(
+                    total=Sum('quantity')
+                ).values('total')[:1]
+            ),
+            Value(0)
+        )
+    ).order_by('part_number')
+
+    result = []
+    for part in parts_with_inventory:
+        item_data = {
+            'part_id': part.id,
+            'part_number': part.part_number,
+            'part_name': part.part_name,
+            'supplier_part_name': part.supplier_part_name,
+            'unit': part.unit,
+            'product_id': part.product_id,
+            'product_number': part.product.product_number if part.product else None,
+            'product_name': part.product.product_name if part.product else None,
+            'supplier_name': part.supplier_branch.supplier.company_name if part.supplier_branch else None,
+            'supplier_branch_name': part.supplier_branch.branch_name if part.supplier_branch else None,
+            'customer_name': None,
+            'total_quantity': part.total_quantity,
+        }
+
+        # 顧客名を取得
+        try:
+            if part.product and part.product.customer_branch:
+                item_data['customer_name'] = part.product.customer_branch.customer.company_name
+        except AttributeError:
+            pass
+
+        # 個別の在庫レコードを含める場合
+        if include_records:
+            inventory_records = PurchasedItemInventory.objects.filter(
+                part=part
+            ).select_related(
+                'order_item',
+                'order_item__purchase_order',
+                'created_by'
+            ).order_by('-received_date', '-created_at')
+
+            item_data['inventory_records'] = [
+                {
+                    'id': inv.id,
+                    'quantity': inv.quantity,
+                    'lot_number': inv.lot_number,
+                    'received_date': inv.received_date.isoformat() if inv.received_date else None,
+                    'order_number': inv.order_item.purchase_order.order_number if inv.order_item and inv.order_item.purchase_order else None,
+                    'notes': inv.notes,
+                    'created_at': inv.created_at.isoformat() if inv.created_at else None,
+                    'created_by_name': inv.created_by.full_name if inv.created_by else None,
+                }
+                for inv in inventory_records
+            ]
+
+        result.append(item_data)
+
+    return Response(result, status=status.HTTP_200_OK)
+
+
 # ===== 発注作成サポート Views =====
 
 @api_view(['GET'])

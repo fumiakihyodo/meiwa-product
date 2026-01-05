@@ -1262,12 +1262,17 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         read_only=True,
         default=None
     )
+    supplier_part_name = serializers.CharField(
+        source='part.supplier_part_name',
+        read_only=True,
+        default=None
+    )
 
     class Meta:
         model = PurchaseOrderItem
         fields = [
             'id', 'purchase_order', 'part', 'part_number', 'part_name',
-            'quantity', 'unit_price', 'amount', 'unit',
+            'supplier_part_name', 'quantity', 'unit_price', 'amount', 'unit',
             'receiving_confirmed', 'receiving_confirmed_at',
             'receiving_confirmed_by', 'receiving_confirmed_by_name',
             'received_quantity', 'is_quantity_matched',
