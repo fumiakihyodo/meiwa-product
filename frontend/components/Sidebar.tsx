@@ -140,6 +140,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                             icon: <ShoppingBagIcon />,
                             path: '/purchased-item-inventory',
                         },
+                        {
+                            text: '在庫調整',
+                            icon: <Inventory2Icon />,
+                            path: '/inventory-adjustment',
+                        },
                     ],
                 };
             case 'master':

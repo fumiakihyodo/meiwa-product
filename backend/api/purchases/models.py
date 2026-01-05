@@ -1878,3 +1878,169 @@ class PurchasedItemInventory(models.Model):
 
     def __str__(self):
         return f"{self.part.part_number} - {self.quantity}{self.part.unit}"
+
+
+# ===== 在庫調整モデル =====
+
+class InventoryAdjustment(models.Model):
+    """在庫調整レコードモデル"""
+
+    class ItemType(models.TextChoices):
+        SUPPLIED = 'supplied', '支給品'
+        PURCHASED = 'purchased', '購入品'
+
+    class AdjustmentType(models.TextChoices):
+        INCREASE = 'increase', '増加'
+        DECREASE = 'decrease', '減少'
+
+    class AdjustmentReason(models.TextChoices):
+        STOCKTAKING = 'stocktaking', '棚卸'
+        NON_CONFORMANCE = 'non_conformance', '不適合'
+        DAMAGE = 'damage', '破損'
+        CORRECTION = 'correction', '訂正'
+        OTHER = 'other', 'その他'
+
+    # 在庫タイプ（支給品 or 購入品）
+    item_type = models.CharField(
+        max_length=20,
+        choices=ItemType.choices,
+        verbose_name="在庫タイプ"
+    )
+
+    # 支給品在庫（支給品の場合）
+    supplied_item_inventory = models.ForeignKey(
+        'SuppliedItemInventory',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='adjustments',
+        verbose_name="支給品在庫"
+    )
+
+    # 購入品在庫（購入品の場合）
+    purchased_item_inventory = models.ForeignKey(
+        'PurchasedItemInventory',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='adjustments',
+        verbose_name="購入品在庫"
+    )
+
+    # 調整タイプ（増加 or 減少）
+    adjustment_type = models.CharField(
+        max_length=20,
+        choices=AdjustmentType.choices,
+        verbose_name="調整タイプ"
+    )
+
+    # 調整数量（常に正の値）
+    quantity = models.PositiveIntegerField(
+        verbose_name="調整数量"
+    )
+
+    # 調整前の在庫数量
+    quantity_before = models.PositiveIntegerField(
+        verbose_name="調整前数量"
+    )
+
+    # 調整後の在庫数量
+    quantity_after = models.PositiveIntegerField(
+        verbose_name="調整後数量"
+    )
+
+    # 調整理由
+    reason = models.CharField(
+        max_length=20,
+        choices=AdjustmentReason.choices,
+        verbose_name="調整理由"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_inventory_adjustments',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "在庫調整"
+        verbose_name_plural = "在庫調整一覧"
+        ordering = ['-created_at']
+        db_table = "inventory_adjustments"
+        indexes = [
+            models.Index(fields=['item_type']),
+            models.Index(fields=['adjustment_type']),
+            models.Index(fields=['reason']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['supplied_item_inventory']),
+            models.Index(fields=['purchased_item_inventory']),
+        ]
+
+    def __str__(self):
+        item_name = ''
+        if self.item_type == 'supplied' and self.supplied_item_inventory:
+            item_name = self.supplied_item_inventory.supplied_item.item_number
+        elif self.item_type == 'purchased' and self.purchased_item_inventory:
+            item_name = self.purchased_item_inventory.part.part_number
+        sign = '+' if self.adjustment_type == 'increase' else '-'
+        return f"{item_name} {sign}{self.quantity} ({self.get_reason_display()})"
+
+    def clean(self):
+        """バリデーション"""
+        super().clean()
+
+        # 支給品または購入品の在庫が設定されているかチェック
+        if self.item_type == 'supplied' and not self.supplied_item_inventory:
+            raise ValidationError('支給品在庫を指定してください')
+        if self.item_type == 'purchased' and not self.purchased_item_inventory:
+            raise ValidationError('購入品在庫を指定してください')
+
+        # 調整後の在庫が負の値にならないかチェック
+        if self.quantity_after < 0:
+            raise ValidationError('調整後の在庫数が負の値になります')
+
+    def save(self, *args, **kwargs):
+        """保存時に在庫も更新"""
+        # 調整前と調整後の数量を計算
+        if self.item_type == 'supplied' and self.supplied_item_inventory:
+            if not self.quantity_before:
+                self.quantity_before = self.supplied_item_inventory.quantity
+            if self.adjustment_type == 'increase':
+                self.quantity_after = self.quantity_before + self.quantity
+            else:
+                self.quantity_after = self.quantity_before - self.quantity
+        elif self.item_type == 'purchased' and self.purchased_item_inventory:
+            if not self.quantity_before:
+                self.quantity_before = self.purchased_item_inventory.quantity
+            if self.adjustment_type == 'increase':
+                self.quantity_after = self.quantity_before + self.quantity
+            else:
+                self.quantity_after = self.quantity_before - self.quantity
+
+        super().save(*args, **kwargs)
+
+        # 在庫の数量を更新
+        if self.item_type == 'supplied' and self.supplied_item_inventory:
+            self.supplied_item_inventory.quantity = self.quantity_after
+            self.supplied_item_inventory.save(update_fields=['quantity', 'updated_at'])
+        elif self.item_type == 'purchased' and self.purchased_item_inventory:
+            self.purchased_item_inventory.quantity = self.quantity_after
+            self.purchased_item_inventory.save(update_fields=['quantity', 'updated_at'])

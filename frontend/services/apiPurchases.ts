@@ -64,6 +64,13 @@ import {
     BulkReceivePurchaseOrderRequest,
     BulkReceivePurchaseOrderResponse,
     UnreceivedPurchaseItemsResponse,
+    // 在庫調整用
+    InventoryAdjustment,
+    InventoryAdjustmentCreateRequest,
+    InventoryForAdjustment,
+    InventoryItemType,
+    AdjustmentType,
+    InventoryAdjustmentReason,
 } from '@/types/purchases';
 
 import {
@@ -962,6 +969,55 @@ export const purchasesApi = {
     }): Promise<UnreceivedPurchaseItemsResponse> => {
         const response = await apiClient.get<UnreceivedPurchaseItemsResponse>(
             '/purchases/unreceived-purchase-items/',
+            { params }
+        );
+        return response.data;
+    },
+
+    // ===== 在庫調整 =====
+
+    // 在庫調整一覧取得
+    getInventoryAdjustments: async (params?: {
+        item_type?: InventoryItemType;
+        adjustment_type?: AdjustmentType;
+        reason?: InventoryAdjustmentReason;
+        product?: number;
+        search?: string;
+    }): Promise<InventoryAdjustment[]> => {
+        const response = await apiClient.get<PaginatedResponse<InventoryAdjustment>>(
+            '/purchases/inventory-adjustments/',
+            { params }
+        );
+        return response.data.results;
+    },
+
+    // 在庫調整詳細取得
+    getInventoryAdjustment: async (id: number): Promise<InventoryAdjustment> => {
+        const response = await apiClient.get<InventoryAdjustment>(
+            `/purchases/inventory-adjustments/${id}/`
+        );
+        return response.data;
+    },
+
+    // 在庫調整作成
+    createInventoryAdjustment: async (
+        data: InventoryAdjustmentCreateRequest
+    ): Promise<InventoryAdjustment> => {
+        const response = await apiClient.post<InventoryAdjustment>(
+            '/purchases/inventory-adjustments/',
+            data
+        );
+        return response.data;
+    },
+
+    // 在庫調整用の在庫一覧取得
+    getInventoryForAdjustment: async (params?: {
+        item_type?: InventoryItemType;
+        product?: number;
+        search?: string;
+    }): Promise<InventoryForAdjustment[]> => {
+        const response = await apiClient.get<InventoryForAdjustment[]>(
+            '/purchases/inventory-for-adjustment/',
             { params }
         );
         return response.data;

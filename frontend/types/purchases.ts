@@ -1001,9 +1001,84 @@ export const InventoryAdjustmentReasonLabels: Record<InventoryAdjustmentReason, 
     other: 'その他',
 };
 
-// 在庫調整データ
+// 在庫調整データ（従来の形式、互換性のため残す）
 export interface InventoryAdjustmentData {
     quantity_change: number;          // 増減数（正: 増加、負: 減少）
     reason: InventoryAdjustmentReason;
     notes?: string;
+}
+
+// 在庫タイプ
+export type InventoryItemType = 'supplied' | 'purchased';
+
+// 在庫タイプの表示名
+export const InventoryItemTypeLabels: Record<InventoryItemType, string> = {
+    supplied: '支給品',
+    purchased: '購入品',
+};
+
+// 調整タイプ
+export type AdjustmentType = 'increase' | 'decrease';
+
+// 調整タイプの表示名
+export const AdjustmentTypeLabels: Record<AdjustmentType, string> = {
+    increase: '増加',
+    decrease: '減少',
+};
+
+// 在庫調整レコード（APIレスポンス）
+export interface InventoryAdjustment {
+    id: number;
+    item_type: InventoryItemType;
+    item_type_display: string;
+    supplied_item_inventory: number | null;
+    purchased_item_inventory: number | null;
+    item_number: string;
+    item_name: string;
+    unit?: string;
+    product_number?: string;
+    product_name?: string;
+    adjustment_type: AdjustmentType;
+    adjustment_type_display: string;
+    quantity: number;
+    quantity_before: number;
+    quantity_after: number;
+    reason: InventoryAdjustmentReason;
+    reason_display: string;
+    notes: string;
+    created_at: string;
+    updated_at: string;
+    created_by: number;
+    created_by_name: string;
+}
+
+// 在庫調整作成リクエスト
+export interface InventoryAdjustmentCreateRequest {
+    item_type: InventoryItemType;
+    supplied_item_inventory?: number;
+    purchased_item_inventory?: number;
+    adjustment_type: AdjustmentType;
+    quantity: number;
+    reason: InventoryAdjustmentReason;
+    notes?: string;
+}
+
+// 在庫調整用の在庫アイテム（APIレスポンス）
+export interface InventoryForAdjustment {
+    id: number;
+    item_type: InventoryItemType;
+    item_type_display: string;
+    inventory_id: number;
+    item_number: string;
+    item_name: string;
+    unit?: string;
+    quantity: number;
+    product_id?: number;
+    product_number?: string;
+    product_name?: string;
+    customer_name?: string;
+    supplier_name?: string;
+    supplier_branch_name?: string;
+    lot_number?: string;
+    received_date?: string;
 }

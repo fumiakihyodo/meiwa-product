@@ -127,6 +127,11 @@ urlpatterns = [
     # 購入品在庫
     path('purchased-item-inventories/', PurchasedItemInventoryListCreateView.as_view(), name='purchased_item_inventory_list_create'),
     path('purchased-item-inventories/<int:pk>/', PurchasedItemInventoryDetailView.as_view(), name='purchased_item_inventory_detail'),
+
+    # 在庫調整
+    path('inventory-adjustments/', views.InventoryAdjustmentListCreateView.as_view(), name='inventory_adjustment_list_create'),
+    path('inventory-adjustments/<int:pk>/', views.InventoryAdjustmentDetailView.as_view(), name='inventory_adjustment_detail'),
+    path('inventory-for-adjustment/', views.get_inventory_for_adjustment, name='inventory_for_adjustment'),
     path('purchased-item-inventory-with-parts/', views.get_purchased_item_inventory_with_parts, name='purchased_item_inventory_with_parts'),
 
     # 発注作成サポート

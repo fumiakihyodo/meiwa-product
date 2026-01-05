@@ -9,7 +9,6 @@ import {
     TextField,
     InputAdornment,
     FormControl,
-    FormLabel,
     InputLabel,
     Select,
     MenuItem,
@@ -33,9 +32,6 @@ import {
     TableContainer,
     TableHead,
     TableRow,
-    Radio,
-    RadioGroup,
-    FormControlLabel,
 } from '@mui/material';
 import {
     DataGrid,
@@ -71,8 +67,6 @@ import {
     PurchasedItemInventory,
     SupplierPartsGroup,
     PartForOrder,
-    InventoryAdjustmentReason,
-    InventoryAdjustmentReasonLabels,
     PartWithInventory,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
@@ -201,15 +195,6 @@ export default function PurchasedItemInventoryPage() {
 
     // 受入キャンセル関連
     const [cancellingItemId, setCancellingItemId] = useState<number | null>(null);
-
-    // 在庫調整ダイアログ関連
-    const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
-    const [adjustingInventory, setAdjustingInventory] = useState<PurchasedItemInventory | null>(null);
-    const [adjustmentQuantity, setAdjustmentQuantity] = useState<number>(0);
-    const [adjustmentType, setAdjustmentType] = useState<'increase' | 'decrease'>('increase');
-    const [adjustmentReason, setAdjustmentReason] = useState<InventoryAdjustmentReason>('stocktaking');
-    const [adjustmentNotes, setAdjustmentNotes] = useState<string>('');
-    const [adjustingInProgress, setAdjustingInProgress] = useState(false);
 
     // 履歴モーダル関連
     const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -638,26 +623,6 @@ export default function PurchasedItemInventoryPage() {
         }
     };
 
-    // 在庫調整開始
-    const handleOpenAdjustmentDialog = (inventory: PurchasedItemInventory) => {
-        setAdjustingInventory(inventory);
-        setAdjustmentQuantity(0);
-        setAdjustmentType('increase');
-        setAdjustmentReason('stocktaking');
-        setAdjustmentNotes('');
-        setAdjustmentDialogOpen(true);
-    };
-
-    // 在庫調整キャンセル
-    const handleCloseAdjustmentDialog = () => {
-        setAdjustmentDialogOpen(false);
-        setAdjustingInventory(null);
-        setAdjustmentQuantity(0);
-        setAdjustmentType('increase');
-        setAdjustmentReason('stocktaking');
-        setAdjustmentNotes('');
-    };
-
     // 履歴表示
     const handleOpenHistoryDialog = (inventory: PurchasedItemInventory) => {
         setHistoryInventory(inventory);
@@ -730,43 +695,6 @@ export default function PurchasedItemInventoryPage() {
             alert('在庫レコードの削除に失敗しました');
         } finally {
             setDeletingRecordInProgress(false);
-        }
-    };
-
-    // 在庫調整実行
-    const handleConfirmAdjustment = async () => {
-        if (!adjustingInventory || adjustmentQuantity <= 0) return;
-
-        setAdjustingInProgress(true);
-        try {
-            // 増減量を計算（減少の場合は負の値）
-            const changeAmount = adjustmentType === 'increase' ? adjustmentQuantity : -adjustmentQuantity;
-            const newQuantity = adjustingInventory.quantity + changeAmount;
-
-            if (newQuantity < 0) {
-                alert('調整後の在庫数が負の値になります');
-                setAdjustingInProgress(false);
-                return;
-            }
-
-            const reasonLabel = InventoryAdjustmentReasonLabels[adjustmentReason];
-            const adjustmentNote = `[在庫調整] ${reasonLabel}: ${changeAmount > 0 ? '+' : ''}${changeAmount} (${new Date().toLocaleDateString('ja-JP')})${adjustmentNotes ? ` - ${adjustmentNotes}` : ''}`;
-            const existingNotes = adjustingInventory.notes || '';
-            const newNotes = existingNotes ? `${existingNotes}\n${adjustmentNote}` : adjustmentNote;
-
-            await purchasesApi.updatePurchasedItemInventory(adjustingInventory.id, {
-                quantity: newQuantity,
-                notes: newNotes,
-            });
-
-            await fetchData();
-            handleCloseAdjustmentDialog();
-            alert(`在庫を調整しました: ${adjustingInventory.part_number} (${changeAmount > 0 ? '+' : ''}${changeAmount})`);
-        } catch (error) {
-            console.error('Failed to adjust inventory:', error);
-            alert('在庫調整に失敗しました。APIエラーが発生しました。');
-        } finally {
-            setAdjustingInProgress(false);
         }
     };
 
@@ -1433,158 +1361,6 @@ export default function PurchasedItemInventoryPage() {
                         onClick={handleDeleteOrder}
                     >
                         削除
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* 在庫調整ダイアログ */}
-            <Dialog
-                open={adjustmentDialogOpen}
-                onClose={handleCloseAdjustmentDialog}
-                maxWidth="sm"
-                fullWidth
-            >
-                <DialogTitle>在庫調整</DialogTitle>
-                <DialogContent>
-                    {adjustingInventory && (
-                        <Box sx={{ mt: 1 }}>
-                            <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
-                                <Typography variant="subtitle2" color="text.secondary">対象在庫</Typography>
-                                <Typography variant="body1" fontWeight="bold">
-                                    {adjustingInventory.part_number} - {adjustingInventory.part_name}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    製品: {adjustingInventory.product_number || '-'}
-                                </Typography>
-                                <Typography variant="h6" sx={{ mt: 1 }}>
-                                    現在の在庫: {adjustingInventory.quantity} {adjustingInventory.unit || ''}
-                                </Typography>
-                            </Paper>
-
-                            {/* 増加/減少 ラジオボタン */}
-                            <FormControl component="fieldset" sx={{ mb: 2 }}>
-                                <FormLabel component="legend">調整タイプ</FormLabel>
-                                <RadioGroup
-                                    row
-                                    value={adjustmentType}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                        setAdjustmentType(e.target.value as 'increase' | 'decrease')
-                                    }
-                                >
-                                    <FormControlLabel
-                                        value="increase"
-                                        control={<Radio color="success" />}
-                                        label="増加（+）"
-                                    />
-                                    <FormControlLabel
-                                        value="decrease"
-                                        control={<Radio color="error" />}
-                                        label="減少（-）"
-                                    />
-                                </RadioGroup>
-                            </FormControl>
-
-                            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                                <InputLabel>調整理由</InputLabel>
-                                <Select
-                                    value={adjustmentReason}
-                                    label="調整理由"
-                                    onChange={(e: SelectChangeEvent<InventoryAdjustmentReason>) =>
-                                        setAdjustmentReason(e.target.value as InventoryAdjustmentReason)
-                                    }
-                                    onKeyDown={(e: React.KeyboardEvent) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            const quantityInput = document.getElementById('adjustment-quantity-input');
-                                            if (quantityInput) quantityInput.focus();
-                                        }
-                                    }}
-                                >
-                                    {(Object.keys(InventoryAdjustmentReasonLabels) as InventoryAdjustmentReason[]).map((key) => (
-                                        <MenuItem key={key} value={key}>
-                                            {InventoryAdjustmentReasonLabels[key]}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-
-                            <TextField
-                                id="adjustment-quantity-input"
-                                fullWidth
-                                label="調整数量"
-                                type="number"
-                                value={adjustmentQuantity || ''}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                    const val = Math.abs(parseInt(e.target.value, 10) || 0);
-                                    setAdjustmentQuantity(val);
-                                }}
-                                onKeyDown={(e: React.KeyboardEvent) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        const notesInput = document.getElementById('adjustment-notes-input');
-                                        if (notesInput) notesInput.focus();
-                                    }
-                                }}
-                                inputProps={{ min: 0 }}
-                                sx={{ mb: 2 }}
-                                helperText={(() => {
-                                    const changeAmount = adjustmentType === 'increase' ? adjustmentQuantity : -adjustmentQuantity;
-                                    const newQty = adjustingInventory.quantity + changeAmount;
-                                    return `調整後の在庫: ${newQty} ${adjustingInventory.unit || ''}`;
-                                })()}
-                            />
-
-                            <TextField
-                                id="adjustment-notes-input"
-                                fullWidth
-                                label="備考"
-                                multiline
-                                rows={2}
-                                value={adjustmentNotes}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                    setAdjustmentNotes(e.target.value)
-                                }
-                                onKeyDown={(e: React.KeyboardEvent) => {
-                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        const confirmButton = document.getElementById('adjustment-confirm-button');
-                                        if (confirmButton) confirmButton.focus();
-                                    }
-                                }}
-                            />
-
-                            {(() => {
-                                const changeAmount = adjustmentType === 'increase' ? adjustmentQuantity : -adjustmentQuantity;
-                                const newQty = adjustingInventory.quantity + changeAmount;
-                                if (newQty < 0) {
-                                    return (
-                                        <Alert severity="error" sx={{ mt: 2 }}>
-                                            調整後の在庫数が負の値になります
-                                        </Alert>
-                                    );
-                                }
-                                return null;
-                            })()}
-                        </Box>
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={handleCloseAdjustmentDialog}>
-                        キャンセル
-                    </Button>
-                    <Button
-                        id="adjustment-confirm-button"
-                        variant="contained"
-                        color="primary"
-                        onClick={handleConfirmAdjustment}
-                        disabled={(() => {
-                            if (adjustingInProgress || adjustmentQuantity <= 0 || !adjustingInventory) return true;
-                            const changeAmount = adjustmentType === 'increase' ? adjustmentQuantity : -adjustmentQuantity;
-                            const newQty = adjustingInventory.quantity + changeAmount;
-                            return newQty < 0;
-                        })()}
-                    >
-                        {adjustingInProgress ? <CircularProgress size={20} /> : '調整実行'}
                     </Button>
                 </DialogActions>
             </Dialog>

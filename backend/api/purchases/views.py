@@ -20,7 +20,7 @@ from api.purchases.models import (
     SuppliedItemList, SuppliedItemListItem, SuppliedItemReceiving,
     SuppliedItemReceivingItem, SuppliedItemInventory,
     PurchaseOrder, PurchaseOrderItem, PurchaseReceiving,
-    PurchaseReceivingItem, PurchasedItemInventory
+    PurchaseReceivingItem, PurchasedItemInventory, InventoryAdjustment
 )
 from api.purchases.serializers import (
     PartListSerializer,
@@ -71,6 +71,9 @@ from api.purchases.serializers import (
     PurchasedItemInventoryUpdateSerializer,
     PartForOrderSerializer,
     SupplierPartsGroupSerializer,
+    InventoryAdjustmentListSerializer,
+    InventoryAdjustmentDetailSerializer,
+    InventoryAdjustmentCreateSerializer,
 )
 from api.products.models import Product
 from api.supplier.models import SupplierBranch, Supplier
@@ -4303,3 +4306,196 @@ def cancel_purchase_order_item_receiving(request, item_pk):
             'status_display': order.get_status_display(),
         }
     }, status=status.HTTP_200_OK)
+
+
+# ===== 在庫調整 Views =====
+
+class InventoryAdjustmentListCreateView(generics.ListCreateAPIView):
+    """在庫調整一覧取得・作成ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """クエリセットを取得"""
+        queryset = InventoryAdjustment.objects.select_related(
+            'supplied_item_inventory',
+            'supplied_item_inventory__supplied_item',
+            'supplied_item_inventory__supplied_item__product',
+            'purchased_item_inventory',
+            'purchased_item_inventory__part',
+            'purchased_item_inventory__part__product',
+            'created_by'
+        ).order_by('-created_at')
+
+        # フィルタリング
+        item_type = self.request.query_params.get('item_type', None)
+        if item_type:
+            queryset = queryset.filter(item_type=item_type)
+
+        adjustment_type = self.request.query_params.get('adjustment_type', None)
+        if adjustment_type:
+            queryset = queryset.filter(adjustment_type=adjustment_type)
+
+        reason = self.request.query_params.get('reason', None)
+        if reason:
+            queryset = queryset.filter(reason=reason)
+
+        product_id = self.request.query_params.get('product', None)
+        if product_id:
+            queryset = queryset.filter(
+                Q(supplied_item_inventory__supplied_item__product_id=product_id) |
+                Q(purchased_item_inventory__part__product_id=product_id)
+            )
+
+        # 検索
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(
+                Q(supplied_item_inventory__supplied_item__item_number__icontains=search) |
+                Q(supplied_item_inventory__supplied_item__item_name__icontains=search) |
+                Q(purchased_item_inventory__part__part_number__icontains=search) |
+                Q(purchased_item_inventory__part__part_name__icontains=search) |
+                Q(notes__icontains=search)
+            )
+
+        return queryset
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return InventoryAdjustmentCreateSerializer
+        return InventoryAdjustmentListSerializer
+
+
+class InventoryAdjustmentDetailView(generics.RetrieveAPIView):
+    """在庫調整詳細取得ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = InventoryAdjustmentDetailSerializer
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        return InventoryAdjustment.objects.select_related(
+            'supplied_item_inventory',
+            'supplied_item_inventory__supplied_item',
+            'supplied_item_inventory__supplied_item__product',
+            'purchased_item_inventory',
+            'purchased_item_inventory__part',
+            'purchased_item_inventory__part__product',
+            'created_by'
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_inventory_for_adjustment(request):
+    """在庫調整用の在庫一覧を取得
+
+    支給品と購入品の両方の在庫を返す
+
+    Query Parameters:
+        item_type: 'supplied' or 'purchased' （オプション）
+        product: 製品ID（オプション）
+        search: 検索文字列（オプション）
+    """
+    item_type = request.query_params.get('item_type', None)
+    product_id = request.query_params.get('product', None)
+    search = request.query_params.get('search', None)
+
+    result = []
+
+    # 支給品在庫を取得
+    if not item_type or item_type == 'supplied':
+        supplied_queryset = SuppliedItemInventory.objects.select_related(
+            'supplied_item',
+            'supplied_item__product',
+            'supplied_item__product__customer_branch',
+            'supplied_item__product__customer_branch__customer'
+        )
+
+        if product_id:
+            supplied_queryset = supplied_queryset.filter(
+                supplied_item__product_id=product_id
+            )
+
+        if search:
+            supplied_queryset = supplied_queryset.filter(
+                Q(supplied_item__item_number__icontains=search) |
+                Q(supplied_item__item_name__icontains=search)
+            )
+
+        for inv in supplied_queryset:
+            customer_name = None
+            try:
+                if inv.supplied_item.product and inv.supplied_item.product.customer_branch:
+                    customer_name = inv.supplied_item.product.customer_branch.customer.company_name
+            except AttributeError:
+                pass
+
+            result.append({
+                'id': inv.id,
+                'item_type': 'supplied',
+                'item_type_display': '支給品',
+                'inventory_id': inv.id,
+                'item_number': inv.supplied_item.item_number,
+                'item_name': inv.supplied_item.item_name,
+                'unit': inv.supplied_item.unit,
+                'quantity': inv.quantity,
+                'product_id': inv.supplied_item.product_id,
+                'product_number': inv.supplied_item.product.product_number if inv.supplied_item.product else None,
+                'product_name': inv.supplied_item.product.product_name if inv.supplied_item.product else None,
+                'customer_name': customer_name,
+                'lot_number': inv.lot_number,
+                'received_date': inv.received_date.isoformat() if inv.received_date else None,
+            })
+
+    # 購入品在庫を取得
+    if not item_type or item_type == 'purchased':
+        purchased_queryset = PurchasedItemInventory.objects.select_related(
+            'part',
+            'part__product',
+            'part__product__customer_branch',
+            'part__product__customer_branch__customer',
+            'part__supplier_branch',
+            'part__supplier_branch__supplier'
+        )
+
+        if product_id:
+            purchased_queryset = purchased_queryset.filter(
+                part__product_id=product_id
+            )
+
+        if search:
+            purchased_queryset = purchased_queryset.filter(
+                Q(part__part_number__icontains=search) |
+                Q(part__part_name__icontains=search)
+            )
+
+        for inv in purchased_queryset:
+            customer_name = None
+            try:
+                if inv.part.product and inv.part.product.customer_branch:
+                    customer_name = inv.part.product.customer_branch.customer.company_name
+            except AttributeError:
+                pass
+
+            result.append({
+                'id': inv.id,
+                'item_type': 'purchased',
+                'item_type_display': '購入品',
+                'inventory_id': inv.id,
+                'item_number': inv.part.part_number,
+                'item_name': inv.part.part_name,
+                'unit': inv.part.unit,
+                'quantity': inv.quantity,
+                'product_id': inv.part.product_id if inv.part.product else None,
+                'product_number': inv.part.product.product_number if inv.part.product else None,
+                'product_name': inv.part.product.product_name if inv.part.product else None,
+                'customer_name': customer_name,
+                'supplier_name': inv.part.supplier_branch.supplier.company_name if inv.part.supplier_branch else None,
+                'supplier_branch_name': inv.part.supplier_branch.branch_name if inv.part.supplier_branch else None,
+                'lot_number': inv.lot_number,
+                'received_date': inv.received_date.isoformat() if inv.received_date else None,
+            })
+
+    # 品番でソート
+    result.sort(key=lambda x: x['item_number'])
+
+    return Response(result, status=status.HTTP_200_OK)

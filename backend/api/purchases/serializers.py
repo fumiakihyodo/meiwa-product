@@ -6,7 +6,7 @@ from api.purchases.models import (
     SuppliedItemList, SuppliedItemListItem, SuppliedItemReceiving,
     SuppliedItemReceivingItem, SuppliedItemInventory,
     PurchaseOrder, PurchaseOrderItem, PurchaseReceiving,
-    PurchaseReceivingItem, PurchasedItemInventory
+    PurchaseReceivingItem, PurchasedItemInventory, InventoryAdjustment
 )
 from decimal import Decimal
 
@@ -1949,3 +1949,205 @@ class SupplierPartsGroupSerializer(serializers.Serializer):
     supplier_name = serializers.CharField()
     branch_name = serializers.CharField()
     parts = PartForOrderSerializer(many=True)
+
+
+# ===== 在庫調整関連のシリアライザー =====
+
+class InventoryAdjustmentListSerializer(serializers.ModelSerializer):
+    """在庫調整一覧シリアライザー"""
+    item_type_display = serializers.CharField(source='get_item_type_display', read_only=True)
+    adjustment_type_display = serializers.CharField(source='get_adjustment_type_display', read_only=True)
+    reason_display = serializers.CharField(source='get_reason_display', read_only=True)
+    item_number = serializers.SerializerMethodField()
+    item_name = serializers.SerializerMethodField()
+    product_number = serializers.SerializerMethodField()
+    product_name = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = InventoryAdjustment
+        fields = [
+            'id', 'item_type', 'item_type_display',
+            'supplied_item_inventory', 'purchased_item_inventory',
+            'item_number', 'item_name', 'product_number', 'product_name',
+            'adjustment_type', 'adjustment_type_display',
+            'quantity', 'quantity_before', 'quantity_after',
+            'reason', 'reason_display', 'notes',
+            'created_at', 'updated_at', 'created_by', 'created_by_name'
+        ]
+
+    def get_item_number(self, obj):
+        if obj.item_type == 'supplied' and obj.supplied_item_inventory:
+            return obj.supplied_item_inventory.supplied_item.item_number
+        elif obj.item_type == 'purchased' and obj.purchased_item_inventory:
+            return obj.purchased_item_inventory.part.part_number
+        return None
+
+    def get_item_name(self, obj):
+        if obj.item_type == 'supplied' and obj.supplied_item_inventory:
+            return obj.supplied_item_inventory.supplied_item.item_name
+        elif obj.item_type == 'purchased' and obj.purchased_item_inventory:
+            return obj.purchased_item_inventory.part.part_name
+        return None
+
+    def get_product_number(self, obj):
+        if obj.item_type == 'supplied' and obj.supplied_item_inventory:
+            return obj.supplied_item_inventory.supplied_item.product.product_number
+        elif obj.item_type == 'purchased' and obj.purchased_item_inventory:
+            if obj.purchased_item_inventory.part.product:
+                return obj.purchased_item_inventory.part.product.product_number
+        return None
+
+    def get_product_name(self, obj):
+        if obj.item_type == 'supplied' and obj.supplied_item_inventory:
+            return obj.supplied_item_inventory.supplied_item.product.product_name
+        elif obj.item_type == 'purchased' and obj.purchased_item_inventory:
+            if obj.purchased_item_inventory.part.product:
+                return obj.purchased_item_inventory.part.product.product_name
+        return None
+
+
+class InventoryAdjustmentDetailSerializer(serializers.ModelSerializer):
+    """在庫調整詳細シリアライザー"""
+    item_type_display = serializers.CharField(source='get_item_type_display', read_only=True)
+    adjustment_type_display = serializers.CharField(source='get_adjustment_type_display', read_only=True)
+    reason_display = serializers.CharField(source='get_reason_display', read_only=True)
+    item_number = serializers.SerializerMethodField()
+    item_name = serializers.SerializerMethodField()
+    unit = serializers.SerializerMethodField()
+    product_number = serializers.SerializerMethodField()
+    product_name = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+
+    class Meta:
+        model = InventoryAdjustment
+        fields = [
+            'id', 'item_type', 'item_type_display',
+            'supplied_item_inventory', 'purchased_item_inventory',
+            'item_number', 'item_name', 'unit', 'product_number', 'product_name',
+            'adjustment_type', 'adjustment_type_display',
+            'quantity', 'quantity_before', 'quantity_after',
+            'reason', 'reason_display', 'notes',
+            'created_at', 'updated_at', 'created_by', 'created_by_name'
+        ]
+
+    def get_item_number(self, obj):
+        if obj.item_type == 'supplied' and obj.supplied_item_inventory:
+            return obj.supplied_item_inventory.supplied_item.item_number
+        elif obj.item_type == 'purchased' and obj.purchased_item_inventory:
+            return obj.purchased_item_inventory.part.part_number
+        return None
+
+    def get_item_name(self, obj):
+        if obj.item_type == 'supplied' and obj.supplied_item_inventory:
+            return obj.supplied_item_inventory.supplied_item.item_name
+        elif obj.item_type == 'purchased' and obj.purchased_item_inventory:
+            return obj.purchased_item_inventory.part.part_name
+        return None
+
+    def get_unit(self, obj):
+        if obj.item_type == 'supplied' and obj.supplied_item_inventory:
+            return obj.supplied_item_inventory.supplied_item.unit
+        elif obj.item_type == 'purchased' and obj.purchased_item_inventory:
+            return obj.purchased_item_inventory.part.unit
+        return None
+
+    def get_product_number(self, obj):
+        if obj.item_type == 'supplied' and obj.supplied_item_inventory:
+            return obj.supplied_item_inventory.supplied_item.product.product_number
+        elif obj.item_type == 'purchased' and obj.purchased_item_inventory:
+            if obj.purchased_item_inventory.part.product:
+                return obj.purchased_item_inventory.part.product.product_number
+        return None
+
+    def get_product_name(self, obj):
+        if obj.item_type == 'supplied' and obj.supplied_item_inventory:
+            return obj.supplied_item_inventory.supplied_item.product.product_name
+        elif obj.item_type == 'purchased' and obj.purchased_item_inventory:
+            if obj.purchased_item_inventory.part.product:
+                return obj.purchased_item_inventory.part.product.product_name
+        return None
+
+
+class InventoryAdjustmentCreateSerializer(serializers.ModelSerializer):
+    """在庫調整作成シリアライザー"""
+    created_by = serializers.HiddenField(
+        default=serializers.CurrentUserDefault()
+    )
+
+    class Meta:
+        model = InventoryAdjustment
+        fields = [
+            'id', 'item_type', 'supplied_item_inventory', 'purchased_item_inventory',
+            'adjustment_type', 'quantity', 'reason', 'notes', 'created_by'
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'item_type': {'required': True},
+            'adjustment_type': {'required': True},
+            'quantity': {'required': True},
+            'reason': {'required': True},
+        }
+
+    def validate(self, attrs):
+        item_type = attrs.get('item_type')
+        supplied_inventory = attrs.get('supplied_item_inventory')
+        purchased_inventory = attrs.get('purchased_item_inventory')
+
+        if item_type == 'supplied' and not supplied_inventory:
+            raise serializers.ValidationError({
+                'supplied_item_inventory': '支給品在庫を指定してください'
+            })
+        if item_type == 'purchased' and not purchased_inventory:
+            raise serializers.ValidationError({
+                'purchased_item_inventory': '購入品在庫を指定してください'
+            })
+
+        # 減少の場合、在庫数を超えていないかチェック
+        adjustment_type = attrs.get('adjustment_type')
+        quantity = attrs.get('quantity', 0)
+
+        if adjustment_type == 'decrease':
+            current_quantity = 0
+            if item_type == 'supplied' and supplied_inventory:
+                current_quantity = supplied_inventory.quantity
+            elif item_type == 'purchased' and purchased_inventory:
+                current_quantity = purchased_inventory.quantity
+
+            if quantity > current_quantity:
+                raise serializers.ValidationError({
+                    'quantity': f'調整数量が現在の在庫数（{current_quantity}）を超えています'
+                })
+
+        return attrs
+
+    def create(self, validated_data):
+        # 調整前の数量を設定
+        item_type = validated_data.get('item_type')
+        if item_type == 'supplied':
+            validated_data['quantity_before'] = validated_data['supplied_item_inventory'].quantity
+        elif item_type == 'purchased':
+            validated_data['quantity_before'] = validated_data['purchased_item_inventory'].quantity
+
+        # 調整後の数量を計算
+        adjustment_type = validated_data.get('adjustment_type')
+        quantity = validated_data.get('quantity', 0)
+        quantity_before = validated_data.get('quantity_before', 0)
+
+        if adjustment_type == 'increase':
+            validated_data['quantity_after'] = quantity_before + quantity
+        else:
+            validated_data['quantity_after'] = quantity_before - quantity
+
+        return super().create(validated_data)
+
+    def to_representation(self, instance):
+        return InventoryAdjustmentDetailSerializer(instance, context=self.context).data
