@@ -784,6 +784,32 @@ export interface PartWithInventory {
     inventory_records?: InventoryRecord[];
 }
 
+// 支給品在庫（支給品マスター付き）- 在庫0含む
+export interface SuppliedItemWithInventory {
+    supplied_item_id: number;
+    item_number: string;
+    item_name: string;
+    unit: string;
+    product_id: number;
+    product_number?: string;
+    product_name?: string;
+    customer_name?: string;
+    total_quantity: number;
+    inventory_records?: SuppliedItemInventoryRecord[];
+}
+
+// 支給品在庫レコード
+export interface SuppliedItemInventoryRecord {
+    id: number;
+    quantity: number;
+    lot_number?: string;
+    received_date?: string;
+    list_number?: string;
+    notes?: string;
+    created_at?: string;
+    created_by_name?: string;
+}
+
 // 在庫レコード
 export interface InventoryRecord {
     id: number;

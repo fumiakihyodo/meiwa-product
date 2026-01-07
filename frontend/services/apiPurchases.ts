@@ -52,6 +52,7 @@ import {
     PurchasedItemInventoryCreateData,
     PurchasedItemInventoryUpdateData,
     PartWithInventory,
+    SuppliedItemWithInventory,
     SupplierPartsGroup,
     CreateOrdersFromPartsRequest,
     CreateOrdersFromPartsResponse,
@@ -635,6 +636,22 @@ export const purchasesApi = {
 
     deleteSuppliedItemInventory: async (id: number): Promise<void> => {
         await apiClient.delete(`/purchases/supplied-item-inventories/${id}/`);
+    },
+
+    // 支給品在庫（支給品マスターごと）取得 - 在庫0も含む
+    getSuppliedItemInventoryWithItems: async (params: {
+        product: number;
+        search?: string;
+        include_records?: boolean;
+    }): Promise<SuppliedItemWithInventory[]> => {
+        const response = await apiClient.get<SuppliedItemWithInventory[]>('/purchases/supplied-item-inventory-with-items/', {
+            params: {
+                product: params.product,
+                search: params.search,
+                include_records: params.include_records ? 'true' : 'false',
+            }
+        });
+        return response.data;
     },
 
     // ===== リストと受入れ数量の比較 =====

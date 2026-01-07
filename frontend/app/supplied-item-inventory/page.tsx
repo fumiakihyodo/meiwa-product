@@ -63,9 +63,11 @@ import {
     ReceivingSummary,
     ReceivingStatus,
     ReceivingItemListItem,
+    SuppliedItemWithInventory,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
 import { v4 as uuidv4 } from 'uuid';
+import HistoryIcon from '@mui/icons-material/History';
 
 // localStorage キー
 const DEFAULT_PRODUCT_KEY = 'supplied_item_inventory_default_product';
@@ -185,6 +187,19 @@ export default function SuppliedItemInventoryPage() {
     // 部品詳細モーダル関連
     const [partDetailModalOpen, setPartDetailModalOpen] = useState(false);
     const [selectedPartItemNumber, setSelectedPartItemNumber] = useState<string | null>(null);
+
+    // 在庫一覧（支給品マスターベース）関連
+    const [itemsWithInventory, setItemsWithInventory] = useState<SuppliedItemWithInventory[]>([]);
+    const [loadingItemsWithInventory, setLoadingItemsWithInventory] = useState(false);
+
+    // 在庫詳細モーダル関連
+    const [inventoryDetailDialogOpen, setInventoryDetailDialogOpen] = useState(false);
+    const [selectedItemWithInventory, setSelectedItemWithInventory] = useState<SuppliedItemWithInventory | null>(null);
+
+    // 在庫レコード削除関連
+    const [deleteInventoryRecordDialogOpen, setDeleteInventoryRecordDialogOpen] = useState(false);
+    const [deletingInventoryRecordId, setDeletingInventoryRecordId] = useState<number | null>(null);
+    const [deletingInventoryRecordInProgress, setDeletingInventoryRecordInProgress] = useState(false);
 
     // フィルタリングされたリスト（完了済みを表示/非表示）
     const filteredLists = React.useMemo(() => {
@@ -340,6 +355,30 @@ export default function SuppliedItemInventoryPage() {
         }
     }, [tabValue, receivingSubTab, receivingItems.length, loadingReceivingItems, fetchReceivingItems]);
 
+    // 支給品マスターベースの在庫一覧を取得
+    const fetchItemsWithInventory = useCallback(async (productId: number) => {
+        setLoadingItemsWithInventory(true);
+        try {
+            const items = await purchasesApi.getSuppliedItemInventoryWithItems({
+                product: productId,
+                include_records: true,
+            });
+            setItemsWithInventory(items);
+        } catch (error) {
+            console.error('在庫一覧取得エラー:', error);
+            setItemsWithInventory([]);
+        } finally {
+            setLoadingItemsWithInventory(false);
+        }
+    }, []);
+
+    // 在庫一覧タブで製品が選択されたときにデータを取得
+    useEffect(() => {
+        if (tabValue === 2 && inventoryProductFilter && !loadingItemsWithInventory) {
+            fetchItemsWithInventory(Number(inventoryProductFilter));
+        }
+    }, [tabValue, inventoryProductFilter, fetchItemsWithInventory, loadingItemsWithInventory]);
+
     // 削除
     const handleDelete = async () => {
         if (!selectedList) return;
@@ -350,6 +389,56 @@ export default function SuppliedItemInventoryPage() {
             fetchData();
         } catch (error) {
             console.error('削除エラー:', error);
+        }
+    };
+
+    // 在庫詳細ダイアログを開く
+    const handleOpenInventoryDetail = (item: SuppliedItemWithInventory) => {
+        setSelectedItemWithInventory(item);
+        setInventoryDetailDialogOpen(true);
+    };
+
+    // 在庫詳細ダイアログを閉じる
+    const handleCloseInventoryDetail = () => {
+        setInventoryDetailDialogOpen(false);
+        setSelectedItemWithInventory(null);
+    };
+
+    // 在庫レコード削除ダイアログを開く
+    const handleOpenDeleteInventoryRecord = (recordId: number) => {
+        setDeletingInventoryRecordId(recordId);
+        setDeleteInventoryRecordDialogOpen(true);
+    };
+
+    // 在庫レコード削除を実行
+    const handleDeleteInventoryRecord = async () => {
+        if (!deletingInventoryRecordId) return;
+        setDeletingInventoryRecordInProgress(true);
+        try {
+            await purchasesApi.deleteSuppliedItemInventory(deletingInventoryRecordId);
+            // データを再取得
+            if (inventoryProductFilter) {
+                await fetchItemsWithInventory(Number(inventoryProductFilter));
+            }
+            await fetchData();
+            setDeleteInventoryRecordDialogOpen(false);
+            setDeletingInventoryRecordId(null);
+            // 詳細ダイアログの内容を更新
+            if (selectedItemWithInventory) {
+                const updatedItem = itemsWithInventory.find(
+                    i => i.supplied_item_id === selectedItemWithInventory.supplied_item_id
+                );
+                if (updatedItem) {
+                    setSelectedItemWithInventory(updatedItem);
+                } else {
+                    handleCloseInventoryDetail();
+                }
+            }
+        } catch (error) {
+            console.error('在庫レコード削除エラー:', error);
+            alert('在庫レコードの削除に失敗しました');
+        } finally {
+            setDeletingInventoryRecordInProgress(false);
         }
     };
 
@@ -755,7 +844,57 @@ export default function SuppliedItemInventoryPage() {
         },
     ];
 
-    // 在庫一覧カラム
+    // 在庫一覧カラム（新：支給品マスターベース）
+    const inventoryWithItemsColumns: GridColDef<SuppliedItemWithInventory>[] = [
+        { field: 'item_number', headerName: '品番', width: 150 },
+        { field: 'item_name', headerName: '品名', width: 200 },
+        { field: 'product_name', headerName: '製品', width: 150 },
+        { field: 'customer_name', headerName: '取引先', width: 150 },
+        {
+            field: 'total_quantity',
+            headerName: '在庫数',
+            width: 100,
+            type: 'number',
+            renderCell: (params) => (
+                <Typography
+                    sx={{
+                        color: params.value === 0 ? 'text.secondary' : 'inherit',
+                        fontWeight: params.value === 0 ? 'normal' : 'bold',
+                    }}
+                >
+                    {params.value?.toLocaleString() || 0}
+                </Typography>
+            ),
+        },
+        { field: 'unit', headerName: '単位', width: 80 },
+        {
+            field: 'inventory_records_count',
+            headerName: 'レコード数',
+            width: 100,
+            type: 'number',
+            valueGetter: (_, row) => row.inventory_records?.length || 0,
+        },
+        {
+            field: 'actions',
+            headerName: '操作',
+            width: 100,
+            sortable: false,
+            renderCell: (params) => (
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Tooltip title="履歴を確認">
+                        <IconButton
+                            size="small"
+                            onClick={() => handleOpenInventoryDetail(params.row)}
+                        >
+                            <HistoryIcon />
+                        </IconButton>
+                    </Tooltip>
+                </Box>
+            ),
+        },
+    ];
+
+    // 在庫一覧カラム（旧：SuppliedItemInventoryベース - 製品別サマリー用）
     const inventoryColumns: GridColDef[] = [
         { field: 'item_number', headerName: '品番', width: 150 },
         { field: 'item_name', headerName: '品名', width: 200 },
@@ -1392,18 +1531,27 @@ export default function SuppliedItemInventoryPage() {
                     )}
 
                     {/* 在庫一覧 */}
-                    <Paper sx={{ height: 450 }}>
-                        <DataGrid
-                            rows={filteredInventories}
-                            columns={inventoryColumns}
-                            loading={loading}
-                            pageSizeOptions={[10, 25, 50]}
-                            initialState={{
-                                pagination: { paginationModel: { pageSize: 10 } },
-                            }}
-                            disableRowSelectionOnClick
-                        />
-                    </Paper>
+                    {!inventoryProductFilter ? (
+                        <Paper sx={{ p: 3, textAlign: 'center' }}>
+                            <Typography color="text.secondary">
+                                製品を選択すると、その製品に登録されているすべての支給品（在庫0も含む）が表示されます
+                            </Typography>
+                        </Paper>
+                    ) : (
+                        <Paper sx={{ height: 450 }}>
+                            <DataGrid
+                                rows={itemsWithInventory}
+                                columns={inventoryWithItemsColumns}
+                                loading={loadingItemsWithInventory}
+                                getRowId={(row) => row.supplied_item_id}
+                                pageSizeOptions={[10, 25, 50]}
+                                initialState={{
+                                    pagination: { paginationModel: { pageSize: 25 } },
+                                }}
+                                disableRowSelectionOnClick
+                            />
+                        </Paper>
+                    )}
                 </TabPanel>
 
                 {/* CSVインポートモーダル */}
@@ -1849,6 +1997,122 @@ export default function SuppliedItemInventoryPage() {
                     <DialogActions>
                         <Button onClick={() => setPartDetailModalOpen(false)}>
                             閉じる
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* 在庫詳細ダイアログ（履歴・削除機能） */}
+                <Dialog
+                    open={inventoryDetailDialogOpen}
+                    onClose={handleCloseInventoryDetail}
+                    maxWidth="md"
+                    fullWidth
+                >
+                    <DialogTitle>
+                        在庫履歴
+                        {selectedItemWithInventory && (
+                            <Box>
+                                <Typography variant="subtitle2" color="text.secondary" component="span" sx={{ display: 'block' }}>
+                                    品番: {selectedItemWithInventory.item_number}
+                                </Typography>
+                                <Typography variant="subtitle2" color="text.secondary" component="span" sx={{ display: 'block' }}>
+                                    品名: {selectedItemWithInventory.item_name}
+                                </Typography>
+                            </Box>
+                        )}
+                    </DialogTitle>
+                    <DialogContent>
+                        {selectedItemWithInventory && (
+                            <>
+                                <Box sx={{ mb: 2 }}>
+                                    <Typography variant="h6" sx={{ mt: 1 }}>
+                                        現在の在庫数: {selectedItemWithInventory.total_quantity.toLocaleString()} {selectedItemWithInventory.unit}
+                                    </Typography>
+                                </Box>
+                                {selectedItemWithInventory.inventory_records && selectedItemWithInventory.inventory_records.length > 0 ? (
+                                    <TableContainer component={Paper}>
+                                        <Table size="small">
+                                            <TableHead>
+                                                <TableRow sx={{ bgcolor: 'grey.100' }}>
+                                                    <TableCell>入庫日</TableCell>
+                                                    <TableCell align="right">数量</TableCell>
+                                                    <TableCell>ロット番号</TableCell>
+                                                    <TableCell>リスト番号</TableCell>
+                                                    <TableCell>備考</TableCell>
+                                                    <TableCell>登録者</TableCell>
+                                                    <TableCell align="center">操作</TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {selectedItemWithInventory.inventory_records.map((record) => (
+                                                    <TableRow key={record.id} hover>
+                                                        <TableCell>
+                                                            {record.received_date || '-'}
+                                                        </TableCell>
+                                                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                                                            {record.quantity.toLocaleString()}
+                                                        </TableCell>
+                                                        <TableCell>{record.lot_number || '-'}</TableCell>
+                                                        <TableCell>{record.list_number || '-'}</TableCell>
+                                                        <TableCell>{record.notes || '-'}</TableCell>
+                                                        <TableCell>{record.created_by_name || '-'}</TableCell>
+                                                        <TableCell align="center">
+                                                            <Tooltip title="削除">
+                                                                <IconButton
+                                                                    size="small"
+                                                                    color="error"
+                                                                    onClick={() => handleOpenDeleteInventoryRecord(record.id)}
+                                                                >
+                                                                    <DeleteIcon fontSize="small" />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>
+                                ) : (
+                                    <Typography color="text.secondary">在庫履歴がありません</Typography>
+                                )}
+                            </>
+                        )}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={handleCloseInventoryDetail}>
+                            閉じる
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* 在庫レコード削除確認ダイアログ */}
+                <Dialog
+                    open={deleteInventoryRecordDialogOpen}
+                    onClose={() => setDeleteInventoryRecordDialogOpen(false)}
+                >
+                    <DialogTitle>在庫レコードの削除</DialogTitle>
+                    <DialogContent>
+                        <Typography>
+                            この在庫レコードを削除してもよろしいですか？
+                        </Typography>
+                        <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                            ※ この操作は取り消せません
+                        </Typography>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button
+                            onClick={() => setDeleteInventoryRecordDialogOpen(false)}
+                            disabled={deletingInventoryRecordInProgress}
+                        >
+                            キャンセル
+                        </Button>
+                        <Button
+                            variant="contained"
+                            color="error"
+                            onClick={handleDeleteInventoryRecord}
+                            disabled={deletingInventoryRecordInProgress}
+                        >
+                            {deletingInventoryRecordInProgress ? <CircularProgress size={24} /> : '削除'}
                         </Button>
                     </DialogActions>
                 </Dialog>

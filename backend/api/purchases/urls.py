@@ -98,6 +98,7 @@ urlpatterns = [
     # 在庫
     path('supplied-item-inventories/', SuppliedItemInventoryListCreateView.as_view(), name='supplied_item_inventory_list_create'),
     path('supplied-item-inventories/<int:pk>/', SuppliedItemInventoryDetailView.as_view(), name='supplied_item_inventory_detail'),
+    path('supplied-item-inventory-with-items/', views.get_supplied_item_inventory_with_items, name='supplied_item_inventory_with_items'),
 
     # 品番検索
     path('lookup-item/', views.lookup_item_by_number, name='lookup_item_by_number'),

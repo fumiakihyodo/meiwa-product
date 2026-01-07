@@ -429,15 +429,21 @@ export default function PurchasedItemInventoryPage() {
 
             // 次のテキストフィールドにフォーカスを移動
             // data-order-indexを使用して次のフィールドを特定
-            const currentElement = e.currentTarget;
-            const allInputs = document.querySelectorAll<HTMLInputElement>('[data-order-index]');
+            const target = e.target as HTMLInputElement;
+            const currentOrderIndex = target.getAttribute('data-order-index');
+            if (!currentOrderIndex) return;
+
+            const allInputs = document.querySelectorAll<HTMLInputElement>('input[data-order-index]');
             const inputsArray = Array.from(allInputs);
-            const currentIndex = inputsArray.indexOf(currentElement);
+            const currentIndex = inputsArray.findIndex(input => input.getAttribute('data-order-index') === currentOrderIndex);
 
             if (currentIndex !== -1 && currentIndex < inputsArray.length - 1) {
                 const nextInput = inputsArray[currentIndex + 1];
-                nextInput.focus();
-                nextInput.select();
+                // 次のフィールドにフォーカスを設定
+                setTimeout(() => {
+                    nextInput.focus();
+                    nextInput.select();
+                }, 0);
             }
         }
     }, [handleQuantityConfirm]);
@@ -479,6 +485,34 @@ export default function PurchasedItemInventoryPage() {
             setOrderError('発注の作成に失敗しました');
         } finally {
             setCreatingOrder(false);
+        }
+    };
+
+    // 発注作成モダールを開く
+    const handleOpenCreateOrderDialog = () => {
+        setCreateOrderDialogOpen(true);
+        // デフォルト製品があれば設定
+        const defaultId = getDefaultProductId();
+        if (defaultId && products.some(p => p.id === defaultId)) {
+            setSelectedProductForOrder(defaultId);
+        } else {
+            setSelectedProductForOrder('');
+        }
+        setOrderQuantities({});
+        setOrderError(null);
+        setSupplierFilter('');
+    };
+
+    // 発注作成モダール用のデフォルト製品を設定/解除
+    const handleToggleDefaultProductForOrder = (productId: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const currentDefault = getDefaultProductId();
+        if (currentDefault === productId) {
+            // 既にデフォルトならば解除
+            setDefaultProductId(null);
+        } else {
+            // デフォルトに設定
+            setDefaultProductId(productId);
         }
     };
 
@@ -898,7 +932,7 @@ export default function PurchasedItemInventoryPage() {
                         variant="contained"
                         color="primary"
                         startIcon={<AddIcon />}
-                        onClick={() => setCreateOrderDialogOpen(true)}
+                        onClick={handleOpenCreateOrderDialog}
                     >
                         発注作成
                     </Button>
@@ -1156,14 +1190,47 @@ export default function PurchasedItemInventoryPage() {
                                     setSelectedProductForOrder(e.target.value as number);
                                     setSupplierFilter(''); // 製品変更時にサプライヤーフィルタをリセット
                                 }}
+                                renderValue={(selected) => {
+                                    if (!selected) return '';
+                                    const product = products.find(p => p.id === selected);
+                                    if (!product) return '';
+                                    const isDefault = getDefaultProductId() === product.id;
+                                    return (
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
+                                            {product.product_number} - {product.product_name}
+                                        </Box>
+                                    );
+                                }}
                             >
-                                {products.map((p: Product) => (
-                                    <MenuItem key={p.id} value={p.id}>
-                                        {p.product_number} - {p.product_name}
-                                    </MenuItem>
-                                ))}
+                                {products.map((p: Product) => {
+                                    const isDefault = getDefaultProductId() === p.id;
+                                    return (
+                                        <MenuItem key={p.id} value={p.id}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                                                <Tooltip title={isDefault ? 'デフォルト解除' : 'デフォルトに設定'}>
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={(e) => handleToggleDefaultProductForOrder(p.id, e)}
+                                                        sx={{ p: 0.5 }}
+                                                    >
+                                                        {isDefault ? (
+                                                            <StarIcon sx={{ color: 'warning.main' }} />
+                                                        ) : (
+                                                            <StarBorderIcon sx={{ color: 'action.disabled' }} />
+                                                        )}
+                                                    </IconButton>
+                                                </Tooltip>
+                                                <span>{p.product_number} - {p.product_name}</span>
+                                            </Box>
+                                        </MenuItem>
+                                    );
+                                })}
                             </Select>
                         </FormControl>
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                            ★をクリックするとデフォルト製品に設定できます
+                        </Typography>
                     </Box>
 
                     {/* サプライヤーフィルタ */}

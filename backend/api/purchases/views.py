@@ -4499,3 +4499,125 @@ def get_inventory_for_adjustment(request):
     result.sort(key=lambda x: x['item_number'])
 
     return Response(result, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_supplied_item_inventory_with_items(request):
+    """製品IDに基づいて、全ての有効な支給品とその在庫数量を取得
+
+    在庫数量が0の支給品も含めて、製品に登録されたis_active=trueの
+    支給品マスターをすべて表示する。
+
+    Query Parameters:
+        product: 製品ID（必須）
+        search: 検索文字列（品番・品名でフィルタ）
+        include_records: trueの場合、個別の在庫レコードも含める
+
+    Returns:
+        [
+            {
+                "supplied_item_id": 1,
+                "item_number": "ABC-001",
+                "item_name": "支給品名",
+                "unit": "個",
+                "product_id": 1,
+                "product_number": "P001",
+                "product_name": "製品名",
+                "customer_name": "顧客名",
+                "total_quantity": 100,  # 在庫合計（0の場合もあり）
+                "inventory_records": [...]  # 個別の在庫レコード（オプション）
+            }
+        ]
+    """
+    product_id = request.query_params.get('product', None)
+    search = request.query_params.get('search', None)
+    include_records = request.query_params.get('include_records', 'false').lower() == 'true'
+
+    if not product_id:
+        return Response(
+            {"error": "製品IDが必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 製品に紐づくis_active=trueの支給品を取得
+    items_queryset = SuppliedItem.objects.filter(
+        product_id=product_id,
+        is_active=True
+    ).select_related(
+        'product',
+        'product__customer_branch',
+        'product__customer_branch__customer'
+    )
+
+    if search:
+        items_queryset = items_queryset.filter(
+            Q(item_number__icontains=search) |
+            Q(item_name__icontains=search)
+        )
+
+    # 支給品ごとの在庫合計をアノテーション
+    from django.db.models import Subquery, OuterRef, Value
+    from django.db.models.functions import Coalesce
+
+    items_with_inventory = items_queryset.annotate(
+        total_quantity=Coalesce(
+            Subquery(
+                SuppliedItemInventory.objects.filter(
+                    supplied_item=OuterRef('pk')
+                ).values('supplied_item').annotate(
+                    total=Sum('quantity')
+                ).values('total')[:1]
+            ),
+            Value(0)
+        )
+    ).order_by('item_number')
+
+    result = []
+    for item in items_with_inventory:
+        item_data = {
+            'supplied_item_id': item.id,
+            'item_number': item.item_number,
+            'item_name': item.item_name,
+            'unit': item.unit,
+            'product_id': item.product_id,
+            'product_number': item.product.product_number if item.product else None,
+            'product_name': item.product.product_name if item.product else None,
+            'customer_name': None,
+            'total_quantity': item.total_quantity,
+        }
+
+        # 顧客名を取得
+        try:
+            if item.product and item.product.customer_branch:
+                item_data['customer_name'] = item.product.customer_branch.customer.company_name
+        except AttributeError:
+            pass
+
+        # 個別の在庫レコードを含める場合
+        if include_records:
+            inventory_records = SuppliedItemInventory.objects.filter(
+                supplied_item=item
+            ).select_related(
+                'list_item',
+                'list_item__supplied_item_list',
+                'created_by'
+            ).order_by('-received_date', '-created_at')
+
+            item_data['inventory_records'] = [
+                {
+                    'id': inv.id,
+                    'quantity': inv.quantity,
+                    'lot_number': inv.lot_number,
+                    'received_date': inv.received_date.isoformat() if inv.received_date else None,
+                    'list_number': inv.list_item.supplied_item_list.list_number if inv.list_item and inv.list_item.supplied_item_list else None,
+                    'notes': inv.notes,
+                    'created_at': inv.created_at.isoformat() if inv.created_at else None,
+                    'created_by_name': inv.created_by.full_name if inv.created_by else None,
+                }
+                for inv in inventory_records
+            ]
+
+        result.append(item_data)
+
+    return Response(result, status=status.HTTP_200_OK)
