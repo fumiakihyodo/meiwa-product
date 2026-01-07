@@ -48,9 +48,7 @@ import {
     InventoryAdjustmentCreateRequest,
     InventoryForAdjustment,
     InventoryItemType,
-    InventoryItemTypeLabels,
     AdjustmentType,
-    AdjustmentTypeLabels,
     InventoryAdjustmentReason,
     InventoryAdjustmentReasonLabels,
 } from '@/types/purchases';
@@ -363,315 +361,322 @@ export default function InventoryAdjustmentPage() {
     ];
 
     return (
-        <Box sx={{ display: 'flex' }}>
-            <Sidebar />
-            <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-                <Typography variant="h4" gutterBottom>
-                    在庫調整
-                </Typography>
+        <Box sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h5">在庫調整</Typography>
+                <Box>
+                    <Button
+                        variant="outlined"
+                        startIcon={<RefreshIcon />}
+                        onClick={() => {
+                            if (tabValue === 0) fetchInventoryList();
+                            else fetchAdjustmentHistory();
+                        }}
+                    >
+                        更新
+                    </Button>
+                </Box>
+            </Box>
 
-                <Paper sx={{ mb: 2 }}>
-                    <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)}>
-                        <Tab label="在庫調整" />
-                        <Tab label="調整履歴" />
-                    </Tabs>
+            <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ mb: 2 }}>
+                <Tab label="在庫調整" />
+                <Tab label="調整履歴" />
+            </Tabs>
+
+            {/* 在庫調整タブ */}
+            <TabPanel value={tabValue} index={0}>
+                <Paper sx={{ p: 2, mb: 2 }}>
+                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <InputLabel>種別</InputLabel>
+                            <Select
+                                value={inventoryTypeFilter}
+                                label="種別"
+                                onChange={(e: SelectChangeEvent<InventoryItemType | ''>) =>
+                                    setInventoryTypeFilter(e.target.value as InventoryItemType | '')
+                                }
+                            >
+                                <MenuItem value="">すべて</MenuItem>
+                                <MenuItem value="supplied">支給品</MenuItem>
+                                <MenuItem value="purchased">購入品</MenuItem>
+                            </Select>
+                        </FormControl>
+
+                        <FormControl size="small" sx={{ minWidth: 200 }}>
+                            <InputLabel>製品</InputLabel>
+                            <Select
+                                value={inventoryProductFilter}
+                                label="製品"
+                                onChange={(e: SelectChangeEvent<number | ''>) =>
+                                    setInventoryProductFilter(e.target.value as number | '')
+                                }
+                            >
+                                <MenuItem value="">すべて</MenuItem>
+                                {products.map((p) => (
+                                    <MenuItem key={p.id} value={p.id}>
+                                        {p.product_number} - {p.product_name}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
+                        <TextField
+                            size="small"
+                            placeholder="品番・品名で検索"
+                            value={inventorySearch}
+                            onChange={(e) => setInventorySearch(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') fetchInventoryList();
+                            }}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon />
+                                    </InputAdornment>
+                                ),
+                            }}
+                        />
+
+                        <Tooltip title="更新">
+                            <IconButton onClick={fetchInventoryList}>
+                                <RefreshIcon />
+                            </IconButton>
+                        </Tooltip>
+                    </Box>
                 </Paper>
 
-                {/* 在庫調整タブ */}
-                <TabPanel value={tabValue} index={0}>
-                    <Paper sx={{ p: 2, mb: 2 }}>
-                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-                            <FormControl size="small" sx={{ minWidth: 120 }}>
-                                <InputLabel>種別</InputLabel>
-                                <Select
-                                    value={inventoryTypeFilter}
-                                    label="種別"
-                                    onChange={(e: SelectChangeEvent<InventoryItemType | ''>) =>
-                                        setInventoryTypeFilter(e.target.value as InventoryItemType | '')
-                                    }
-                                >
-                                    <MenuItem value="">すべて</MenuItem>
-                                    <MenuItem value="supplied">支給品</MenuItem>
-                                    <MenuItem value="purchased">購入品</MenuItem>
-                                </Select>
-                            </FormControl>
+                <Paper sx={{ height: 600 }}>
+                    <DataGrid
+                        rows={inventoryList}
+                        columns={inventoryColumns}
+                        loading={loadingInventory}
+                        pageSizeOptions={[25, 50, 100]}
+                        initialState={{
+                            pagination: { paginationModel: { pageSize: 25 } },
+                        }}
+                        disableRowSelectionOnClick
+                        getRowId={(row) => `${row.item_type}-${row.id}`}
+                    />
+                </Paper>
+            </TabPanel>
 
-                            <FormControl size="small" sx={{ minWidth: 200 }}>
-                                <InputLabel>製品</InputLabel>
-                                <Select
-                                    value={inventoryProductFilter}
-                                    label="製品"
-                                    onChange={(e: SelectChangeEvent<number | ''>) =>
-                                        setInventoryProductFilter(e.target.value as number | '')
-                                    }
-                                >
-                                    <MenuItem value="">すべて</MenuItem>
-                                    {products.map((p) => (
-                                        <MenuItem key={p.id} value={p.id}>
-                                            {p.product_number} - {p.product_name}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
+            {/* 調整履歴タブ */}
+            <TabPanel value={tabValue} index={1}>
+                <Paper sx={{ p: 2, mb: 2 }}>
+                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <InputLabel>種別</InputLabel>
+                            <Select
+                                value={historyTypeFilter}
+                                label="種別"
+                                onChange={(e: SelectChangeEvent<InventoryItemType | ''>) =>
+                                    setHistoryTypeFilter(e.target.value as InventoryItemType | '')
+                                }
+                            >
+                                <MenuItem value="">すべて</MenuItem>
+                                <MenuItem value="supplied">支給品</MenuItem>
+                                <MenuItem value="purchased">購入品</MenuItem>
+                            </Select>
+                        </FormControl>
 
-                            <TextField
-                                size="small"
-                                placeholder="品番・品名で検索"
-                                value={inventorySearch}
-                                onChange={(e) => setInventorySearch(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') fetchInventoryList();
-                                }}
-                                InputProps={{
-                                    startAdornment: (
-                                        <InputAdornment position="start">
-                                            <SearchIcon />
-                                        </InputAdornment>
-                                    ),
-                                }}
-                            />
+                        <FormControl size="small" sx={{ minWidth: 200 }}>
+                            <InputLabel>製品</InputLabel>
+                            <Select
+                                value={historyProductFilter}
+                                label="製品"
+                                onChange={(e: SelectChangeEvent<number | ''>) =>
+                                    setHistoryProductFilter(e.target.value as number | '')
+                                }
+                            >
+                                <MenuItem value="">すべて</MenuItem>
+                                {products.map((p) => (
+                                    <MenuItem key={p.id} value={p.id}>
+                                        {p.product_number} - {p.product_name}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
 
-                            <Tooltip title="更新">
-                                <IconButton onClick={fetchInventoryList}>
-                                    <RefreshIcon />
-                                </IconButton>
-                            </Tooltip>
-                        </Box>
-                    </Paper>
-
-                    <Paper sx={{ height: 600 }}>
-                        <DataGrid
-                            rows={inventoryList}
-                            columns={inventoryColumns}
-                            loading={loadingInventory}
-                            pageSizeOptions={[25, 50, 100]}
-                            initialState={{
-                                pagination: { paginationModel: { pageSize: 25 } },
+                        <TextField
+                            size="small"
+                            placeholder="品番・品名で検索"
+                            value={historySearch}
+                            onChange={(e) => setHistorySearch(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') fetchAdjustmentHistory();
                             }}
-                            disableRowSelectionOnClick
-                            getRowId={(row) => `${row.item_type}-${row.id}`}
-                        />
-                    </Paper>
-                </TabPanel>
-
-                {/* 調整履歴タブ */}
-                <TabPanel value={tabValue} index={1}>
-                    <Paper sx={{ p: 2, mb: 2 }}>
-                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-                            <FormControl size="small" sx={{ minWidth: 120 }}>
-                                <InputLabel>種別</InputLabel>
-                                <Select
-                                    value={historyTypeFilter}
-                                    label="種別"
-                                    onChange={(e: SelectChangeEvent<InventoryItemType | ''>) =>
-                                        setHistoryTypeFilter(e.target.value as InventoryItemType | '')
-                                    }
-                                >
-                                    <MenuItem value="">すべて</MenuItem>
-                                    <MenuItem value="supplied">支給品</MenuItem>
-                                    <MenuItem value="purchased">購入品</MenuItem>
-                                </Select>
-                            </FormControl>
-
-                            <FormControl size="small" sx={{ minWidth: 200 }}>
-                                <InputLabel>製品</InputLabel>
-                                <Select
-                                    value={historyProductFilter}
-                                    label="製品"
-                                    onChange={(e: SelectChangeEvent<number | ''>) =>
-                                        setHistoryProductFilter(e.target.value as number | '')
-                                    }
-                                >
-                                    <MenuItem value="">すべて</MenuItem>
-                                    {products.map((p) => (
-                                        <MenuItem key={p.id} value={p.id}>
-                                            {p.product_number} - {p.product_name}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-
-                            <TextField
-                                size="small"
-                                placeholder="品番・品名で検索"
-                                value={historySearch}
-                                onChange={(e) => setHistorySearch(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') fetchAdjustmentHistory();
-                                }}
-                                InputProps={{
-                                    startAdornment: (
-                                        <InputAdornment position="start">
-                                            <SearchIcon />
-                                        </InputAdornment>
-                                    ),
-                                }}
-                            />
-
-                            <Tooltip title="更新">
-                                <IconButton onClick={fetchAdjustmentHistory}>
-                                    <RefreshIcon />
-                                </IconButton>
-                            </Tooltip>
-                        </Box>
-                    </Paper>
-
-                    <Paper sx={{ height: 600 }}>
-                        <DataGrid
-                            rows={adjustmentHistory}
-                            columns={historyColumns}
-                            loading={loadingHistory}
-                            pageSizeOptions={[25, 50, 100]}
-                            initialState={{
-                                pagination: { paginationModel: { pageSize: 25 } },
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon />
+                                    </InputAdornment>
+                                ),
                             }}
-                            disableRowSelectionOnClick
                         />
-                    </Paper>
-                </TabPanel>
 
-                {/* 在庫調整ダイアログ */}
-                <Dialog
-                    open={adjustmentDialogOpen}
-                    onClose={handleCloseAdjustmentDialog}
-                    maxWidth="sm"
-                    fullWidth
-                >
-                    <DialogTitle>在庫調整</DialogTitle>
-                    <DialogContent>
-                        {selectedInventory && (
-                            <Box sx={{ mt: 1 }}>
-                                {/* 対象在庫情報 */}
-                                <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
-                                    <Typography variant="subtitle2" color="text.secondary">
-                                        対象在庫
-                                    </Typography>
-                                    <Chip
-                                        label={selectedInventory.item_type_display}
-                                        size="small"
-                                        color={selectedInventory.item_type === 'supplied' ? 'primary' : 'secondary'}
-                                        sx={{ mb: 1 }}
-                                    />
-                                    <Typography variant="body1" fontWeight="bold">
-                                        {selectedInventory.item_number} - {selectedInventory.item_name}
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        製品: {selectedInventory.product_name || '-'}
-                                    </Typography>
-                                    <Typography variant="h6" sx={{ mt: 1 }}>
-                                        現在の在庫: {selectedInventory.quantity} {selectedInventory.unit || ''}
-                                    </Typography>
-                                </Paper>
+                        <Tooltip title="更新">
+                            <IconButton onClick={fetchAdjustmentHistory}>
+                                <RefreshIcon />
+                            </IconButton>
+                        </Tooltip>
+                    </Box>
+                </Paper>
 
-                                {/* 増加/減少 ラジオボタン */}
-                                <FormControl component="fieldset" sx={{ mb: 2, width: '100%' }}>
-                                    <FormLabel component="legend">調整タイプ</FormLabel>
-                                    <RadioGroup
-                                        row
-                                        value={adjustmentType}
-                                        onChange={(e) => setAdjustmentType(e.target.value as AdjustmentType)}
-                                    >
-                                        <FormControlLabel
-                                            value="increase"
-                                            control={<Radio color="success" />}
-                                            label={
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                    <IncreaseIcon color="success" fontSize="small" />
-                                                    増加（+）
-                                                </Box>
-                                            }
-                                        />
-                                        <FormControlLabel
-                                            value="decrease"
-                                            control={<Radio color="error" />}
-                                            label={
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                    <DecreaseIcon color="error" fontSize="small" />
-                                                    減少（-）
-                                                </Box>
-                                            }
-                                        />
-                                    </RadioGroup>
-                                </FormControl>
+                <Paper sx={{ height: 600 }}>
+                    <DataGrid
+                        rows={adjustmentHistory}
+                        columns={historyColumns}
+                        loading={loadingHistory}
+                        pageSizeOptions={[25, 50, 100]}
+                        initialState={{
+                            pagination: { paginationModel: { pageSize: 25 } },
+                        }}
+                        disableRowSelectionOnClick
+                    />
+                </Paper>
+            </TabPanel>
 
-                                {/* 調整理由 */}
-                                <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                                    <InputLabel>調整理由</InputLabel>
-                                    <Select
-                                        value={adjustmentReason}
-                                        label="調整理由"
-                                        onChange={(e: SelectChangeEvent<InventoryAdjustmentReason>) =>
-                                            setAdjustmentReason(e.target.value as InventoryAdjustmentReason)
+            {/* 在庫調整ダイアログ */}
+            <Dialog
+                open={adjustmentDialogOpen}
+                onClose={handleCloseAdjustmentDialog}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>在庫調整</DialogTitle>
+                <DialogContent>
+                    {selectedInventory && (
+                        <Box sx={{ mt: 1 }}>
+                            {/* 対象在庫情報 */}
+                            <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                                <Typography variant="subtitle2" color="text.secondary">
+                                    対象在庫
+                                </Typography>
+                                <Chip
+                                    label={selectedInventory.item_type_display}
+                                    size="small"
+                                    color={selectedInventory.item_type === 'supplied' ? 'primary' : 'secondary'}
+                                    sx={{ mb: 1 }}
+                                />
+                                <Typography variant="body1" fontWeight="bold">
+                                    {selectedInventory.item_number} - {selectedInventory.item_name}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    製品: {selectedInventory.product_name || '-'}
+                                </Typography>
+                                <Typography variant="h6" sx={{ mt: 1 }}>
+                                    現在の在庫: {selectedInventory.quantity} {selectedInventory.unit || ''}
+                                </Typography>
+                            </Paper>
+
+                            {/* 増加/減少 ラジオボタン */}
+                            <FormControl component="fieldset" sx={{ mb: 2, width: '100%' }}>
+                                <FormLabel component="legend">調整タイプ</FormLabel>
+                                <RadioGroup
+                                    row
+                                    value={adjustmentType}
+                                    onChange={(e) => setAdjustmentType(e.target.value as AdjustmentType)}
+                                >
+                                    <FormControlLabel
+                                        value="increase"
+                                        control={<Radio color="success" />}
+                                        label={
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                <IncreaseIcon color="success" fontSize="small" />
+                                                増加（+）
+                                            </Box>
                                         }
-                                    >
-                                        {(Object.keys(InventoryAdjustmentReasonLabels) as InventoryAdjustmentReason[]).map((key) => (
-                                            <MenuItem key={key} value={key}>
-                                                {InventoryAdjustmentReasonLabels[key]}
-                                            </MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
+                                    />
+                                    <FormControlLabel
+                                        value="decrease"
+                                        control={<Radio color="error" />}
+                                        label={
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                <DecreaseIcon color="error" fontSize="small" />
+                                                減少（-）
+                                            </Box>
+                                        }
+                                    />
+                                </RadioGroup>
+                            </FormControl>
 
-                                {/* 調整数量 */}
-                                <TextField
-                                    fullWidth
-                                    label="調整数量"
-                                    type="number"
-                                    value={adjustmentQuantity || ''}
-                                    onChange={(e) => {
-                                        const val = Math.abs(parseInt(e.target.value, 10) || 0);
-                                        setAdjustmentQuantity(val);
-                                    }}
-                                    inputProps={{ min: 1 }}
-                                    sx={{ mb: 2 }}
-                                    helperText={(() => {
-                                        const changeAmount = adjustmentType === 'increase'
-                                            ? adjustmentQuantity
-                                            : -adjustmentQuantity;
-                                        const newQty = selectedInventory.quantity + changeAmount;
-                                        return `調整後の在庫: ${newQty} ${selectedInventory.unit || ''}`;
-                                    })()}
-                                />
+                            {/* 調整理由 */}
+                            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                                <InputLabel>調整理由</InputLabel>
+                                <Select
+                                    value={adjustmentReason}
+                                    label="調整理由"
+                                    onChange={(e: SelectChangeEvent<InventoryAdjustmentReason>) =>
+                                        setAdjustmentReason(e.target.value as InventoryAdjustmentReason)
+                                    }
+                                >
+                                    {(Object.keys(InventoryAdjustmentReasonLabels) as InventoryAdjustmentReason[]).map((key) => (
+                                        <MenuItem key={key} value={key}>
+                                            {InventoryAdjustmentReasonLabels[key]}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
 
-                                {/* 備考 */}
-                                <TextField
-                                    fullWidth
-                                    label="備考"
-                                    multiline
-                                    rows={2}
-                                    value={adjustmentNotes}
-                                    onChange={(e) => setAdjustmentNotes(e.target.value)}
-                                />
+                            {/* 調整数量 */}
+                            <TextField
+                                fullWidth
+                                label="調整数量"
+                                type="number"
+                                value={adjustmentQuantity || ''}
+                                onChange={(e) => {
+                                    const val = Math.abs(parseInt(e.target.value, 10) || 0);
+                                    setAdjustmentQuantity(val);
+                                }}
+                                inputProps={{ min: 1 }}
+                                sx={{ mb: 2 }}
+                                helperText={(() => {
+                                    const changeAmount = adjustmentType === 'increase'
+                                        ? adjustmentQuantity
+                                        : -adjustmentQuantity;
+                                    const newQty = selectedInventory.quantity + changeAmount;
+                                    return `調整後の在庫: ${newQty} ${selectedInventory.unit || ''}`;
+                                })()}
+                            />
 
-                                {/* エラー表示 */}
-                                {adjustmentType === 'decrease' &&
-                                    adjustmentQuantity > selectedInventory.quantity && (
-                                        <Alert severity="error" sx={{ mt: 2 }}>
-                                            調整数量が現在の在庫数を超えています
-                                        </Alert>
-                                    )}
-                            </Box>
-                        )}
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={handleCloseAdjustmentDialog}>キャンセル</Button>
-                        <Button
-                            variant="contained"
-                            color="primary"
-                            onClick={handleConfirmAdjustment}
-                            disabled={
-                                adjustingInProgress ||
-                                adjustmentQuantity <= 0 ||
-                                (adjustmentType === 'decrease' &&
-                                    selectedInventory !== null &&
-                                    adjustmentQuantity > selectedInventory.quantity)
-                            }
-                        >
-                            {adjustingInProgress ? <CircularProgress size={20} /> : '調整実行'}
-                        </Button>
-                    </DialogActions>
-                </Dialog>
-            </Box>
+                            {/* 備考 */}
+                            <TextField
+                                fullWidth
+                                label="備考"
+                                multiline
+                                rows={2}
+                                value={adjustmentNotes}
+                                onChange={(e) => setAdjustmentNotes(e.target.value)}
+                            />
+
+                            {/* エラー表示 */}
+                            {adjustmentType === 'decrease' &&
+                                adjustmentQuantity > selectedInventory.quantity && (
+                                    <Alert severity="error" sx={{ mt: 2 }}>
+                                        調整数量が現在の在庫数を超えています
+                                    </Alert>
+                                )}
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseAdjustmentDialog}>キャンセル</Button>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleConfirmAdjustment}
+                        disabled={
+                            adjustingInProgress ||
+                            adjustmentQuantity <= 0 ||
+                            (adjustmentType === 'decrease' &&
+                                selectedInventory !== null &&
+                                adjustmentQuantity > selectedInventory.quantity)
+                        }
+                    >
+                        {adjustingInProgress ? <CircularProgress size={20} /> : '調整実行'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }
