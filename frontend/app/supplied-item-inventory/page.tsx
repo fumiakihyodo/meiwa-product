@@ -236,12 +236,6 @@ export default function SuppliedItemInventoryPage() {
         return receivings.filter(r => r.product === receivingProductFilter);
     }, [receivings, receivingProductFilter]);
 
-    // フィルタリングされた在庫一覧
-    const filteredInventories = React.useMemo(() => {
-        if (!inventoryProductFilter) return inventories;
-        return inventories.filter(inv => inv.product === inventoryProductFilter);
-    }, [inventories, inventoryProductFilter]);
-
     // フィルタリングされた受入アイテム一覧（部品一覧タブ用）
     const filteredReceivingItems = React.useMemo(() => {
         if (!receivingProductFilter) return receivingItems;
@@ -846,67 +840,70 @@ export default function SuppliedItemInventoryPage() {
     ];
 
     // 在庫一覧カラム（新：支給品マスターベース）
-    const inventoryWithItemsColumns: GridColDef<SuppliedItemWithInventory>[] = [
-        { field: 'item_number', headerName: '品番', width: 150 },
-        { field: 'item_name', headerName: '品名', width: 200 },
-        { field: 'product_name', headerName: '製品', width: 150 },
-        { field: 'customer_name', headerName: '取引先', width: 150 },
-        {
-            field: 'total_quantity',
-            headerName: '在庫数',
-            width: 100,
-            type: 'number',
-            renderCell: (params) => (
+const inventoryWithItemsColumns: GridColDef<SuppliedItemWithInventory>[] = [
+    { field: 'item_number', headerName: '品番', width: 150 },
+    { field: 'item_name', headerName: '品名', width: 200 },
+    { field: 'product_name', headerName: '製品', width: 150 },
+    { field: 'customer_name', headerName: '取引先', width: 150 },
+    {
+        field: 'total_quantity',
+        headerName: '在庫数',
+        width: 100,
+        type: 'number',
+        renderCell: (params) => (
+            /* Boxでセル全体をカバーし、flexで上下中央(alignItems) 
+               および右寄せ(justifyContent)を実現します 
+            */
+            <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'flex-end', 
+                height: '100%', 
+                width: '100%',
+                pr: 2 // 右側に少し余白
+            }}>
                 <Typography
+                    variant="body2"
                     sx={{
                         color: params.value === 0 ? 'text.secondary' : 'inherit',
                         fontWeight: params.value === 0 ? 'normal' : 'bold',
                     }}
                 >
-                    {params.value?.toLocaleString() || 0}
+                    {params.value?.toLocaleString() ?? 0}
                 </Typography>
-            ),
-        },
-        { field: 'unit', headerName: '単位', width: 80 },
-        {
-            field: 'inventory_records_count',
-            headerName: 'レコード数',
-            width: 100,
-            type: 'number',
-            valueGetter: (_, row) => row.inventory_records?.length || 0,
-        },
-        {
-            field: 'actions',
-            headerName: '操作',
-            width: 100,
-            sortable: false,
-            renderCell: (params) => (
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Tooltip title="履歴を確認">
-                        <IconButton
-                            size="small"
-                            onClick={() => handleOpenInventoryDetail(params.row)}
-                        >
-                            <HistoryIcon />
-                        </IconButton>
-                    </Tooltip>
-                </Box>
-            ),
-        },
-    ];
+            </Box>
+        ),
+    },
+    { field: 'unit', headerName: '単位', width: 80 },
+    {
+        field: 'actions',
+        headerName: '操作',
+        width: 100,
+        sortable: false,
+        renderCell: (params) => (
+            /* ここも同様にBoxで囲み、上下中央(alignItems) 
+               および左右中央(justifyContent)にします 
+            */
+            <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                height: '100%', 
+                width: '100%' 
+            }}>
+                <Tooltip title="履歴を確認">
+                    <IconButton
+                        size="small"
+                        onClick={() => handleOpenInventoryDetail(params.row)}
+                    >
+                        <HistoryIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            </Box>
+        ),
+    },
+];
 
-    // 在庫一覧カラム（旧：SuppliedItemInventoryベース - 製品別サマリー用）
-    const inventoryColumns: GridColDef[] = [
-        { field: 'item_number', headerName: '品番', width: 150 },
-        { field: 'item_name', headerName: '品名', width: 200 },
-        { field: 'product_name', headerName: '製品', width: 150 },
-        { field: 'customer_name', headerName: '取引先', width: 150 },
-        { field: 'quantity', headerName: '在庫数', width: 100, type: 'number' },
-        { field: 'unit', headerName: '単位', width: 80 },
-        { field: 'lot_number', headerName: 'ロット番号', width: 120 },
-        { field: 'received_date', headerName: '入庫日', width: 120 },
-        { field: 'list_number', headerName: 'リスト番号', width: 150 },
-    ];
 
     // 受入れ一覧カラム
     const receivingColumns: GridColDef[] = [
@@ -1652,7 +1649,7 @@ export default function SuppliedItemInventoryPage() {
                                                 </Box>
                                             </Box>
                                             <Box component="tbody">
-                                                {selectedReceiving.items.map((item, index) => (
+                                                {selectedReceiving.items.map((item) => (
                                                     <Box
                                                         component="tr"
                                                         key={item.id}
@@ -1965,7 +1962,7 @@ export default function SuppliedItemInventoryPage() {
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
-                                            {selectedPartHistory.map((item, index) => (
+                                            {selectedPartHistory.map((item) => (
                                                 <TableRow key={item.id} hover>
                                                     <TableCell>
                                                         {new Date(item.receiving_date).toLocaleString('ja-JP', {

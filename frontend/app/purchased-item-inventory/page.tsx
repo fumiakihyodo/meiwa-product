@@ -44,19 +44,15 @@ import {
     Visibility as ViewIcon,
     Delete as DeleteIcon,
     Add as AddIcon,
-    CheckCircle as CheckCircleIcon,
-    HourglassEmpty as PendingIcon,
     ExpandMore as ExpandMoreIcon,
     Send as SendIcon,
     Inventory as InventoryIcon,
     LocalShipping as ReceivingIcon,
-    Edit as EditIcon,
     History as HistoryIcon,
     Star as StarIcon,
     StarBorder as StarBorderIcon,
     Clear as ClearIcon,
 } from '@mui/icons-material';
-import { useRouter } from 'next/navigation';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { purchasesApi } from '@/services/apiPurchases';
 import { productApi } from '@/services/apiProduct';
@@ -137,19 +133,7 @@ function StatusChip({ status, statusDisplay }: { status: PurchaseOrderStatus; st
     );
 }
 
-// 発注数量入力行の型
-interface OrderQuantityRow {
-    partId: number;
-    partNumber: string;
-    partName: string;
-    unit: string;
-    currentPrice: number | null;
-    minimumOrderQuantity: number;
-    quantity: number;
-}
-
 export default function PurchasedItemInventoryPage() {
-    const router = useRouter();
 
     // タブ状態
     const [tabValue, setTabValue] = useState(0);
@@ -657,12 +641,6 @@ export default function PurchasedItemInventoryPage() {
         }
     };
 
-    // 履歴表示
-    const handleOpenHistoryDialog = (inventory: PurchasedItemInventory) => {
-        setHistoryInventory(inventory);
-        setHistoryDialogOpen(true);
-    };
-
     // 履歴閉じる
     const handleCloseHistoryDialog = () => {
         setHistoryDialogOpen(false);
@@ -796,10 +774,17 @@ export default function PurchasedItemInventoryPage() {
             width: 120,
             renderCell: (params: GridRenderCellParams<PurchaseOrder>) => {
                 const received = params.row.received_items_count || 0;
-                const confirmed = params.row.count_confirmed_items_count || 0;
                 const total = params.row.total_items || 0;
+
                 return (
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+
+                    <Box sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        height: '100%',
+                        width: '100%',
+                        pl: 1 // セルの左側に少しだけ余白
+                    }}>
                         <Tooltip title="受入済">
                             <Chip
                                 size="small"
@@ -807,15 +792,6 @@ export default function PurchasedItemInventoryPage() {
                                 color={received === total && total > 0 ? 'success' : 'default'}
                                 variant="outlined"
                                 icon={<ReceivingIcon />}
-                            />
-                        </Tooltip>
-                        <Tooltip title="員数確認済">
-                            <Chip
-                                size="small"
-                                label={`${confirmed}/${total}`}
-                                color={confirmed === total && total > 0 ? 'success' : 'default'}
-                                variant="outlined"
-                                icon={<InventoryIcon />}
                             />
                         </Tooltip>
                     </Box>
@@ -866,7 +842,7 @@ export default function PurchasedItemInventoryPage() {
         {
             field: 'supplier_part_name',
             headerName: '仕入れ先部品名称',
-            width: 180,
+            width: 300,
             valueGetter: (value: string, row: PartWithInventory) =>
                 row.supplier_part_name || '-',
         },
@@ -882,23 +858,11 @@ export default function PurchasedItemInventoryPage() {
         {
             field: 'total_quantity',
             headerName: '在庫数量',
-            width: 120,
+            width: 200,
             type: 'number',
-            renderCell: (params: GridRenderCellParams<PartWithInventory>) => (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: '100%', width: '100%' }}>
-                    <Chip
-                        size="small"
-                        label={`${params.value || 0} ${params.row.unit || ''}`}
-                        color={params.value && params.value > 0 ? 'primary' : 'default'}
-                        variant={params.value && params.value > 0 ? 'filled' : 'outlined'}
-                    />
-                </Box>
-            ),
-        },
-        {
-            field: 'unit',
-            headerName: '単位',
-            width: 80,
+            valueFormatter: (value, row) => {
+                return `${value || 0} ${row.unit || ''}`;
+            },
         },
         {
             field: 'actions',
