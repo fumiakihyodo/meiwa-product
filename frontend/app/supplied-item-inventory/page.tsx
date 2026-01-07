@@ -374,10 +374,11 @@ export default function SuppliedItemInventoryPage() {
 
     // 在庫一覧タブで製品が選択されたときにデータを取得
     useEffect(() => {
-        if (tabValue === 2 && inventoryProductFilter && !loadingItemsWithInventory) {
+        if (tabValue === 2 && inventoryProductFilter) {
             fetchItemsWithInventory(Number(inventoryProductFilter));
         }
-    }, [tabValue, inventoryProductFilter, fetchItemsWithInventory, loadingItemsWithInventory]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tabValue, inventoryProductFilter]);
 
     // 削除
     const handleDelete = async () => {
