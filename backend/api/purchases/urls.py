@@ -107,6 +107,7 @@ urlpatterns = [
 
     # 部品別受入一覧
     path('supplied-item-receiving-items/', views.get_receiving_items_list, name='get_receiving_items_list'),
+    path('supplied-item-receiving-items/<int:item_pk>/cancel/', views.cancel_receiving_item, name='cancel_receiving_item'),
 
     # ========== 購入品管理関連 ==========
 

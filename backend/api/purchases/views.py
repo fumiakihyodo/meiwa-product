@@ -1572,10 +1572,11 @@ class SuppliedItemReceivingDetailView(generics.RetrieveUpdateDestroyAPIView):
         return SuppliedItemReceivingDetailSerializer
 
     def destroy(self, request, *args, **kwargs):
-        """受入確認の削除時にリスト項目のステータスを再計算する
+        """受入確認のキャンセル（削除）時にリスト項目のステータスを再計算し、関連在庫も削除する
 
         削除された受入れ登録の品番について、残りの受入れ数量を再計算し、
         リスト数量を満たさなくなった項目のreceiving_confirmedをリセットする。
+        また、受入れに関連する在庫レコードも削除する。
         """
         receiving = self.get_object()
 
@@ -1586,7 +1587,34 @@ class SuppliedItemReceivingDetailView(generics.RetrieveUpdateDestroyAPIView):
         affected_item_numbers = set(item.item_number for item in receiving.items.all())
         supplied_list = receiving.supplied_item_list
 
+        # 受入れアイテムごとの数量を記録（在庫削除用）
+        receiving_items_data = [
+            {
+                'item_number': item.item_number,
+                'quantity': item.calculated_quantity,
+                'supplied_item_id': item.supplied_item_id,
+            }
+            for item in receiving.items.all()
+        ]
+
         with transaction.atomic():
+            # 関連する在庫レコードを削除
+            # 受入れアイテムに紐付いたsupplied_itemがある場合、その在庫を削減
+            for item_data in receiving_items_data:
+                if item_data['supplied_item_id']:
+                    # 該当する在庫レコードを探して削除（数量が一致するものを優先）
+                    inventory_to_delete = SuppliedItemInventory.objects.filter(
+                        supplied_item_id=item_data['supplied_item_id'],
+                        quantity=item_data['quantity']
+                    ).first()
+
+                    if inventory_to_delete:
+                        inventory_to_delete.delete()
+                        logger.info(
+                            f"在庫レコードを削除: supplied_item_id={item_data['supplied_item_id']}, "
+                            f"quantity={item_data['quantity']}"
+                        )
+
             # 受入れ登録を削除
             self.perform_destroy(receiving)
 
@@ -3049,6 +3077,118 @@ def get_receiving_items_list(request):
     }, status=status.HTTP_200_OK)
 
 
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def cancel_receiving_item(request, item_pk):
+    """
+    個別の受入れアイテムをキャンセル（削除）する
+
+    部品一覧から特定の受入れをキャンセルする際に使用。
+    受入れアイテムを削除し、関連する在庫も削除する。
+    受入れ登録にアイテムが残っていない場合は、受入れ登録自体も削除する。
+    """
+    try:
+        receiving_item = SuppliedItemReceivingItem.objects.select_related(
+            'receiving',
+            'receiving__supplied_item_list',
+            'receiving__product',
+            'supplied_item'
+        ).get(pk=item_pk)
+    except SuppliedItemReceivingItem.DoesNotExist:
+        return Response(
+            {"error": "受入れアイテムが見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    receiving = receiving_item.receiving
+    product_id = receiving.product_id or (
+        receiving.supplied_item_list.product_id if receiving.supplied_item_list else None
+    )
+
+    # キャンセルする受入れアイテムの情報を収集
+    item_number = receiving_item.item_number
+    quantity = receiving_item.calculated_quantity
+    supplied_item_id = receiving_item.supplied_item_id
+
+    with transaction.atomic():
+        # 関連する在庫レコードを削除
+        if supplied_item_id:
+            inventory_to_delete = SuppliedItemInventory.objects.filter(
+                supplied_item_id=supplied_item_id,
+                quantity=quantity
+            ).first()
+
+            if inventory_to_delete:
+                inventory_to_delete.delete()
+                logger.info(
+                    f"在庫レコードを削除（個別キャンセル）: supplied_item_id={supplied_item_id}, "
+                    f"quantity={quantity}"
+                )
+
+        # 受入れアイテムを削除
+        receiving_item.delete()
+
+        # 受入れ登録にアイテムが残っていない場合は、受入れ登録自体も削除
+        remaining_items_count = receiving.items.count()
+        if remaining_items_count == 0:
+            receiving.delete()
+            logger.info(f"受入れ登録を削除（アイテムなし）: receiving_id={receiving.id}")
+
+        # リスト項目のステータスを再計算
+        if product_id:
+            # 削除後の品番ごとの受入れ数量を再計算
+            remaining_quantities = SuppliedItemReceivingItem.objects.filter(
+                receiving__status='completed'
+            ).filter(
+                Q(receiving__supplied_item_list__product_id=product_id) |
+                Q(receiving__product_id=product_id)
+            ).filter(
+                item_number=item_number
+            ).values('item_number').annotate(
+                total_received=Sum('calculated_quantity')
+            )
+
+            remaining_qty_map = {
+                item['item_number']: item['total_received'] or 0
+                for item in remaining_quantities
+            }
+
+            # 影響を受けるリスト項目を更新
+            affected_list_items = SuppliedItemListItem.objects.filter(
+                supplied_item_list__product_id=product_id,
+                item_number=item_number
+            )
+
+            items_to_update = []
+            for list_item in affected_list_items:
+                total_received = remaining_qty_map.get(list_item.item_number, 0)
+
+                if total_received < list_item.quantity and list_item.receiving_confirmed:
+                    list_item.receiving_confirmed = False
+                    list_item.receiving_confirmed_at = None
+                    list_item.receiving_confirmed_by = None
+                    list_item.received_quantity = total_received if total_received > 0 else None
+                    list_item.quantity_per_box = None
+                    list_item.box_count = None
+                    items_to_update.append(list_item)
+                elif total_received != (list_item.received_quantity or 0):
+                    list_item.received_quantity = total_received if total_received > 0 else None
+                    items_to_update.append(list_item)
+
+            if items_to_update:
+                SuppliedItemListItem.objects.bulk_update(
+                    items_to_update,
+                    ['receiving_confirmed', 'receiving_confirmed_at', 'receiving_confirmed_by',
+                     'received_quantity', 'quantity_per_box', 'box_count']
+                )
+
+    return Response({
+        'message': '受入れアイテムをキャンセルしました',
+        'item_number': item_number,
+        'cancelled_quantity': quantity,
+    }, status=status.HTTP_200_OK)
+
+
 # ==================== 購入品管理 Views ====================
 
 class PurchaseOrderListCreateView(generics.ListCreateAPIView):
@@ -4460,109 +4600,232 @@ def get_inventory_for_adjustment(request):
         item_type: 'supplied' or 'purchased' （オプション）
         product: 製品ID（オプション）
         search: 検索文字列（オプション）
+        include_all_master: 'true'の場合、在庫がないマスター部品も含める
+        limit: 結果の最大件数（オプション）
     """
     item_type = request.query_params.get('item_type', None)
     product_id = request.query_params.get('product', None)
     search = request.query_params.get('search', None)
+    include_all_master = request.query_params.get('include_all_master', 'false').lower() == 'true'
+    limit = request.query_params.get('limit', None)
 
     result = []
 
-    # 支給品在庫を取得
-    if not item_type or item_type == 'supplied':
-        supplied_queryset = SuppliedItemInventory.objects.select_related(
-            'supplied_item',
-            'supplied_item__product',
-            'supplied_item__product__customer_branch',
-            'supplied_item__product__customer_branch__customer'
-        )
+    if include_all_master:
+        # マスター部品をすべて取得（在庫がなくても）
+        # 支給品マスターを取得
+        if not item_type or item_type == 'supplied':
+            supplied_items_queryset = SuppliedItem.objects.select_related(
+                'product',
+                'product__customer_branch',
+                'product__customer_branch__customer'
+            ).filter(is_active=True)
 
-        if product_id:
-            supplied_queryset = supplied_queryset.filter(
-                supplied_item__product_id=product_id
+            if product_id:
+                supplied_items_queryset = supplied_items_queryset.filter(product_id=product_id)
+
+            if search:
+                supplied_items_queryset = supplied_items_queryset.filter(
+                    Q(item_number__icontains=search) |
+                    Q(item_name__icontains=search)
+                )
+
+            # 在庫数量を集計
+            supplied_inventory_totals = {}
+            for inv in SuppliedItemInventory.objects.filter(
+                supplied_item__in=supplied_items_queryset
+            ).values('supplied_item_id').annotate(total=Sum('quantity')):
+                supplied_inventory_totals[inv['supplied_item_id']] = inv['total']
+
+            for item in supplied_items_queryset:
+                customer_name = None
+                try:
+                    if item.product and item.product.customer_branch:
+                        customer_name = item.product.customer_branch.customer.company_name
+                except AttributeError:
+                    pass
+
+                total_quantity = supplied_inventory_totals.get(item.id, 0)
+
+                result.append({
+                    'id': f'supplied_{item.id}',
+                    'item_type': 'supplied',
+                    'item_type_display': '支給品',
+                    'master_item_id': item.id,
+                    'inventory_id': None,  # 在庫がない場合はNone
+                    'item_number': item.item_number,
+                    'item_name': item.item_name,
+                    'unit': item.unit,
+                    'quantity': total_quantity,
+                    'product_id': item.product_id,
+                    'product_number': item.product.product_number if item.product else None,
+                    'product_name': item.product.product_name if item.product else None,
+                    'customer_name': customer_name,
+                    'lot_number': None,
+                    'received_date': None,
+                })
+
+        # 購入品（部品）マスターを取得
+        if not item_type or item_type == 'purchased':
+            parts_queryset = Part.objects.select_related(
+                'product',
+                'product__customer_branch',
+                'product__customer_branch__customer',
+                'supplier_branch',
+                'supplier_branch__supplier'
+            ).filter(is_active=True)
+
+            if product_id:
+                parts_queryset = parts_queryset.filter(product_id=product_id)
+
+            if search:
+                parts_queryset = parts_queryset.filter(
+                    Q(part_number__icontains=search) |
+                    Q(part_name__icontains=search)
+                )
+
+            # 在庫数量を集計
+            purchased_inventory_totals = {}
+            for inv in PurchasedItemInventory.objects.filter(
+                part__in=parts_queryset
+            ).values('part_id').annotate(total=Sum('quantity')):
+                purchased_inventory_totals[inv['part_id']] = inv['total']
+
+            for part in parts_queryset:
+                customer_name = None
+                try:
+                    if part.product and part.product.customer_branch:
+                        customer_name = part.product.customer_branch.customer.company_name
+                except AttributeError:
+                    pass
+
+                total_quantity = purchased_inventory_totals.get(part.id, 0)
+
+                result.append({
+                    'id': f'purchased_{part.id}',
+                    'item_type': 'purchased',
+                    'item_type_display': '購入品',
+                    'master_item_id': part.id,
+                    'inventory_id': None,  # 集計値のためNone
+                    'item_number': part.part_number,
+                    'item_name': part.part_name,
+                    'unit': part.unit,
+                    'quantity': total_quantity,
+                    'product_id': part.product_id if part.product else None,
+                    'product_number': part.product.product_number if part.product else None,
+                    'product_name': part.product.product_name if part.product else None,
+                    'customer_name': customer_name,
+                    'supplier_name': part.supplier_branch.supplier.company_name if part.supplier_branch else None,
+                    'supplier_branch_name': part.supplier_branch.branch_name if part.supplier_branch else None,
+                    'lot_number': None,
+                    'received_date': None,
+                })
+    else:
+        # 従来の動作: 在庫がある部品のみを取得
+        # 支給品在庫を取得
+        if not item_type or item_type == 'supplied':
+            supplied_queryset = SuppliedItemInventory.objects.select_related(
+                'supplied_item',
+                'supplied_item__product',
+                'supplied_item__product__customer_branch',
+                'supplied_item__product__customer_branch__customer'
             )
 
-        if search:
-            supplied_queryset = supplied_queryset.filter(
-                Q(supplied_item__item_number__icontains=search) |
-                Q(supplied_item__item_name__icontains=search)
+            if product_id:
+                supplied_queryset = supplied_queryset.filter(
+                    supplied_item__product_id=product_id
+                )
+
+            if search:
+                supplied_queryset = supplied_queryset.filter(
+                    Q(supplied_item__item_number__icontains=search) |
+                    Q(supplied_item__item_name__icontains=search)
+                )
+
+            for inv in supplied_queryset:
+                customer_name = None
+                try:
+                    if inv.supplied_item.product and inv.supplied_item.product.customer_branch:
+                        customer_name = inv.supplied_item.product.customer_branch.customer.company_name
+                except AttributeError:
+                    pass
+
+                result.append({
+                    'id': inv.id,
+                    'item_type': 'supplied',
+                    'item_type_display': '支給品',
+                    'inventory_id': inv.id,
+                    'item_number': inv.supplied_item.item_number,
+                    'item_name': inv.supplied_item.item_name,
+                    'unit': inv.supplied_item.unit,
+                    'quantity': inv.quantity,
+                    'product_id': inv.supplied_item.product_id,
+                    'product_number': inv.supplied_item.product.product_number if inv.supplied_item.product else None,
+                    'product_name': inv.supplied_item.product.product_name if inv.supplied_item.product else None,
+                    'customer_name': customer_name,
+                    'lot_number': inv.lot_number,
+                    'received_date': inv.received_date.isoformat() if inv.received_date else None,
+                })
+
+        # 購入品在庫を取得
+        if not item_type or item_type == 'purchased':
+            purchased_queryset = PurchasedItemInventory.objects.select_related(
+                'part',
+                'part__product',
+                'part__product__customer_branch',
+                'part__product__customer_branch__customer',
+                'part__supplier_branch',
+                'part__supplier_branch__supplier'
             )
 
-        for inv in supplied_queryset:
-            customer_name = None
-            try:
-                if inv.supplied_item.product and inv.supplied_item.product.customer_branch:
-                    customer_name = inv.supplied_item.product.customer_branch.customer.company_name
-            except AttributeError:
-                pass
+            if product_id:
+                purchased_queryset = purchased_queryset.filter(
+                    part__product_id=product_id
+                )
 
-            result.append({
-                'id': inv.id,
-                'item_type': 'supplied',
-                'item_type_display': '支給品',
-                'inventory_id': inv.id,
-                'item_number': inv.supplied_item.item_number,
-                'item_name': inv.supplied_item.item_name,
-                'unit': inv.supplied_item.unit,
-                'quantity': inv.quantity,
-                'product_id': inv.supplied_item.product_id,
-                'product_number': inv.supplied_item.product.product_number if inv.supplied_item.product else None,
-                'product_name': inv.supplied_item.product.product_name if inv.supplied_item.product else None,
-                'customer_name': customer_name,
-                'lot_number': inv.lot_number,
-                'received_date': inv.received_date.isoformat() if inv.received_date else None,
-            })
+            if search:
+                purchased_queryset = purchased_queryset.filter(
+                    Q(part__part_number__icontains=search) |
+                    Q(part__part_name__icontains=search)
+                )
 
-    # 購入品在庫を取得
-    if not item_type or item_type == 'purchased':
-        purchased_queryset = PurchasedItemInventory.objects.select_related(
-            'part',
-            'part__product',
-            'part__product__customer_branch',
-            'part__product__customer_branch__customer',
-            'part__supplier_branch',
-            'part__supplier_branch__supplier'
-        )
+            for inv in purchased_queryset:
+                customer_name = None
+                try:
+                    if inv.part.product and inv.part.product.customer_branch:
+                        customer_name = inv.part.product.customer_branch.customer.company_name
+                except AttributeError:
+                    pass
 
-        if product_id:
-            purchased_queryset = purchased_queryset.filter(
-                part__product_id=product_id
-            )
-
-        if search:
-            purchased_queryset = purchased_queryset.filter(
-                Q(part__part_number__icontains=search) |
-                Q(part__part_name__icontains=search)
-            )
-
-        for inv in purchased_queryset:
-            customer_name = None
-            try:
-                if inv.part.product and inv.part.product.customer_branch:
-                    customer_name = inv.part.product.customer_branch.customer.company_name
-            except AttributeError:
-                pass
-
-            result.append({
-                'id': inv.id,
-                'item_type': 'purchased',
-                'item_type_display': '購入品',
-                'inventory_id': inv.id,
-                'item_number': inv.part.part_number,
-                'item_name': inv.part.part_name,
-                'unit': inv.part.unit,
-                'quantity': inv.quantity,
-                'product_id': inv.part.product_id if inv.part.product else None,
-                'product_number': inv.part.product.product_number if inv.part.product else None,
-                'product_name': inv.part.product.product_name if inv.part.product else None,
-                'customer_name': customer_name,
-                'supplier_name': inv.part.supplier_branch.supplier.company_name if inv.part.supplier_branch else None,
-                'supplier_branch_name': inv.part.supplier_branch.branch_name if inv.part.supplier_branch else None,
-                'lot_number': inv.lot_number,
-                'received_date': inv.received_date.isoformat() if inv.received_date else None,
-            })
+                result.append({
+                    'id': inv.id,
+                    'item_type': 'purchased',
+                    'item_type_display': '購入品',
+                    'inventory_id': inv.id,
+                    'item_number': inv.part.part_number,
+                    'item_name': inv.part.part_name,
+                    'unit': inv.part.unit,
+                    'quantity': inv.quantity,
+                    'product_id': inv.part.product_id if inv.part.product else None,
+                    'product_number': inv.part.product.product_number if inv.part.product else None,
+                    'product_name': inv.part.product.product_name if inv.part.product else None,
+                    'customer_name': customer_name,
+                    'supplier_name': inv.part.supplier_branch.supplier.company_name if inv.part.supplier_branch else None,
+                    'supplier_branch_name': inv.part.supplier_branch.branch_name if inv.part.supplier_branch else None,
+                    'lot_number': inv.lot_number,
+                    'received_date': inv.received_date.isoformat() if inv.received_date else None,
+                })
 
     # 品番でソート
     result.sort(key=lambda x: x['item_number'])
+
+    # 件数制限を適用
+    if limit:
+        try:
+            limit_int = int(limit)
+            result = result[:limit_int]
+        except ValueError:
+            pass
 
     return Response(result, status=status.HTTP_200_OK)
 

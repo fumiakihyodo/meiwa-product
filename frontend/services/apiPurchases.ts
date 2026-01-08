@@ -738,6 +738,16 @@ export const purchasesApi = {
         return response.data.results;
     },
 
+    // 個別の受入れアイテムをキャンセル
+    cancelReceivingItem: async (itemId: number): Promise<{
+        message: string;
+        item_number: string;
+        cancelled_quantity: number;
+    }> => {
+        const response = await apiClient.post(`/purchases/supplied-item-receiving-items/${itemId}/cancel/`);
+        return response.data;
+    },
+
     // ===== 購入品管理 - 発注 =====
 
     // 発注一覧取得
@@ -1042,6 +1052,8 @@ export const purchasesApi = {
         item_type?: InventoryItemType;
         product?: number;
         search?: string;
+        include_all_master?: boolean;
+        limit?: number;
     }): Promise<InventoryForAdjustment[]> => {
         const response = await apiClient.get<InventoryForAdjustment[]>(
             '/purchases/inventory-for-adjustment/',

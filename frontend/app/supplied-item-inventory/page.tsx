@@ -49,6 +49,7 @@ import {
     LocalShipping as ReceivingIcon,
     Star as StarIcon,
     StarBorder as StarBorderIcon,
+    Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { purchasesApi } from '@/services/apiPurchases';
@@ -187,6 +188,16 @@ export default function SuppliedItemInventoryPage() {
     // 部品詳細モーダル関連
     const [partDetailModalOpen, setPartDetailModalOpen] = useState(false);
     const [selectedPartItemNumber, setSelectedPartItemNumber] = useState<string | null>(null);
+
+    // 受入れアイテムキャンセル関連
+    const [cancelReceivingItemDialogOpen, setCancelReceivingItemDialogOpen] = useState(false);
+    const [cancellingReceivingItem, setCancellingReceivingItem] = useState<{
+        id: number;
+        item_number: string;
+        calculated_quantity: number;
+        receiving_date: string;
+    } | null>(null);
+    const [cancellingInProgress, setCancellingInProgress] = useState(false);
 
     // 在庫一覧（支給品マスターベース）関連
     const [itemsWithInventory, setItemsWithInventory] = useState<SuppliedItemWithInventory[]>([]);
@@ -1069,6 +1080,39 @@ const inventoryWithItemsColumns: GridColDef<SuppliedItemWithInventory>[] = [
     const handleOpenPartDetail = (itemNumber: string) => {
         setSelectedPartItemNumber(itemNumber);
         setPartDetailModalOpen(true);
+    };
+
+    // 受入れアイテムのキャンセル確認ダイアログを開く
+    const handleOpenCancelReceivingItem = (item: {
+        id: number;
+        item_number: string;
+        calculated_quantity: number;
+        receiving_date: string;
+    }) => {
+        setCancellingReceivingItem(item);
+        setCancelReceivingItemDialogOpen(true);
+    };
+
+    // 受入れアイテムのキャンセルを実行
+    const handleConfirmCancelReceivingItem = async () => {
+        if (!cancellingReceivingItem) return;
+
+        setCancellingInProgress(true);
+        try {
+            await purchasesApi.cancelReceivingItem(cancellingReceivingItem.id);
+            // 成功したらデータを再取得
+            await fetchReceivingItems();
+            await fetchData();
+            setCancelReceivingItemDialogOpen(false);
+            setCancellingReceivingItem(null);
+            // 部品詳細モーダルを閉じる（データが変わったので）
+            setPartDetailModalOpen(false);
+        } catch (error) {
+            console.error('受入れアイテムキャンセルエラー:', error);
+            alert('受入れのキャンセルに失敗しました');
+        } finally {
+            setCancellingInProgress(false);
+        }
     };
 
     // 部品一覧カラム（受入一覧の部品別タブ用 - 集計表示）
@@ -1959,6 +2003,7 @@ const inventoryWithItemsColumns: GridColDef<SuppliedItemWithInventory>[] = [
                                                 <TableCell align="right">受入数量</TableCell>
                                                 <TableCell>リスト番号</TableCell>
                                                 <TableCell>備考</TableCell>
+                                                <TableCell align="center">操作</TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -1982,6 +2027,21 @@ const inventoryWithItemsColumns: GridColDef<SuppliedItemWithInventory>[] = [
                                                     </TableCell>
                                                     <TableCell>{item.list_number || '未紐付け'}</TableCell>
                                                     <TableCell>{item.notes || '-'}</TableCell>
+                                                    <TableCell align="center">
+                                                        <IconButton
+                                                            size="small"
+                                                            color="error"
+                                                            onClick={() => handleOpenCancelReceivingItem({
+                                                                id: item.id,
+                                                                item_number: item.item_number,
+                                                                calculated_quantity: item.calculated_quantity,
+                                                                receiving_date: item.receiving_date,
+                                                            })}
+                                                            title="この受入れをキャンセル"
+                                                        >
+                                                            <CancelIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </TableCell>
                                                 </TableRow>
                                             ))}
                                         </TableBody>
@@ -2111,6 +2171,59 @@ const inventoryWithItemsColumns: GridColDef<SuppliedItemWithInventory>[] = [
                             disabled={deletingInventoryRecordInProgress}
                         >
                             {deletingInventoryRecordInProgress ? <CircularProgress size={24} /> : '削除'}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* 受入れアイテムキャンセル確認ダイアログ */}
+                <Dialog
+                    open={cancelReceivingItemDialogOpen}
+                    onClose={() => setCancelReceivingItemDialogOpen(false)}
+                >
+                    <DialogTitle>受入れのキャンセル</DialogTitle>
+                    <DialogContent>
+                        {cancellingReceivingItem && (
+                            <>
+                                <Typography sx={{ mb: 2 }}>
+                                    以下の受入れをキャンセルしてもよろしいですか？
+                                </Typography>
+                                <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1 }}>
+                                    <Typography variant="body2">
+                                        <strong>品番:</strong> {cancellingReceivingItem.item_number}
+                                    </Typography>
+                                    <Typography variant="body2">
+                                        <strong>受入日:</strong> {new Date(cancellingReceivingItem.receiving_date).toLocaleString('ja-JP', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                        })}
+                                    </Typography>
+                                    <Typography variant="body2">
+                                        <strong>数量:</strong> {cancellingReceivingItem.calculated_quantity.toLocaleString()}
+                                    </Typography>
+                                </Box>
+                                <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+                                    ※ この操作により、受入れ数量が減少し、関連する在庫も削除されます。
+                                </Typography>
+                            </>
+                        )}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button
+                            onClick={() => setCancelReceivingItemDialogOpen(false)}
+                            disabled={cancellingInProgress}
+                        >
+                            閉じる
+                        </Button>
+                        <Button
+                            variant="contained"
+                            color="error"
+                            onClick={handleConfirmCancelReceivingItem}
+                            disabled={cancellingInProgress}
+                        >
+                            {cancellingInProgress ? <CircularProgress size={24} /> : 'キャンセルする'}
                         </Button>
                     </DialogActions>
                 </Dialog>
