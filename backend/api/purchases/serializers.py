@@ -1939,7 +1939,7 @@ class PartForOrderSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'part_number', 'part_name', 'supplier_part_name',
             'specification', 'unit', 'order_type', 'minimum_order_quantity',
-            'current_price', 'is_active'
+            'lead_time_days', 'current_price', 'is_active'
         ]
 
 

@@ -840,6 +840,7 @@ export interface PartForOrder {
     unit: string;
     order_type: 'MOQ' | 'SPQ' | 'SNP' | 'OTHER';
     minimum_order_quantity: number;
+    lead_time_days?: number;
     current_price?: number;
     is_active: boolean;
 }
