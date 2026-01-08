@@ -19,12 +19,14 @@ import {
     InputLabel,
     Select,
     MenuItem,
+    CircularProgress,
 } from '@mui/material';
 import {
     DataGrid,
     GridColDef,
     GridRenderCellParams,
     GridActionsCellItem,
+    GridRowSelectionModel,
 } from '@mui/x-data-grid';
 import {
     Add as AddIcon,
@@ -75,6 +77,11 @@ export default function PartsPage() {
     // 価格履歴モーダル用の状態を追加
     const [priceListModalOpen, setPriceListModalOpen] = useState<boolean>(false);
     const [selectedPartForPrice, setSelectedPartForPrice] = useState<Part | null>(null);
+
+    // 複数選択用の状態
+    const [selectedRows, setSelectedRows] = useState<GridRowSelectionModel>([]);
+    const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+    const [bulkDeleting, setBulkDeleting] = useState(false);
 
     // 部品データの取得（型パラメータを明示）
     const {
@@ -196,6 +203,47 @@ export default function PartsPage() {
             toast.error('部品の削除に失敗しました');
         }
     }, [selectedPart, fetchParts]);
+
+    // 一括削除処理
+    const handleBulkDelete = useCallback(async () => {
+        if (selectedRows.length === 0) return;
+
+        setBulkDeleting(true);
+        try {
+            const ids = selectedRows.map(id => Number(id));
+            const result = await purchasesApi.bulkDeleteParts(ids);
+            toast.success(result.message);
+            setBulkDeleteDialogOpen(false);
+            setSelectedRows([]);
+            fetchParts();
+        } catch (error: unknown) {
+            console.error('一括削除エラー:', error);
+            interface ApiError {
+                response?: {
+                    data?: {
+                        error?: string;
+                        blocked_parts?: Array<{ id: number; part_number: string; part_name: string }>;
+                    };
+                };
+            }
+            const apiError = error as ApiError;
+            if (apiError.response?.data?.blocked_parts) {
+                const blockedCount = apiError.response.data.blocked_parts.length;
+                toast.error(`${blockedCount}件の部品に価格履歴があるため削除できません`);
+            } else if (apiError.response?.data?.error) {
+                toast.error(apiError.response.data.error);
+            } else {
+                toast.error('一括削除に失敗しました');
+            }
+        } finally {
+            setBulkDeleting(false);
+        }
+    }, [selectedRows, fetchParts]);
+
+    // 選択行の変更ハンドラ
+    const handleRowSelectionChange = useCallback((newSelection: GridRowSelectionModel) => {
+        setSelectedRows(newSelection);
+    }, []);
 
     const handleSearch = () => {
         const params: PartSearchParams = {};
@@ -413,6 +461,49 @@ export default function PartsPage() {
                         </Box>
                     </Paper>
 
+                    {/* 選択時のアクションバー */}
+                    {selectedRows.length > 0 && (
+                        <Paper
+                            sx={{
+                                p: 2,
+                                mb: 2,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                bgcolor: 'primary.light',
+                                color: 'primary.contrastText',
+                            }}
+                        >
+                            <Typography variant="body1">
+                                {selectedRows.length}件選択中
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button
+                                    variant="contained"
+                                    color="error"
+                                    startIcon={<DeleteIcon />}
+                                    onClick={() => setBulkDeleteDialogOpen(true)}
+                                >
+                                    一括削除
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    sx={{
+                                        color: 'primary.contrastText',
+                                        borderColor: 'primary.contrastText',
+                                        '&:hover': {
+                                            borderColor: 'primary.contrastText',
+                                            bgcolor: 'rgba(255,255,255,0.1)',
+                                        },
+                                    }}
+                                    onClick={() => setSelectedRows([])}
+                                >
+                                    選択解除
+                                </Button>
+                            </Box>
+                        </Paper>
+                    )}
+
                     <Paper sx={{ width: '100%' }}>
                         <DataGrid
                             rows={parts ?? []}
@@ -426,6 +517,8 @@ export default function PartsPage() {
                             }}
                             checkboxSelection
                             disableRowSelectionOnClick
+                            rowSelectionModel={selectedRows}
+                            onRowSelectionModelChange={handleRowSelectionChange}
                             autoHeight
                             sx={{
                                 '& .MuiDataGrid-cell:focus': {
@@ -508,6 +601,50 @@ export default function PartsPage() {
                             <Button onClick={() => setDeleteDialogOpen(false)}>キャンセル</Button>
                             <Button onClick={handleDeletePart} color="error" autoFocus>
                                 削除
+                            </Button>
+                        </DialogActions>
+                    </Dialog>
+
+                    {/* Bulk Delete Confirmation Dialog */}
+                    <Dialog
+                        open={bulkDeleteDialogOpen}
+                        onClose={() => !bulkDeleting && setBulkDeleteDialogOpen(false)}
+                    >
+                        <DialogTitle>部品の一括削除</DialogTitle>
+                        <DialogContent>
+                            <DialogContentText>
+                                選択した{selectedRows.length}件の部品を削除してもよろしいですか?
+                            </DialogContentText>
+                            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1, maxHeight: 200, overflow: 'auto' }}>
+                                {parts?.filter(p => selectedRows.includes(p.id)).map((part) => (
+                                    <Box key={part.id} sx={{ mb: 1, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                                        <Typography variant="body2" fontWeight="bold">
+                                            {part.part_number}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {part.part_name}
+                                        </Typography>
+                                    </Box>
+                                ))}
+                            </Box>
+                            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+                                ※ この操作は取り消せません。価格履歴が存在する部品は削除できません。
+                            </Typography>
+                        </DialogContent>
+                        <DialogActions>
+                            <Button
+                                onClick={() => setBulkDeleteDialogOpen(false)}
+                                disabled={bulkDeleting}
+                            >
+                                キャンセル
+                            </Button>
+                            <Button
+                                onClick={handleBulkDelete}
+                                color="error"
+                                disabled={bulkDeleting}
+                                startIcon={bulkDeleting ? <CircularProgress size={16} /> : null}
+                            >
+                                {bulkDeleting ? '削除中...' : '一括削除'}
                             </Button>
                         </DialogActions>
                     </Dialog>

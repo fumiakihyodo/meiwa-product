@@ -111,6 +111,16 @@ export const purchasesApi = {
         await apiClient.delete(`/purchases/parts/${id}/`);
     },
 
+    // 部品一括削除
+    bulkDeleteParts: async (ids: number[]): Promise<{
+        success: boolean;
+        message: string;
+        deleted_count: number;
+    }> => {
+        const response = await apiClient.post('/purchases/parts/bulk-delete/', { ids });
+        return response.data;
+    },
+
     // Price Histories
     getPriceHistories: async (params?: { 
         part?: number;

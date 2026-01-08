@@ -4,6 +4,7 @@ from django.urls import path
 from api.purchases.views import (
     PartListCreateView,
     PartDetailView,
+    PartBulkDeleteView,
     PriceHistoryListCreateView,
     PriceHistoryDetailView,
     PartBulkImportView,
@@ -44,6 +45,7 @@ urlpatterns = [
     # 部品関連
     path('parts/', PartListCreateView.as_view(), name='part_list_create'),
     path('parts/<int:pk>/', PartDetailView.as_view(), name='part_detail'),
+    path('parts/bulk-delete/', PartBulkDeleteView.as_view(), name='part_bulk_delete'),
     path('parts/bulk-import/', PartBulkImportView.as_view(), name='part_bulk_import'),
     path('parts/csv-template/', PartCSVTemplateView.as_view(), name='part_csv_template'),
 

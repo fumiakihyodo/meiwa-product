@@ -259,6 +259,72 @@ class PartDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class PartBulkDeleteView(APIView):
+    """部品一括削除ビュー"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """複数の部品を一括削除"""
+        # 管理者権限チェック
+        if not request.user.is_administrator:
+            return Response(
+                {"error": "削除権限がありません"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        part_ids = request.data.get('ids', [])
+
+        if not part_ids:
+            return Response(
+                {"error": "削除する部品IDが指定されていません"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not isinstance(part_ids, list):
+            return Response(
+                {"error": "IDはリスト形式で指定してください"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 部品の存在確認
+        parts = Part.objects.filter(id__in=part_ids)
+        found_ids = set(parts.values_list('id', flat=True))
+        not_found_ids = set(part_ids) - found_ids
+
+        if not_found_ids:
+            return Response(
+                {"error": f"以下のIDの部品が見つかりません: {list(not_found_ids)}"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 価格履歴が存在する部品をチェック
+        parts_with_history = parts.annotate(
+            history_count=Count('price_histories')
+        ).filter(history_count__gt=0)
+
+        if parts_with_history.exists():
+            blocked_parts = [
+                {"id": p.id, "part_number": p.part_number, "part_name": p.part_name}
+                for p in parts_with_history
+            ]
+            return Response(
+                {
+                    "error": "価格履歴が存在する部品があるため削除できません",
+                    "blocked_parts": blocked_parts
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 一括削除実行
+        deleted_count = parts.delete()[0]
+
+        return Response({
+            "success": True,
+            "message": f"{deleted_count}件の部品を削除しました",
+            "deleted_count": deleted_count
+        }, status=status.HTTP_200_OK)
+
+
 # ==================== PriceHistory Views ====================
 
 class PriceHistoryListCreateView(generics.ListCreateAPIView):
