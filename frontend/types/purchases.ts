@@ -1109,3 +1109,60 @@ export interface InventoryForAdjustment {
     lot_number?: string;
     received_date?: string;
 }
+
+// ===== 購入品受入一覧タブ用の型定義 =====
+
+// 受入待ち発注情報
+export interface PendingOrderInfo {
+    order_id: number;
+    order_item_id: number;
+    order_number: string;
+    order_date: string | null;
+    quantity: number;
+    received_quantity: number;
+    remaining_quantity: number;
+}
+
+// 受入待ち部品一覧アイテム
+export interface PendingOrderItemForReceiving {
+    part_id: number;
+    part_number: string;
+    part_name: string;
+    supplier_name: string | null;
+    supplier_branch_name: string | null;
+    unit: string;
+    total_ordered: number;
+    total_received: number;
+    total_remaining: number;
+    orders: PendingOrderInfo[];
+}
+
+// 部品受入リクエスト
+export interface ReceivePartByQuantityRequest {
+    part_id: number;
+    product_id: number;
+    quantity: number;
+    lot_number?: string;
+}
+
+// 処理済み明細情報
+export interface ProcessedOrderItem {
+    order_number: string;
+    order_item_id: number;
+    consumed_quantity: number;
+    item_remaining: number;
+    item_completed: boolean;
+}
+
+// 部品受入レスポンス
+export interface ReceivePartByQuantityResponse {
+    message: string;
+    part: {
+        part_id: number;
+        part_number: string;
+        part_name: string;
+    };
+    received_quantity: number;
+    remaining_quantity: number;
+    processed_items: ProcessedOrderItem[];
+}

@@ -72,6 +72,10 @@ import {
     InventoryItemType,
     AdjustmentType,
     InventoryAdjustmentReason,
+    // 購入品受入一覧タブ用
+    PendingOrderItemForReceiving,
+    ReceivePartByQuantityRequest,
+    ReceivePartByQuantityResponse,
 } from '@/types/purchases';
 
 import {
@@ -1058,6 +1062,30 @@ export const purchasesApi = {
         const response = await apiClient.get<InventoryForAdjustment[]>(
             '/purchases/inventory-for-adjustment/',
             { params }
+        );
+        return response.data;
+    },
+
+    // ===== 購入品受入一覧タブ用 =====
+
+    // 製品別の受入待ち発注部品一覧を取得
+    getPendingOrderItemsForReceiving: async (params: {
+        product: number;
+    }): Promise<PendingOrderItemForReceiving[]> => {
+        const response = await apiClient.get<PendingOrderItemForReceiving[]>(
+            '/purchases/pending-order-items-for-receiving/',
+            { params }
+        );
+        return response.data;
+    },
+
+    // 部品の受入処理（発注番号の若い順に消化）
+    receivePartByQuantity: async (
+        data: ReceivePartByQuantityRequest
+    ): Promise<ReceivePartByQuantityResponse> => {
+        const response = await apiClient.post<ReceivePartByQuantityResponse>(
+            '/purchases/receive-part-by-quantity/',
+            data
         );
         return response.data;
     },

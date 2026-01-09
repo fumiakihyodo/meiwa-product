@@ -4950,3 +4950,299 @@ def get_supplied_item_inventory_with_items(request):
         result.append(item_data)
 
     return Response(result, status=status.HTTP_200_OK)
+
+
+# ===== 購入品受入一覧タブ用 Views =====
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_pending_order_items_for_receiving(request):
+    """製品別の受入待ち発注部品一覧を取得
+
+    発注済み（ordered, partially_received）の発注から、
+    まだ受入が完了していない部品を一覧で取得する。
+    同じ部品が複数の発注にある場合は、発注番号の若い順に表示する。
+
+    Query Parameters:
+        product: 製品ID（必須）
+
+    Returns:
+        [
+            {
+                "part_id": 1,
+                "part_number": "P001",
+                "part_name": "部品名",
+                "supplier_name": "仕入れ先名",
+                "supplier_branch_name": "支店名",
+                "unit": "個",
+                "orders": [
+                    {
+                        "order_id": 1,
+                        "order_item_id": 10,
+                        "order_number": "PO-0001",
+                        "order_date": "2024-01-01",
+                        "quantity": 100,
+                        "received_quantity": 50,
+                        "remaining_quantity": 50
+                    },
+                    ...
+                ]
+            }
+        ]
+    """
+    product_id = request.query_params.get('product', None)
+
+    if not product_id:
+        return Response(
+            {"error": "製品IDが必要です"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 発注済み（未完了・未キャンセル）の発注明細を取得
+    order_items = PurchaseOrderItem.objects.filter(
+        purchase_order__product_id=product_id,
+        purchase_order__status__in=[
+            PurchaseOrder.OrderStatus.ORDERED,
+            PurchaseOrder.OrderStatus.PARTIALLY_RECEIVED,
+        ]
+    ).select_related(
+        'purchase_order',
+        'purchase_order__supplier_branch',
+        'purchase_order__supplier_branch__supplier',
+        'part'
+    ).order_by('part__part_number', 'purchase_order__order_number')
+
+    # 部品ごとにグループ化
+    parts_data = {}
+
+    for item in order_items:
+        received_qty = item.received_quantity or 0
+        remaining_qty = item.quantity - received_qty
+
+        # 受入残がない場合はスキップ
+        if remaining_qty <= 0:
+            continue
+
+        part_id = item.part_id
+
+        if part_id not in parts_data:
+            supplier_name = None
+            supplier_branch_name = None
+            if item.purchase_order.supplier_branch:
+                supplier_branch = item.purchase_order.supplier_branch
+                supplier_name = supplier_branch.supplier.company_name if supplier_branch.supplier else None
+                supplier_branch_name = supplier_branch.branch_name
+
+            parts_data[part_id] = {
+                'part_id': part_id,
+                'part_number': item.part_number,
+                'part_name': item.part_name,
+                'supplier_name': supplier_name or item.supplier_name,
+                'supplier_branch_name': supplier_branch_name or item.supplier_branch_name,
+                'unit': item.unit,
+                'total_ordered': 0,
+                'total_received': 0,
+                'total_remaining': 0,
+                'orders': []
+            }
+
+        parts_data[part_id]['total_ordered'] += item.quantity
+        parts_data[part_id]['total_received'] += received_qty
+        parts_data[part_id]['total_remaining'] += remaining_qty
+
+        parts_data[part_id]['orders'].append({
+            'order_id': item.purchase_order_id,
+            'order_item_id': item.id,
+            'order_number': item.purchase_order.order_number,
+            'order_date': item.purchase_order.order_date.isoformat() if item.purchase_order.order_date else None,
+            'quantity': item.quantity,
+            'received_quantity': received_qty,
+            'remaining_quantity': remaining_qty,
+        })
+
+    # 部品番号でソート
+    result = sorted(parts_data.values(), key=lambda x: x['part_number'])
+
+    return Response(result, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def receive_part_by_quantity(request):
+    """部品の受入処理（発注番号の若い順に消化）
+
+    部品番号と受入数量を指定して受入処理を行う。
+    同じ部品が複数の発注にある場合は、発注番号の若い順に消化していく。
+    受入と同時に在庫に追加する（員数確認スキップ）。
+
+    リクエストボディ:
+    {
+        "part_id": 1,          // 部品ID
+        "product_id": 1,       // 製品ID
+        "quantity": 100,       // 受入数量
+        "lot_number": "LOT001" // ロット番号（オプション）
+    }
+
+    処理内容:
+    1. 発注番号の若い順に発注明細を取得
+    2. 受入数量を発注残がある明細から順番に消化
+    3. 消化した分を在庫に追加
+    4. 発注ステータスを更新
+    """
+    from django.utils import timezone
+
+    part_id = request.data.get('part_id')
+    product_id = request.data.get('product_id')
+    receive_quantity = request.data.get('quantity')
+    lot_number = request.data.get('lot_number', '')
+
+    if not part_id:
+        return Response(
+            {"error": "部品IDを指定してください"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not product_id:
+        return Response(
+            {"error": "製品IDを指定してください"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not receive_quantity:
+        return Response(
+            {"error": "受入数量を指定してください"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        receive_quantity = int(receive_quantity)
+        if receive_quantity < 1:
+            raise ValueError()
+    except (ValueError, TypeError):
+        return Response(
+            {"error": "受入数量は1以上の整数を指定してください"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 部品を確認
+    try:
+        part = Part.objects.get(pk=part_id)
+    except Part.DoesNotExist:
+        return Response(
+            {"error": "部品が見つかりません"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # 発注番号の若い順に発注明細を取得（受入残がある明細のみ）
+    order_items = PurchaseOrderItem.objects.filter(
+        part_id=part_id,
+        purchase_order__product_id=product_id,
+        purchase_order__status__in=[
+            PurchaseOrder.OrderStatus.ORDERED,
+            PurchaseOrder.OrderStatus.PARTIALLY_RECEIVED,
+        ]
+    ).select_related(
+        'purchase_order', 'part'
+    ).order_by('purchase_order__order_number')
+
+    # 受入残がある明細のみフィルタ
+    items_with_remaining = [
+        item for item in order_items
+        if (item.received_quantity or 0) < item.quantity
+    ]
+
+    if not items_with_remaining:
+        return Response(
+            {"error": "この部品には受入待ちの発注がありません"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    now = timezone.now()
+    remaining_to_receive = receive_quantity
+    processed_items = []
+    affected_orders = set()
+    total_received = 0
+
+    with transaction.atomic():
+        for item in items_with_remaining:
+            if remaining_to_receive <= 0:
+                break
+
+            current_received = item.received_quantity or 0
+            item_remaining = item.quantity - current_received
+
+            if item_remaining <= 0:
+                continue
+
+            # この明細で消化する数量
+            consume_quantity = min(remaining_to_receive, item_remaining)
+            remaining_to_receive -= consume_quantity
+            total_received += consume_quantity
+
+            # 受領数量を更新
+            item.received_quantity = current_received + consume_quantity
+
+            # 受入確認フラグを立てる
+            if not item.receiving_confirmed:
+                item.receiving_confirmed = True
+                item.receiving_confirmed_at = now
+                item.receiving_confirmed_by = request.user
+
+            item.save()
+
+            # 在庫に追加
+            received_date = item.purchase_order.confirmed_delivery_date or now.date()
+
+            PurchasedItemInventory.objects.create(
+                part=part,
+                order_item=item,
+                quantity=consume_quantity,
+                lot_number=lot_number,
+                received_date=received_date,
+                created_by=request.user,
+                notes=f"受入登録（発注番号: {item.purchase_order.order_number}）"
+            )
+
+            affected_orders.add(item.purchase_order_id)
+
+            new_remaining = item.quantity - item.received_quantity
+            processed_items.append({
+                'order_number': item.purchase_order.order_number,
+                'order_item_id': item.id,
+                'consumed_quantity': consume_quantity,
+                'item_remaining': new_remaining,
+                'item_completed': new_remaining <= 0,
+            })
+
+        # 影響を受けた発注のステータスを更新
+        for order_id in affected_orders:
+            order = PurchaseOrder.objects.prefetch_related('items').get(pk=order_id)
+
+            all_fully_received = True
+            any_received = False
+
+            for order_item in order.items.all():
+                item_received = order_item.received_quantity or 0
+                if item_received > 0:
+                    any_received = True
+                if item_received < order_item.quantity:
+                    all_fully_received = False
+
+            if all_fully_received:
+                order.status = PurchaseOrder.OrderStatus.COMPLETED
+                order.save()
+            elif any_received and order.status == PurchaseOrder.OrderStatus.ORDERED:
+                order.status = PurchaseOrder.OrderStatus.PARTIALLY_RECEIVED
+                order.save()
+
+    return Response({
+        'message': f'{total_received}個を受入し、在庫に追加しました',
+        'part': {
+            'part_id': part.id,
+            'part_number': part.part_number,
+            'part_name': part.part_name,
+        },
+        'received_quantity': total_received,
+        'remaining_quantity': remaining_to_receive,
+        'processed_items': processed_items,
+    }, status=status.HTTP_200_OK)

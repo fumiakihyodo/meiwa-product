@@ -150,4 +150,8 @@ urlpatterns = [
     path('purchase-order-items/<int:item_pk>/cancel-receiving/', views.cancel_purchase_order_item_receiving, name='cancel_purchase_order_item_receiving'),
     path('purchase-orders/<int:pk>/bulk-receive/', views.bulk_receive_purchase_order, name='bulk_receive_purchase_order'),
     path('unreceived-purchase-items/', views.get_unreceived_purchase_items, name='unreceived_purchase_items'),
+
+    # 購入品受入一覧タブ用
+    path('pending-order-items-for-receiving/', views.get_pending_order_items_for_receiving, name='pending_order_items_for_receiving'),
+    path('receive-part-by-quantity/', views.receive_part_by_quantity, name='receive_part_by_quantity'),
 ]

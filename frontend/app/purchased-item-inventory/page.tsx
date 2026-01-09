@@ -64,6 +64,7 @@ import {
     SupplierPartsGroup,
     PartForOrder,
     PartWithInventory,
+    PendingOrderItemForReceiving,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
 import { PurchasedItemOrderModal } from '@/components/PurchasedItemInventory';
@@ -228,6 +229,13 @@ export default function PurchasedItemInventoryPage() {
     // デフォルト製品の初期化済みフラグ
     const [defaultProductInitialized, setDefaultProductInitialized] = useState(false);
 
+    // 受入一覧タブ関連
+    const [pendingOrderItems, setPendingOrderItems] = useState<PendingOrderItemForReceiving[]>([]);
+    const [loadingPendingItems, setLoadingPendingItems] = useState(false);
+    const [receivingProductFilter, setReceivingProductFilter] = useState<number | ''>('');
+    const [receivingQuantities, setReceivingQuantities] = useState<Record<number, number>>({}); // part_id -> 受入数量
+    const [processingReceiving, setProcessingReceiving] = useState(false);
+
     // フィルタリングされた発注一覧
     const filteredOrders = useMemo(() => {
         let result = orders;
@@ -311,6 +319,7 @@ export default function PurchasedItemInventoryPage() {
             if (defaultId && products.some((p: Product) => p.id === defaultId)) {
                 setProductFilter(defaultId);
                 setInventoryProductFilter(defaultId);
+                setReceivingProductFilter(defaultId);
             }
             setDefaultProductInitialized(true);
         }
@@ -364,6 +373,70 @@ export default function PurchasedItemInventoryPage() {
             setPartsWithInventory([]);
         }
     }, [inventoryProductFilter, fetchPartsWithInventory]);
+
+    // 受入一覧用：製品ごとの受入待ち部品を取得
+    const fetchPendingOrderItems = useCallback(async (productId: number) => {
+        setLoadingPendingItems(true);
+        try {
+            const data = await purchasesApi.getPendingOrderItemsForReceiving({ product: productId });
+            setPendingOrderItems(data);
+            // 受入数量をリセット
+            setReceivingQuantities({});
+        } catch (error) {
+            console.error('Failed to fetch pending order items:', error);
+            setPendingOrderItems([]);
+        } finally {
+            setLoadingPendingItems(false);
+        }
+    }, []);
+
+    // 受入タブの製品フィルタ変更時にデータを取得
+    useEffect(() => {
+        if (receivingProductFilter) {
+            fetchPendingOrderItems(receivingProductFilter);
+        } else {
+            setPendingOrderItems([]);
+            setReceivingQuantities({});
+        }
+    }, [receivingProductFilter, fetchPendingOrderItems]);
+
+    // 部品の受入処理（発注番号の若い順に消化）
+    const handleReceivePartQuantity = async (partId: number) => {
+        if (!receivingProductFilter) return;
+
+        const quantity = receivingQuantities[partId];
+        if (!quantity || quantity <= 0) {
+            alert('受入数量を入力してください');
+            return;
+        }
+
+        setProcessingReceiving(true);
+        try {
+            const result = await purchasesApi.receivePartByQuantity({
+                part_id: partId,
+                product_id: receivingProductFilter,
+                quantity: quantity,
+            });
+
+            alert(result.message);
+
+            // 受入後、データを再取得
+            await fetchPendingOrderItems(receivingProductFilter);
+            await fetchData();
+
+            // 入力欄をクリア
+            setReceivingQuantities(prev => ({
+                ...prev,
+                [partId]: 0,
+            }));
+        } catch (error: unknown) {
+            console.error('Failed to receive part:', error);
+            const errMessage = error instanceof Error ? error.message : '受入処理に失敗しました';
+            alert(errMessage);
+        } finally {
+            setProcessingReceiving(false);
+        }
+    };
 
     // 発注作成用の部品取得
     const fetchPartsForOrder = useCallback(async (productId: number) => {
@@ -969,6 +1042,7 @@ export default function PurchasedItemInventoryPage() {
                 sx={{ mb: 2 }}
             >
                 <Tab label="発注一覧" />
+                <Tab label="受入一覧" icon={<ReceivingIcon fontSize="small" />} iconPosition="start" />
                 <Tab label="在庫一覧" />
             </Tabs>
 
@@ -1051,8 +1125,240 @@ export default function PurchasedItemInventoryPage() {
                     </Box>
                 </TabPanel>
 
-                {/* 在庫一覧タブ */}
+                {/* 受入一覧タブ */}
                 <TabPanel value={tabValue} index={1}>
+                    <Box sx={{ p: 2 }}>
+                        {/* 製品フィルタ */}
+                        <Paper sx={{ p: 2, mb: 2 }}>
+                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <FormControl size="small" sx={{ minWidth: 320 }}>
+                                    <InputLabel>製品を選択</InputLabel>
+                                    <Select
+                                        value={receivingProductFilter}
+                                        label="製品を選択"
+                                        onChange={(e: SelectChangeEvent<number | ''>) => {
+                                            const val = e.target.value as number | '';
+                                            setReceivingProductFilter(val);
+                                        }}
+                                        renderValue={(selected) => {
+                                            if (!selected) return '-- 製品を選択してください --';
+                                            const product = products.find((p: Product) => p.id === selected);
+                                            if (!product) return '-- 製品を選択してください --';
+                                            const isDefault = getDefaultProductId() === product.id;
+                                            return (
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
+                                                    {product.product_number} - {product.product_name}
+                                                </Box>
+                                            );
+                                        }}
+                                    >
+                                        <MenuItem value="">-- 製品を選択してください --</MenuItem>
+                                        {products.map((p: Product) => {
+                                            const isDefault = getDefaultProductId() === p.id;
+                                            return (
+                                                <MenuItem key={p.id} value={p.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    <Tooltip title={isDefault ? 'デフォルトを解除' : 'デフォルトに設定'}>
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSetDefaultProductForFilters(p.id);
+                                                            }}
+                                                            sx={{ p: 0.5 }}
+                                                        >
+                                                            {isDefault ? (
+                                                                <StarIcon sx={{ color: 'warning.main' }} />
+                                                            ) : (
+                                                                <StarBorderIcon sx={{ color: 'action.disabled' }} />
+                                                            )}
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                    <span>{p.product_number} - {p.product_name}</span>
+                                                </MenuItem>
+                                            );
+                                        })}
+                                    </Select>
+                                </FormControl>
+                                {receivingProductFilter && (
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => setReceivingProductFilter('')}
+                                        title="選択解除"
+                                    >
+                                        <ClearIcon />
+                                    </IconButton>
+                                )}
+                                <IconButton
+                                    onClick={() => receivingProductFilter && fetchPendingOrderItems(receivingProductFilter)}
+                                    disabled={loadingPendingItems || !receivingProductFilter}
+                                >
+                                    <RefreshIcon />
+                                </IconButton>
+                            </Box>
+                        </Paper>
+
+                        {/* 製品未選択時のメッセージ */}
+                        {!receivingProductFilter && (
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                                製品を選択すると、発注済みで受入待ちの部品一覧が表示されます。
+                            </Alert>
+                        )}
+
+                        {/* ローディング */}
+                        {loadingPendingItems && (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                                <CircularProgress />
+                            </Box>
+                        )}
+
+                        {/* 受入待ち部品が無い場合 */}
+                        {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length === 0 && (
+                            <Alert severity="success" sx={{ mb: 2 }}>
+                                受入待ちの部品はありません。
+                            </Alert>
+                        )}
+
+                        {/* 受入待ち部品サマリー */}
+                        {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length > 0 && (
+                            <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                                <Typography variant="subtitle2" sx={{ mb: 1 }}>受入待ちサマリー</Typography>
+                                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">部品数</Typography>
+                                        <Typography variant="h6" fontWeight="bold">
+                                            {pendingOrderItems.length} 品目
+                                        </Typography>
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary">合計注文残</Typography>
+                                        <Typography variant="h6" fontWeight="bold" color="warning.main">
+                                            {pendingOrderItems.reduce((acc, item) => acc + item.total_remaining, 0).toLocaleString()}
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </Paper>
+                        )}
+
+                        {/* 受入一覧テーブル */}
+                        {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length > 0 && (
+                            <TableContainer component={Paper}>
+                                <Table size="small">
+                                    <TableHead>
+                                        <TableRow sx={{ bgcolor: 'grey.100' }}>
+                                            <TableCell>発注番号</TableCell>
+                                            <TableCell>部品番号</TableCell>
+                                            <TableCell>部品名</TableCell>
+                                            <TableCell>仕入先</TableCell>
+                                            <TableCell align="right">発注数</TableCell>
+                                            <TableCell align="right">注文残</TableCell>
+                                            <TableCell align="center" sx={{ width: 200 }}>受入入力</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {pendingOrderItems.map((item) => (
+                                            <React.Fragment key={item.part_id}>
+                                                {item.orders.map((order, orderIndex) => (
+                                                    <TableRow key={`${item.part_id}-${order.order_item_id}`}>
+                                                        <TableCell>
+                                                            <Button
+                                                                size="small"
+                                                                onClick={() => handleViewOrder(order.order_id)}
+                                                                sx={{ textTransform: 'none' }}
+                                                            >
+                                                                {order.order_number}
+                                                            </Button>
+                                                        </TableCell>
+                                                        {orderIndex === 0 && (
+                                                            <>
+                                                                <TableCell rowSpan={item.orders.length}>
+                                                                    {item.part_number}
+                                                                </TableCell>
+                                                                <TableCell rowSpan={item.orders.length}>
+                                                                    {item.part_name}
+                                                                </TableCell>
+                                                                <TableCell rowSpan={item.orders.length}>
+                                                                    {item.supplier_name || '-'}
+                                                                </TableCell>
+                                                            </>
+                                                        )}
+                                                        <TableCell align="right">
+                                                            {order.quantity.toLocaleString()} {item.unit}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                            <Chip
+                                                                size="small"
+                                                                label={`${order.remaining_quantity.toLocaleString()} ${item.unit}`}
+                                                                color={order.remaining_quantity > 0 ? 'warning' : 'success'}
+                                                                variant="outlined"
+                                                            />
+                                                        </TableCell>
+                                                        {orderIndex === 0 && (
+                                                            <TableCell rowSpan={item.orders.length} align="center">
+                                                                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center' }}>
+                                                                    <TextField
+                                                                        type="number"
+                                                                        size="small"
+                                                                        value={receivingQuantities[item.part_id] || ''}
+                                                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                                                            const val = parseInt(e.target.value, 10) || 0;
+                                                                            setReceivingQuantities(prev => ({
+                                                                                ...prev,
+                                                                                [item.part_id]: val,
+                                                                            }));
+                                                                        }}
+                                                                        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                                                                            if (e.key === 'Enter') {
+                                                                                e.preventDefault();
+                                                                                handleReceivePartQuantity(item.part_id);
+                                                                            }
+                                                                        }}
+                                                                        placeholder="数量"
+                                                                        inputProps={{ min: 1, max: item.total_remaining }}
+                                                                        sx={{ width: 100 }}
+                                                                    />
+                                                                    <Tooltip title="受入実行（発注番号の若い順に消化）">
+                                                                        <span>
+                                                                            <Button
+                                                                                variant="contained"
+                                                                                size="small"
+                                                                                onClick={() => handleReceivePartQuantity(item.part_id)}
+                                                                                disabled={processingReceiving || !receivingQuantities[item.part_id]}
+                                                                            >
+                                                                                {processingReceiving ? (
+                                                                                    <CircularProgress size={16} />
+                                                                                ) : (
+                                                                                    '受入'
+                                                                                )}
+                                                                            </Button>
+                                                                        </span>
+                                                                    </Tooltip>
+                                                                </Box>
+                                                            </TableCell>
+                                                        )}
+                                                    </TableRow>
+                                                ))}
+                                            </React.Fragment>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        )}
+
+                        {/* 使い方の説明 */}
+                        {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length > 0 && (
+                            <Alert severity="info" sx={{ mt: 2 }}>
+                                <Typography variant="body2">
+                                    • 受入数量を入力して「受入」ボタンをクリックすると、発注番号の若い順から在庫に追加されます。<br />
+                                    • 発注数量を満たすと自動的に発注ステータスが更新されます。
+                                </Typography>
+                            </Alert>
+                        )}
+                    </Box>
+                </TabPanel>
+
+                {/* 在庫一覧タブ */}
+                <TabPanel value={tabValue} index={2}>
                     <Box sx={{ p: 2 }}>
                         {/* 製品フィルタ */}
                         <Paper sx={{ p: 2, mb: 2 }}>
