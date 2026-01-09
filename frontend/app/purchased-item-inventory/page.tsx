@@ -23,9 +23,6 @@ import {
     Tabs,
     Tab,
     Chip,
-    Accordion,
-    AccordionSummary,
-    AccordionDetails,
     Table,
     TableBody,
     TableCell,
@@ -44,9 +41,7 @@ import {
     Visibility as ViewIcon,
     Delete as DeleteIcon,
     Add as AddIcon,
-    ExpandMore as ExpandMoreIcon,
     Send as SendIcon,
-    Inventory as InventoryIcon,
     LocalShipping as ReceivingIcon,
     History as HistoryIcon,
     Star as StarIcon,
@@ -690,20 +685,6 @@ export default function PurchasedItemInventoryPage() {
         }
     };
 
-    // 一括員数確認
-    const handleBulkCount = async (orderId: number) => {
-        try {
-            const result = await purchasesApi.bulkConfirmPurchaseOrderCount(orderId);
-            alert(result.message);
-            if (selectedOrder && selectedOrder.id === orderId) {
-                setSelectedOrder(result.order);
-            }
-            await fetchData();
-        } catch (error) {
-            console.error('Failed to confirm count:', error);
-            alert('員数確認に失敗しました');
-        }
-    };
 
     // 個別受入確認開始
     const handleStartItemReceiving = (item: PurchaseOrderItem) => {
@@ -894,12 +875,6 @@ export default function PurchasedItemInventoryPage() {
             type: 'number',
         },
         {
-            field: 'total_quantity',
-            headerName: '合計数量',
-            width: 100,
-            type: 'number',
-        },
-        {
             field: 'progress',
             headerName: '進捗',
             width: 120,
@@ -962,7 +937,7 @@ export default function PurchasedItemInventoryPage() {
     const inventoryColumns: GridColDef[] = [
         {
             field: 'part_number',
-            headerName: '部品番号',
+            headerName: '品番',
             width: 150,
         },
         {
@@ -1001,7 +976,7 @@ export default function PurchasedItemInventoryPage() {
             width: 120,
             sortable: false,
             renderCell: (params: GridRenderCellParams<PartWithInventory>) => (
-                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                <Box sx={{ display: 'flex', gap: 0.5, height: '100%' }}>
                     <Tooltip title="詳細・履歴">
                         <IconButton
                             size="small"
@@ -1042,7 +1017,7 @@ export default function PurchasedItemInventoryPage() {
                 sx={{ mb: 2 }}
             >
                 <Tab label="発注一覧" />
-                <Tab label="受入一覧" icon={<ReceivingIcon fontSize="small" />} iconPosition="start" />
+                <Tab label="受入一覧" />
                 <Tab label="在庫一覧" />
             </Tabs>
 
@@ -1079,8 +1054,6 @@ export default function PurchasedItemInventoryPage() {
                                     <MenuItem value="ordered">発注済み</MenuItem>
                                     <MenuItem value="partially_received">一部受入</MenuItem>
                                     <MenuItem value="received">受入完了</MenuItem>
-                                    <MenuItem value="pending_count">員数確認待ち</MenuItem>
-                                    <MenuItem value="counting">員数確認中</MenuItem>
                                     <MenuItem value="completed">完了</MenuItem>
                                     <MenuItem value="cancelled">キャンセル</MenuItem>
                                 </Select>
@@ -1775,8 +1748,6 @@ export default function PurchasedItemInventoryPage() {
                 order={selectedOrder}
                 loading={loadingDetail}
                 onUpdateStatus={handleUpdateStatus}
-                onBulkReceiving={handleBulkReceiving}
-                onBulkCount={handleBulkCount}
                 receivingItemId={receivingItemId}
                 receivingQuantity={receivingQuantity}
                 receivingLotNumber={receivingLotNumber}

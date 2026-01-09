@@ -54,7 +54,6 @@ import {
     InventoryAdjustmentReasonLabels,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
-import { Sidebar } from '@/components/Sidebar';
 
 // タブパネル用コンポーネント
 interface TabPanelProps {

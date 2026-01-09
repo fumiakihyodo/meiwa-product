@@ -6,8 +6,6 @@ import {
     Typography,
     Button,
     Paper,
-    TextField,
-    IconButton,
     Tooltip,
     Dialog,
     DialogTitle,
@@ -25,9 +23,6 @@ import {
 import {
     CheckCircle as CheckCircleIcon,
     HourglassEmpty as PendingIcon,
-    LocalShipping as ReceivingIcon,
-    Delete as DeleteIcon,
-    Cancel as CancelIcon,
 } from '@mui/icons-material';
 import {
     PurchaseOrder,
@@ -66,7 +61,6 @@ interface PurchasedItemOrderModalProps {
     order: PurchaseOrder | null;
     loading: boolean;
     onUpdateStatus: (orderId: number, newStatus: PurchaseOrderStatus) => Promise<void>;
-    onBulkReceiving: (orderId: number) => Promise<void>;
     onBulkCount?: (orderId: number) => Promise<void>;
     // 個別受入確認関連
     receivingItemId: number | null;
@@ -78,7 +72,6 @@ interface PurchasedItemOrderModalProps {
     onConfirmItemReceiving: () => Promise<void>;
     onReceivingQuantityChange: (quantity: number) => void;
     onReceivingLotNumberChange: (lotNumber: string) => void;
-    // 受入キャンセル関連（分納対応）
     onCancelItemReceivingRecord?: (item: PurchaseOrderItem) => Promise<void>;
     cancellingItemId?: number | null;
 }
@@ -89,19 +82,8 @@ export default function PurchasedItemOrderModal({
     order,
     loading,
     onUpdateStatus,
-    onBulkReceiving,
-    onBulkCount,
     receivingItemId,
-    receivingQuantity,
-    receivingLotNumber,
-    receivingInProgress,
-    onStartItemReceiving,
     onCancelItemReceiving,
-    onConfirmItemReceiving,
-    onReceivingQuantityChange,
-    onReceivingLotNumberChange,
-    onCancelItemReceivingRecord,
-    cancellingItemId,
 }: PurchasedItemOrderModalProps) {
     const handleClose = () => {
         onCancelItemReceiving();
@@ -183,16 +165,6 @@ export default function PurchasedItemOrderModal({
                                         発注確定
                                     </Button>
                                 )}
-                                {order.status === 'ordered' && (
-                                    <Button
-                                        variant="contained"
-                                        color="info"
-                                        startIcon={<ReceivingIcon />}
-                                        onClick={() => onBulkReceiving(order.id)}
-                                    >
-                                        一括受入確認
-                                    </Button>
-                                )}
                             </Box>
                         </Paper>
 
@@ -212,7 +184,6 @@ export default function PurchasedItemOrderModal({
                                         <TableCell sx={{ bgcolor: 'grey.100' }} align="right">未受領</TableCell>
                                         <TableCell sx={{ bgcolor: 'grey.100' }} align="right">単価</TableCell>
                                         <TableCell sx={{ bgcolor: 'grey.100' }} align="center">ステータス</TableCell>
-                                        <TableCell sx={{ bgcolor: 'grey.100', minWidth: 220 }} align="center">操作</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -267,78 +238,7 @@ export default function PurchasedItemOrderModal({
                                                         </Tooltip>
                                                     </Box>
                                                 </TableCell>
-                                                <TableCell align="center" sx={{ minWidth: 220 }}>
-                                                    {isReceivingThis ? (
-                                                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'nowrap' }}>
-                                                            <TextField
-                                                                type="number"
-                                                                size="small"
-                                                                value={receivingQuantity}
-                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                                                    onReceivingQuantityChange(parseInt(e.target.value, 10) || 0)
-                                                                }
-                                                                inputProps={{ min: 1, max: unreceivedQty }}
-                                                                sx={{ width: 80 }}
-                                                            />
-                                                            <TextField
-                                                                size="small"
-                                                                placeholder="ロット"
-                                                                value={receivingLotNumber}
-                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                                                    onReceivingLotNumberChange(e.target.value)
-                                                                }
-                                                                sx={{ width: 100 }}
-                                                            />
-                                                            <IconButton
-                                                                size="small"
-                                                                color="success"
-                                                                onClick={onConfirmItemReceiving}
-                                                                disabled={receivingInProgress || receivingQuantity <= 0}
-                                                            >
-                                                                {receivingInProgress ? <CircularProgress size={20} /> : <CheckCircleIcon />}
-                                                            </IconButton>
-                                                            <IconButton
-                                                                size="small"
-                                                                onClick={onCancelItemReceiving}
-                                                                disabled={receivingInProgress}
-                                                            >
-                                                                <DeleteIcon />
-                                                            </IconButton>
-                                                        </Box>
-                                                    ) : (
-                                                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                                                            {/* 分納対応: 未受領がある場合は追加受入可能 */}
-                                                            {unreceivedQty > 0 && (
-                                                                <Tooltip title={receivedQty > 0 ? '追加受入（分納）' : '受入登録'}>
-                                                                    <IconButton
-                                                                        size="small"
-                                                                        color="primary"
-                                                                        onClick={() => onStartItemReceiving(item)}
-                                                                    >
-                                                                        <ReceivingIcon fontSize="small" />
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                            )}
-                                                            {/* 受け入れキャンセル: 受領済み数量がある場合に表示 */}
-                                                            {receivedQty > 0 && onCancelItemReceivingRecord && (
-                                                                <Tooltip title="受入キャンセル（受領済み数量をリセット）">
-                                                                    <IconButton
-                                                                        size="small"
-                                                                        color="error"
-                                                                        onClick={() => onCancelItemReceivingRecord(item)}
-                                                                        disabled={cancellingItemId === item.id}
-                                                                    >
-                                                                        {cancellingItemId === item.id ? (
-                                                                            <CircularProgress size={18} />
-                                                                        ) : (
-                                                                            <CancelIcon fontSize="small" />
-                                                                        )}
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                            )}
-                                                        </Box>
-                                                    )}
-                                                </TableCell>
+
                                             </TableRow>
                                         );
                                     })}
