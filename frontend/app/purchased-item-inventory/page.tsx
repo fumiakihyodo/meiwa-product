@@ -670,21 +670,6 @@ export default function PurchasedItemInventoryPage() {
         }
     };
 
-    // 一括受入確認
-    const handleBulkReceiving = async (orderId: number) => {
-        try {
-            const result = await purchasesApi.bulkConfirmPurchaseOrderReceiving(orderId);
-            alert(result.message);
-            if (selectedOrder && selectedOrder.id === orderId) {
-                setSelectedOrder(result.order);
-            }
-            await fetchData();
-        } catch (error) {
-            console.error('Failed to confirm receiving:', error);
-            alert('受入確認に失敗しました');
-        }
-    };
-
 
     // 個別受入確認開始
     const handleStartItemReceiving = (item: PurchaseOrderItem) => {
