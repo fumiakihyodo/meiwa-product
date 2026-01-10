@@ -14,10 +14,6 @@ import {
     MenuItem,
     IconButton,
     Tooltip,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
     Alert,
     CircularProgress,
     Tabs,
@@ -41,7 +37,6 @@ import {
     Visibility as ViewIcon,
     Delete as DeleteIcon,
     Add as AddIcon,
-    Send as SendIcon,
     LocalShipping as ReceivingIcon,
     History as HistoryIcon,
     Star as StarIcon,
@@ -62,7 +57,14 @@ import {
     PendingOrderItemForReceiving,
 } from '@/types/purchases';
 import { Product } from '@/types/product';
-import { PurchasedItemOrderModal } from '@/components/PurchasedItemInventory';
+import {
+    PurchasedItemOrderModal,
+    CreateOrderDialog,
+    DeleteOrderConfirmDialog,
+    InventoryHistoryDialog,
+    PartDetailDialog,
+    DeleteInventoryRecordDialog,
+} from '@/components/PurchasedItemInventory';
 
 // localStorage キー
 const DEFAULT_PRODUCT_KEY = 'purchased_item_inventory_default_product';
@@ -166,7 +168,6 @@ export default function PurchasedItemInventoryPage() {
 
     // データ
     const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-    const [inventories, setInventories] = useState<PurchasedItemInventory[]>([]);
     const [partsWithInventory, setPartsWithInventory] = useState<PartWithInventory[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
@@ -186,9 +187,9 @@ export default function PurchasedItemInventoryPage() {
     const [loadingParts, setLoadingParts] = useState(false);
     const [creatingOrder, setCreatingOrder] = useState(false);
     const [orderError, setOrderError] = useState<string | null>(null);
-    const [selectedSupplier, setSelectedSupplier] = useState<number | ''>(''); // 仕入先選択（必須）
-    const [orderDate, setOrderDate] = useState<string>(getTodayString()); // 発注日
-    const [requestedDeliveryDate, setRequestedDeliveryDate] = useState<string>(''); // 希望納期（手動設定）
+    const [selectedSupplier, setSelectedSupplier] = useState<number | ''>('');
+    const [orderDate, setOrderDate] = useState<string>(getTodayString());
+    const [requestedDeliveryDate, setRequestedDeliveryDate] = useState<string>('');
 
     // 発注詳細モーダル関連
     const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -228,7 +229,7 @@ export default function PurchasedItemInventoryPage() {
     const [pendingOrderItems, setPendingOrderItems] = useState<PendingOrderItemForReceiving[]>([]);
     const [loadingPendingItems, setLoadingPendingItems] = useState(false);
     const [receivingProductFilter, setReceivingProductFilter] = useState<number | ''>('');
-    const [receivingQuantities, setReceivingQuantities] = useState<Record<number, number>>({}); // part_id -> 受入数量
+    const [receivingQuantities, setReceivingQuantities] = useState<Record<number, number>>({});
     const [processingReceiving, setProcessingReceiving] = useState(false);
 
     // フィルタリングされた発注一覧
@@ -256,14 +257,6 @@ export default function PurchasedItemInventoryPage() {
         return partsWithInventory;
     }, [partsWithInventory]);
 
-    // 選択されたサプライヤーの部品グループ（サプライヤー必須選択）
-    const selectedSupplierGroup = useMemo(() => {
-        if (!selectedSupplier) return null;
-        return supplierPartsGroups.find(
-            (group: SupplierPartsGroup) => group.supplier_branch_id === selectedSupplier
-        ) || null;
-    }, [supplierPartsGroups, selectedSupplier]);
-
     // 納期自動計算（発注日 + リードタイム（平日））
     const calculateDeliveryDate = useCallback((leadTimeDays: number | undefined): string => {
         if (!leadTimeDays || !orderDate) return '-';
@@ -284,7 +277,6 @@ export default function PurchasedItemInventoryPage() {
     const productInventorySummaries = useMemo((): ProductInventorySummary[] => {
         const summaryMap = new Map<number, ProductInventorySummary>();
 
-        // partsWithInventory を使用してサマリーを計算
         partsWithInventory.forEach((part: PartWithInventory) => {
             const productId = part.product_id || 0;
             if (summaryMap.has(productId)) {
@@ -324,14 +316,12 @@ export default function PurchasedItemInventoryPage() {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [ordersData, productsData, inventoriesData] = await Promise.all([
+            const [ordersData, productsData] = await Promise.all([
                 purchasesApi.getPurchaseOrders(),
                 productApi.getProducts(),
-                purchasesApi.getPurchasedItemInventories(),
             ]);
             setOrders(ordersData);
             setProducts(productsData);
-            setInventories(inventoriesData);
         } catch (error) {
             console.error('Failed to fetch data:', error);
         } finally {
@@ -375,7 +365,6 @@ export default function PurchasedItemInventoryPage() {
         try {
             const data = await purchasesApi.getPendingOrderItemsForReceiving({ product: productId });
             setPendingOrderItems(data);
-            // 受入数量をリセット
             setReceivingQuantities({});
         } catch (error) {
             console.error('Failed to fetch pending order items:', error);
@@ -415,11 +404,9 @@ export default function PurchasedItemInventoryPage() {
 
             alert(result.message);
 
-            // 受入後、データを再取得
             await fetchPendingOrderItems(receivingProductFilter);
             await fetchData();
 
-            // 入力欄をクリア
             setReceivingQuantities(prev => ({
                 ...prev,
                 [partId]: 0,
@@ -440,7 +427,6 @@ export default function PurchasedItemInventoryPage() {
         try {
             const groups = await purchasesApi.getPartsGroupedBySupplier(productId);
             setSupplierPartsGroups(groups);
-            // 初期化: 全部品の数量を0に設定
             const initialQuantities: Record<number, number> = {};
             groups.forEach(group => {
                 group.parts.forEach(part => {
@@ -467,8 +453,6 @@ export default function PurchasedItemInventoryPage() {
     }, [selectedProductForOrder, fetchPartsForOrder]);
 
     // 発注数量の自動計算
-    // MOQ: 最低発注数量以上ならどの値でもOK（最低発注数量未満の場合は最低発注数量に）
-    // SPQ: 最低発注数量が1ロットとなるため、最低発注数量の倍数に切り上げ
     const calculateOrderQuantity = useCallback((
         inputQuantity: number,
         orderType: string,
@@ -476,22 +460,19 @@ export default function PurchasedItemInventoryPage() {
     ): number => {
         if (inputQuantity <= 0) return 0;
 
-        // 最低発注数量より少ない場合は最低発注数量にする
         if (inputQuantity < minimumOrderQuantity) {
             return minimumOrderQuantity;
         }
 
-        // SPQの場合は最低発注数量の倍数に切り上げ
         if (orderType === 'SPQ') {
             const lots = Math.ceil(inputQuantity / minimumOrderQuantity);
             return lots * minimumOrderQuantity;
         }
 
-        // MOQ・その他の場合はそのまま
         return inputQuantity;
     }, []);
 
-    // 発注数量確定時の処理（Enter押下またはフォーカス離脱時）
+    // 発注数量確定時の処理
     const handleQuantityConfirm = useCallback((part: PartForOrder) => {
         const currentQuantity = orderQuantities[part.id] || 0;
         const calculatedQuantity = calculateOrderQuantity(
@@ -515,12 +496,8 @@ export default function PurchasedItemInventoryPage() {
     ) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-
-            // 数量確定処理を実行
             handleQuantityConfirm(part);
 
-            // 次のテキストフィールドにフォーカスを移動
-            // data-order-indexを使用して次のフィールドを特定
             const target = e.target as HTMLInputElement;
             const currentOrderIndex = target.getAttribute('data-order-index');
             if (!currentOrderIndex) return;
@@ -531,7 +508,6 @@ export default function PurchasedItemInventoryPage() {
 
             if (currentIndex !== -1 && currentIndex < inputsArray.length - 1) {
                 const nextInput = inputsArray[currentIndex + 1];
-                // 次のフィールドにフォーカスを設定
                 setTimeout(() => {
                     nextInput.focus();
                     nextInput.select();
@@ -548,7 +524,6 @@ export default function PurchasedItemInventoryPage() {
             return;
         }
 
-        // 選択されたサプライヤーの部品のみから数量が入力されているものを抽出
         const selectedGroup = supplierPartsGroups.find(g => g.supplier_branch_id === selectedSupplier);
         if (!selectedGroup) {
             setOrderError('仕入先が見つかりません');
@@ -579,13 +554,7 @@ export default function PurchasedItemInventoryPage() {
                 requested_delivery_date: requestedDeliveryDate || undefined,
             });
 
-            // 成功したら閉じてリロード
-            setCreateOrderDialogOpen(false);
-            setSelectedProductForOrder('');
-            setOrderQuantities({});
-            setSelectedSupplier('');
-            setOrderDate(getTodayString());
-            setRequestedDeliveryDate('');
+            handleCloseCreateOrderDialog();
             await fetchData();
             alert(result.message);
         } catch (error) {
@@ -599,7 +568,6 @@ export default function PurchasedItemInventoryPage() {
     // 発注作成モダールを開く
     const handleOpenCreateOrderDialog = () => {
         setCreateOrderDialogOpen(true);
-        // デフォルト製品があれば設定
         const defaultId = getDefaultProductId();
         if (defaultId && products.some(p => p.id === defaultId)) {
             setSelectedProductForOrder(defaultId);
@@ -613,15 +581,24 @@ export default function PurchasedItemInventoryPage() {
         setRequestedDeliveryDate('');
     };
 
+    // 発注作成モダールを閉じる
+    const handleCloseCreateOrderDialog = () => {
+        setCreateOrderDialogOpen(false);
+        setSelectedProductForOrder('');
+        setOrderQuantities({});
+        setOrderError(null);
+        setSelectedSupplier('');
+        setOrderDate(getTodayString());
+        setRequestedDeliveryDate('');
+    };
+
     // 発注作成モダール用のデフォルト製品を設定/解除
     const handleToggleDefaultProductForOrder = (productId: number, e: React.MouseEvent) => {
         e.stopPropagation();
         const currentDefault = getDefaultProductId();
         if (currentDefault === productId) {
-            // 既にデフォルトならば解除
             setDefaultProductId(null);
         } else {
-            // デフォルトに設定
             setDefaultProductId(productId);
         }
     };
@@ -658,7 +635,6 @@ export default function PurchasedItemInventoryPage() {
     const handleUpdateStatus = async (orderId: number, newStatus: PurchaseOrderStatus) => {
         try {
             await purchasesApi.updatePurchaseOrderStatus(orderId, newStatus);
-            // 詳細ダイアログが開いている場合は更新
             if (selectedOrder && selectedOrder.id === orderId) {
                 const updated = await purchasesApi.getPurchaseOrder(orderId);
                 setSelectedOrder(updated);
@@ -670,26 +646,9 @@ export default function PurchasedItemInventoryPage() {
         }
     };
 
-    // 一括受入確認
-    const handleBulkReceiving = async (orderId: number) => {
-        try {
-            const result = await purchasesApi.bulkConfirmPurchaseOrderReceiving(orderId);
-            alert(result.message);
-            if (selectedOrder && selectedOrder.id === orderId) {
-                setSelectedOrder(result.order);
-            }
-            await fetchData();
-        } catch (error) {
-            console.error('Failed to confirm receiving:', error);
-            alert('受入確認に失敗しました');
-        }
-    };
-
-
     // 個別受入確認開始
     const handleStartItemReceiving = (item: PurchaseOrderItem) => {
         setReceivingItemId(item.id);
-        // 未受領数量を初期値として設定
         const unreceived = item.quantity - (item.received_quantity || 0);
         setReceivingQuantity(unreceived > 0 ? unreceived : 0);
         setReceivingLotNumber('');
@@ -713,7 +672,6 @@ export default function PurchasedItemInventoryPage() {
                 lot_number: receivingLotNumber || undefined,
             });
 
-            // 発注詳細を再取得
             if (selectedOrder) {
                 const updated = await purchasesApi.getPurchaseOrder(selectedOrder.id);
                 setSelectedOrder(updated);
@@ -728,7 +686,7 @@ export default function PurchasedItemInventoryPage() {
         }
     };
 
-    // 受入キャンセル処理（受領済み数量をリセット）
+    // 受入キャンセル処理
     const handleCancelItemReceivingRecord = async (item: PurchaseOrderItem) => {
         if (!window.confirm(`${item.part_name}の受入をキャンセルしますか？\n受領済み数量と関連する在庫レコードが削除されます。`)) {
             return;
@@ -738,7 +696,6 @@ export default function PurchasedItemInventoryPage() {
         try {
             await purchasesApi.cancelPurchaseOrderItemReceiving(item.id);
 
-            // 発注詳細を再取得
             if (selectedOrder) {
                 const updated = await purchasesApi.getPurchaseOrder(selectedOrder.id);
                 setSelectedOrder(updated);
@@ -763,13 +720,10 @@ export default function PurchasedItemInventoryPage() {
     const handleSetDefaultProductForFilters = (productId: number) => {
         const currentDefault = getDefaultProductId();
         if (currentDefault === productId) {
-            // 既にデフォルトならば解除
             setDefaultProductId(null);
         } else {
-            // デフォルトに設定
             setDefaultProductId(productId);
         }
-        // UIを更新するためにre-render（forceUpdate）
         setInventoryProductFilter(prev => prev);
     };
 
@@ -805,12 +759,10 @@ export default function PurchasedItemInventoryPage() {
         try {
             await purchasesApi.deletePurchasedItemInventory(deletingRecordId);
 
-            // 成功したらデータを再取得
             if (inventoryProductFilter) {
                 await fetchPartsWithInventory(inventoryProductFilter);
             }
 
-            // 部品詳細ダイアログを閉じる（データが古くなるため）
             handleClosePartDetailDialog();
             handleCloseDeleteRecordDialog();
             alert('在庫レコードを削除しました');
@@ -883,13 +835,12 @@ export default function PurchasedItemInventoryPage() {
                 const total = params.row.total_items || 0;
 
                 return (
-
                     <Box sx={{
                         display: 'flex',
                         alignItems: 'center',
                         height: '100%',
                         width: '100%',
-                        pl: 1 // セルの左側に少しだけ余白
+                        pl: 1
                     }}>
                         <Tooltip title="受入済">
                             <Chip
@@ -933,7 +884,7 @@ export default function PurchasedItemInventoryPage() {
         },
     ];
 
-    // 在庫一覧カラム定義（PartWithInventory用）
+    // 在庫一覧カラム定義
     const inventoryColumns: GridColDef[] = [
         {
             field: 'part_number',
@@ -1461,282 +1412,31 @@ export default function PurchasedItemInventoryPage() {
             </Paper>
 
             {/* 発注作成ダイアログ */}
-            <Dialog
+            <CreateOrderDialog
                 open={createOrderDialogOpen}
-                onClose={() => {
-                    setCreateOrderDialogOpen(false);
-                    setSelectedProductForOrder('');
-                    setOrderQuantities({});
-                    setOrderError(null);
-                    setSelectedSupplier('');
-                    setOrderDate(getTodayString());
-                    setRequestedDeliveryDate('');
-                }}
-                maxWidth="lg"
-                fullWidth
-            >
-                <DialogTitle>発注作成</DialogTitle>
-                <DialogContent>
-                    {orderError && (
-                        <Alert severity="error" sx={{ mb: 2 }}>
-                            {orderError}
-                        </Alert>
-                    )}
-
-                    {/* 製品選択 */}
-                    <Box sx={{ mb: 3 }}>
-                        <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                            <InputLabel>製品を選択 *</InputLabel>
-                            <Select
-                                value={selectedProductForOrder}
-                                label="製品を選択 *"
-                                onChange={(e: SelectChangeEvent<number | ''>) => {
-                                    setSelectedProductForOrder(e.target.value as number);
-                                    setSelectedSupplier(''); // 製品変更時にサプライヤー選択をリセット
-                                    setOrderQuantities({});
-                                }}
-                                renderValue={(selected) => {
-                                    if (!selected) return '';
-                                    const product = products.find(p => p.id === selected);
-                                    if (!product) return '';
-                                    const isDefault = getDefaultProductId() === product.id;
-                                    return (
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                            {isDefault && <StarIcon sx={{ color: 'warning.main', fontSize: 18 }} />}
-                                            {product.product_number} - {product.product_name}
-                                        </Box>
-                                    );
-                                }}
-                            >
-                                {products.map((p: Product) => {
-                                    const isDefault = getDefaultProductId() === p.id;
-                                    return (
-                                        <MenuItem key={p.id} value={p.id}>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-                                                <Tooltip title={isDefault ? 'デフォルト解除' : 'デフォルトに設定'}>
-                                                    <IconButton
-                                                        size="small"
-                                                        onClick={(e) => handleToggleDefaultProductForOrder(p.id, e)}
-                                                        sx={{ p: 0.5 }}
-                                                    >
-                                                        {isDefault ? (
-                                                            <StarIcon sx={{ color: 'warning.main' }} />
-                                                        ) : (
-                                                            <StarBorderIcon sx={{ color: 'action.disabled' }} />
-                                                        )}
-                                                    </IconButton>
-                                                </Tooltip>
-                                                <span>{p.product_number} - {p.product_name}</span>
-                                            </Box>
-                                        </MenuItem>
-                                    );
-                                })}
-                            </Select>
-                        </FormControl>
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                            ★をクリックするとデフォルト製品に設定できます
-                        </Typography>
-                    </Box>
-
-                    {/* 仕入先選択（必須） */}
-                    {supplierPartsGroups.length > 0 && (
-                        <Box sx={{ mb: 3 }}>
-                            <FormControl fullWidth size="small" required>
-                                <InputLabel>仕入先を選択 *</InputLabel>
-                                <Select
-                                    value={selectedSupplier}
-                                    label="仕入先を選択 *"
-                                    onChange={(e: SelectChangeEvent<number | ''>) => {
-                                        setSelectedSupplier(e.target.value as number);
-                                        setOrderQuantities({}); // 仕入先変更時に発注数量をリセット
-                                    }}
-                                >
-                                    <MenuItem value="" disabled>
-                                        -- 仕入先を選択してください --
-                                    </MenuItem>
-                                    {supplierPartsGroups.map((group: SupplierPartsGroup) => (
-                                        <MenuItem key={group.supplier_branch_id} value={group.supplier_branch_id}>
-                                            {group.supplier_name} ({group.branch_name}) - {group.parts.length}品目
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                                発注は仕入先ごとに作成されます。先に仕入先を選択してください。
-                            </Typography>
-                        </Box>
-                    )}
-
-                    {/* 発注日・納期設定 */}
-                    {selectedSupplier && (
-                        <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
-                            <Typography variant="subtitle2" sx={{ mb: 2 }}>発注日・納期設定</Typography>
-                            <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                                <TextField
-                                    label="発注日"
-                                    type="date"
-                                    size="small"
-                                    value={orderDate}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOrderDate(e.target.value)}
-                                    InputLabelProps={{ shrink: true }}
-                                    sx={{ width: 180 }}
-                                />
-                                <TextField
-                                    label="希望納期（任意）"
-                                    type="date"
-                                    size="small"
-                                    value={requestedDeliveryDate}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRequestedDeliveryDate(e.target.value)}
-                                    InputLabelProps={{ shrink: true }}
-                                    sx={{ width: 180 }}
-                                    helperText="リードタイムより短い納期も設定可能"
-                                />
-                            </Box>
-                        </Paper>
-                    )}
-
-                    {loadingParts && (
-                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                            <CircularProgress />
-                        </Box>
-                    )}
-
-                    {/* 仕入先未選択時のメッセージ */}
-                    {!loadingParts && selectedProductForOrder && supplierPartsGroups.length > 0 && !selectedSupplier && (
-                        <Alert severity="info">
-                            仕入先を選択すると、部品リストが表示されます。
-                        </Alert>
-                    )}
-
-                    {/* 選択した仕入先の部品リスト */}
-                    {!loadingParts && selectedSupplierGroup && (
-                        <Box>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
-                                部品リスト: {selectedSupplierGroup.supplier_name} ({selectedSupplierGroup.branch_name})
-                                <Chip
-                                    size="small"
-                                    label={`${selectedSupplierGroup.parts.length}品目`}
-                                    sx={{ ml: 1 }}
-                                    color="primary"
-                                />
-                            </Typography>
-                            <TableContainer component={Paper}>
-                                <Table size="small">
-                                    <TableHead>
-                                        <TableRow sx={{ bgcolor: 'grey.100' }}>
-                                            <TableCell>部品番号</TableCell>
-                                            <TableCell>部品名</TableCell>
-                                            <TableCell>単位</TableCell>
-                                            <TableCell>発注区分</TableCell>
-                                            <TableCell align="right">最小発注数</TableCell>
-                                            <TableCell align="right">単価</TableCell>
-                                            <TableCell align="center">リードタイム</TableCell>
-                                            <TableCell align="center">納期予定</TableCell>
-                                            <TableCell align="right" sx={{ width: 120 }}>発注数量</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {selectedSupplierGroup.parts.map((part: PartForOrder, partIndex: number) => (
-                                            <TableRow key={part.id}>
-                                                <TableCell>{part.part_number}</TableCell>
-                                                <TableCell>{part.part_name}</TableCell>
-                                                <TableCell>{part.unit}</TableCell>
-                                                <TableCell>
-                                                    <Chip
-                                                        label={part.order_type}
-                                                        size="small"
-                                                        color={part.order_type === 'SPQ' ? 'primary' : 'default'}
-                                                        variant="outlined"
-                                                    />
-                                                </TableCell>
-                                                <TableCell align="right">{part.minimum_order_quantity}</TableCell>
-                                                <TableCell align="right">
-                                                    {part.current_price
-                                                        ? `¥${part.current_price.toLocaleString()}`
-                                                        : '-'}
-                                                </TableCell>
-                                                <TableCell align="center">
-                                                    {part.lead_time_days
-                                                        ? `${part.lead_time_days}日`
-                                                        : '-'}
-                                                </TableCell>
-                                                <TableCell align="center">
-                                                    {requestedDeliveryDate ? (
-                                                        <Tooltip title="希望納期が設定されています">
-                                                            <Chip
-                                                                size="small"
-                                                                label={requestedDeliveryDate}
-                                                                color="info"
-                                                                variant="outlined"
-                                                            />
-                                                        </Tooltip>
-                                                    ) : part.lead_time_days ? (
-                                                        <Tooltip title={`発注日 + ${part.lead_time_days}営業日`}>
-                                                            <span>{calculateDeliveryDate(part.lead_time_days)}</span>
-                                                        </Tooltip>
-                                                    ) : '-'}
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    <TextField
-                                                        type="number"
-                                                        size="small"
-                                                        value={orderQuantities[part.id] || ''}
-                                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                                            const val = parseInt(e.target.value, 10) || 0;
-                                                            setOrderQuantities((prev: Record<number, number>) => ({
-                                                                ...prev,
-                                                                [part.id]: val,
-                                                            }));
-                                                        }}
-                                                        onBlur={() => handleQuantityConfirm(part)}
-                                                        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                                                            handleQuantityKeyDown(e, part);
-                                                        }}
-                                                        inputProps={{
-                                                            min: 0,
-                                                            'data-order-index': `0-${partIndex}`,
-                                                        }}
-                                                        sx={{ width: 100 }}
-                                                    />
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                        </Box>
-                    )}
-
-                    {!loadingParts && selectedProductForOrder && supplierPartsGroups.length === 0 && (
-                        <Alert severity="info">
-                            この製品に登録されている部品がありません。
-                        </Alert>
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button
-                        onClick={() => {
-                            setCreateOrderDialogOpen(false);
-                            setSelectedProductForOrder('');
-                            setOrderQuantities({});
-                            setOrderError(null);
-                            setSelectedSupplier('');
-                            setOrderDate(getTodayString());
-                            setRequestedDeliveryDate('');
-                        }}
-                    >
-                        キャンセル
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={handleCreateOrders}
-                        disabled={creatingOrder || !selectedProductForOrder || !selectedSupplier || Object.values(orderQuantities).every(q => q === 0)}
-                        startIcon={creatingOrder ? <CircularProgress size={20} /> : <SendIcon />}
-                    >
-                        発注作成
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                onClose={handleCloseCreateOrderDialog}
+                products={products}
+                selectedProductForOrder={selectedProductForOrder}
+                setSelectedProductForOrder={setSelectedProductForOrder}
+                selectedSupplier={selectedSupplier}
+                setSelectedSupplier={setSelectedSupplier}
+                supplierPartsGroups={supplierPartsGroups}
+                orderQuantities={orderQuantities}
+                setOrderQuantities={setOrderQuantities}
+                orderError={orderError}
+                loadingParts={loadingParts}
+                creatingOrder={creatingOrder}
+                orderDate={orderDate}
+                setOrderDate={setOrderDate}
+                requestedDeliveryDate={requestedDeliveryDate}
+                setRequestedDeliveryDate={setRequestedDeliveryDate}
+                onCreateOrders={handleCreateOrders}
+                onQuantityConfirm={handleQuantityConfirm}
+                onQuantityKeyDown={handleQuantityKeyDown}
+                calculateDeliveryDate={calculateDeliveryDate}
+                getDefaultProductId={getDefaultProductId}
+                onToggleDefaultProduct={handleToggleDefaultProductForOrder}
+            />
 
             {/* 発注詳細モーダル */}
             <PurchasedItemOrderModal
@@ -1762,271 +1462,38 @@ export default function PurchasedItemInventoryPage() {
             />
 
             {/* 削除確認ダイアログ */}
-            <Dialog
+            <DeleteOrderConfirmDialog
                 open={deleteDialogOpen}
                 onClose={() => {
                     setDeleteDialogOpen(false);
                     setDeletingOrder(null);
                 }}
-            >
-                <DialogTitle>発注の削除</DialogTitle>
-                <DialogContent>
-                    <Typography>
-                        発注「{deletingOrder?.order_number}」を削除してもよろしいですか？
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => {
-                        setDeleteDialogOpen(false);
-                        setDeletingOrder(null);
-                    }}>
-                        キャンセル
-                    </Button>
-                    <Button
-                        variant="contained"
-                        color="error"
-                        onClick={handleDeleteOrder}
-                    >
-                        削除
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                order={deletingOrder}
+                onConfirm={handleDeleteOrder}
+            />
 
             {/* 履歴モーダル */}
-            <Dialog
+            <InventoryHistoryDialog
                 open={historyDialogOpen}
                 onClose={handleCloseHistoryDialog}
-                maxWidth="md"
-                fullWidth
-            >
-                <DialogTitle>
-                    入出庫・調整履歴
-                    {historyInventory && (
-                        <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block' }}>
-                            {historyInventory.part_number} - {historyInventory.part_name}
-                        </Typography>
-                    )}
-                </DialogTitle>
-                <DialogContent>
-                    {historyInventory && (
-                        <Box sx={{ mt: 1 }}>
-                            {/* 在庫情報サマリー */}
-                            <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
-                                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">製品</Typography>
-                                        <Typography>{historyInventory.product_number || '-'}</Typography>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">仕入先</Typography>
-                                        <Typography>{historyInventory.supplier_name || '-'}</Typography>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">現在の在庫数量</Typography>
-                                        <Typography variant="h6" fontWeight="bold">
-                                            {historyInventory.quantity} {historyInventory.unit || ''}
-                                        </Typography>
-                                    </Box>
-                                </Box>
-                            </Paper>
-
-                            {/* 履歴表示 */}
-                            <Typography variant="subtitle2" sx={{ mb: 1 }}>履歴</Typography>
-                            <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
-                                {historyInventory.notes ? (
-                                    <Box>
-                                        {historyInventory.notes.split('\n').map((line, index) => {
-                                            const isAdjustment = line.includes('[在庫調整]');
-                                            return (
-                                                <Box
-                                                    key={index}
-                                                    sx={{
-                                                        p: 1,
-                                                        mb: 1,
-                                                        borderLeft: isAdjustment ? '3px solid' : 'none',
-                                                        borderColor: line.includes('+') ? 'success.main' : 'error.main',
-                                                        bgcolor: isAdjustment ? 'action.hover' : 'transparent',
-                                                    }}
-                                                >
-                                                    <Typography
-                                                        variant="body2"
-                                                        sx={{
-                                                            fontFamily: 'monospace',
-                                                            whiteSpace: 'pre-wrap',
-                                                        }}
-                                                    >
-                                                        {line}
-                                                    </Typography>
-                                                </Box>
-                                            );
-                                        })}
-                                    </Box>
-                                ) : (
-                                    <Typography variant="body2" color="text.secondary">
-                                        履歴はありません
-                                    </Typography>
-                                )}
-                            </Paper>
-
-                            {/* 追加情報 */}
-                            <Box sx={{ mt: 2 }}>
-                                <Typography variant="caption" color="text.secondary">
-                                    ※ 在庫調整を行うと、自動的に履歴が記録されます。
-                                </Typography>
-                            </Box>
-                        </Box>
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={handleCloseHistoryDialog}>
-                        閉じる
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                inventory={historyInventory}
+            />
 
             {/* 部品詳細ダイアログ */}
-            <Dialog
+            <PartDetailDialog
                 open={partDetailDialogOpen}
                 onClose={handleClosePartDetailDialog}
-                maxWidth="md"
-                fullWidth
-            >
-                <DialogTitle>
-                    部品詳細・在庫履歴
-                    {selectedPartWithInventory && (
-                        <Typography variant="body2" color="text.secondary" component="span" sx={{ display: 'block' }}>
-                            {selectedPartWithInventory.part_number} - {selectedPartWithInventory.part_name}
-                        </Typography>
-                    )}
-                </DialogTitle>
-                <DialogContent>
-                    {selectedPartWithInventory && (
-                        <Box sx={{ mt: 1 }}>
-                            {/* 部品情報サマリー */}
-                            <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
-                                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">製品</Typography>
-                                        <Typography>{selectedPartWithInventory.product_number || '-'}</Typography>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">仕入先</Typography>
-                                        <Typography>
-                                            {selectedPartWithInventory.supplier_branch_name
-                                                ? `${selectedPartWithInventory.supplier_name} (${selectedPartWithInventory.supplier_branch_name})`
-                                                : selectedPartWithInventory.supplier_name || '-'}
-                                        </Typography>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">仕入れ先部品名称</Typography>
-                                        <Typography>{selectedPartWithInventory.supplier_part_name || '-'}</Typography>
-                                    </Box>
-                                    <Box>
-                                        <Typography variant="caption" color="text.secondary">現在の在庫数量</Typography>
-                                        <Typography variant="h6" fontWeight="bold">
-                                            {selectedPartWithInventory.total_quantity} {selectedPartWithInventory.unit || ''}
-                                        </Typography>
-                                    </Box>
-                                </Box>
-                            </Paper>
-
-                            {/* 在庫レコード一覧 */}
-                            <Typography variant="subtitle2" sx={{ mb: 1 }}>在庫レコード履歴</Typography>
-                            {selectedPartWithInventory.inventory_records && selectedPartWithInventory.inventory_records.length > 0 ? (
-                                <TableContainer component={Paper}>
-                                    <Table size="small">
-                                        <TableHead>
-                                            <TableRow sx={{ bgcolor: 'grey.100' }}>
-                                                <TableCell>入庫日</TableCell>
-                                                <TableCell align="right">数量</TableCell>
-                                                <TableCell>ロット番号</TableCell>
-                                                <TableCell>発注番号</TableCell>
-                                                <TableCell>備考</TableCell>
-                                                <TableCell>登録者</TableCell>
-                                                <TableCell align="center">操作</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {selectedPartWithInventory.inventory_records.map((record) => (
-                                                <TableRow key={record.id}>
-                                                    <TableCell>{record.received_date || '-'}</TableCell>
-                                                    <TableCell align="right">
-                                                        <Chip
-                                                            size="small"
-                                                            label={`${record.quantity} ${selectedPartWithInventory.unit || ''}`}
-                                                            color={record.quantity > 0 ? 'primary' : 'default'}
-                                                            variant="outlined"
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>{record.lot_number || '-'}</TableCell>
-                                                    <TableCell>{record.order_number || '-'}</TableCell>
-                                                    <TableCell>
-                                                        {record.notes ? (
-                                                            <Tooltip title={record.notes}>
-                                                                <Typography variant="body2" sx={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                    {record.notes}
-                                                                </Typography>
-                                                            </Tooltip>
-                                                        ) : '-'}
-                                                    </TableCell>
-                                                    <TableCell>{record.created_by_name || '-'}</TableCell>
-                                                    <TableCell align="center">
-                                                        <Tooltip title="削除">
-                                                            <IconButton
-                                                                size="small"
-                                                                color="error"
-                                                                onClick={() => handleOpenDeleteRecordDialog(record.id)}
-                                                            >
-                                                                <DeleteIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Tooltip>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            ) : (
-                                <Alert severity="info">
-                                    在庫レコードはありません。
-                                </Alert>
-                            )}
-                        </Box>
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={handleClosePartDetailDialog}>
-                        閉じる
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                part={selectedPartWithInventory}
+                onDeleteRecord={handleOpenDeleteRecordDialog}
+            />
 
             {/* 在庫レコード削除確認ダイアログ */}
-            <Dialog
+            <DeleteInventoryRecordDialog
                 open={deleteRecordDialogOpen}
                 onClose={handleCloseDeleteRecordDialog}
-            >
-                <DialogTitle>在庫レコード削除確認</DialogTitle>
-                <DialogContent>
-                    <Alert severity="warning" sx={{ mt: 1 }}>
-                        この在庫レコードを削除しますか？<br />
-                        削除すると元に戻すことはできません。
-                    </Alert>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={handleCloseDeleteRecordDialog}>
-                        キャンセル
-                    </Button>
-                    <Button
-                        variant="contained"
-                        color="error"
-                        onClick={handleConfirmDeleteRecord}
-                        disabled={deletingRecordInProgress}
-                    >
-                        {deletingRecordInProgress ? <CircularProgress size={20} /> : '削除'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                onConfirm={handleConfirmDeleteRecord}
+                isDeleting={deletingRecordInProgress}
+            />
         </Box>
     );
 }
