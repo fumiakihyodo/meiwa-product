@@ -409,22 +409,9 @@ export default function InventoryAdjustmentPage() {
         { field: 'item_number', headerName: '品番', width: 140 },
         { field: 'item_name', headerName: '品名', width: 180 },
         {
-            field: 'adjustment_type_display',
-            headerName: '調整',
-            width: 80,
-            renderCell: (params: GridRenderCellParams<InventoryAdjustment>) => (
-                <Chip
-                    icon={params.row.adjustment_type === 'increase' ? <IncreaseIcon /> : <DecreaseIcon />}
-                    label={params.value}
-                    size="small"
-                    color={params.row.adjustment_type === 'increase' ? 'success' : 'error'}
-                />
-            ),
-        },
-        {
             field: 'quantity',
             headerName: '数量',
-            width: 80,
+            width: 120,
             type: 'number',
             renderCell: (params: GridRenderCellParams<InventoryAdjustment>) => {
                 const sign = params.row.adjustment_type === 'increase' ? '+' : '-';
@@ -432,6 +419,13 @@ export default function InventoryAdjustmentPage() {
                     <Typography
                         color={params.row.adjustment_type === 'increase' ? 'success.main' : 'error.main'}
                         fontWeight="bold"
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            height: '100%',
+                            width: '100%',
+                        }}
                     >
                         {sign}{params.value}
                     </Typography>
@@ -441,9 +435,15 @@ export default function InventoryAdjustmentPage() {
         {
             field: 'quantity_change',
             headerName: '変化',
-            width: 120,
+            width: 150,
             renderCell: (params: GridRenderCellParams<InventoryAdjustment>) => (
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    width: '100%',
+                }}>
                     {params.row.quantity_before} → {params.row.quantity_after}
                 </Typography>
             ),
