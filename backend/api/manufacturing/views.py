@@ -4,7 +4,6 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Count, Q, F
 
 from api.manufacturing.models import (
@@ -39,8 +38,7 @@ from api.manufacturing.serializers import (
 class ManufacturingItemViewSet(viewsets.ModelViewSet):
     """制作品ViewSet"""
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['product', 'is_active']
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['manufacturing_number', 'manufacturing_name', 'specification']
     ordering_fields = ['manufacturing_number', 'manufacturing_name', 'created_at', 'updated_at']
     ordering = ['manufacturing_number']
@@ -53,6 +51,16 @@ class ManufacturingItemViewSet(viewsets.ModelViewSet):
         )
         # 関連データを事前ロード
         queryset = queryset.select_related('product', 'created_by')
+
+        # フィルタリング
+        product = self.request.query_params.get('product', None)
+        if product:
+            queryset = queryset.filter(product_id=product)
+
+        is_active = self.request.query_params.get('is_active', None)
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+
         return queryset
 
     def get_serializer_class(self):
@@ -75,8 +83,7 @@ class ManufacturingItemViewSet(viewsets.ModelViewSet):
 class ProductionPlanViewSet(viewsets.ModelViewSet):
     """生産計画ViewSet"""
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['manufacturing_item', 'product', 'status', 'priority']
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['plan_number', 'manufacturing_item__manufacturing_number', 'notes']
     ordering_fields = ['plan_number', 'priority', 'planned_start_date', 'created_at']
     ordering = ['priority', '-created_at']
@@ -87,6 +94,24 @@ class ProductionPlanViewSet(viewsets.ModelViewSet):
         queryset = queryset.select_related(
             'manufacturing_item', 'product', 'created_by'
         ).prefetch_related('schedules')
+
+        # フィルタリング
+        manufacturing_item = self.request.query_params.get('manufacturing_item', None)
+        if manufacturing_item:
+            queryset = queryset.filter(manufacturing_item_id=manufacturing_item)
+
+        product = self.request.query_params.get('product', None)
+        if product:
+            queryset = queryset.filter(product_id=product)
+
+        plan_status = self.request.query_params.get('status', None)
+        if plan_status:
+            queryset = queryset.filter(status=plan_status)
+
+        priority = self.request.query_params.get('priority', None)
+        if priority:
+            queryset = queryset.filter(priority=priority)
+
         return queryset
 
     def get_serializer_class(self):
@@ -133,8 +158,7 @@ class ProductionPlanViewSet(viewsets.ModelViewSet):
 class ProductionScheduleViewSet(viewsets.ModelViewSet):
     """生産スケジュールViewSet"""
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['plan', 'status', 'assigned_to']
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['schedule_number', 'notes']
     ordering_fields = ['schedule_number', 'started_at', 'finished_at', 'created_at']
     ordering = ['started_at', 'created_at']
@@ -145,6 +169,20 @@ class ProductionScheduleViewSet(viewsets.ModelViewSet):
         queryset = queryset.select_related(
             'plan', 'plan__manufacturing_item', 'assigned_to', 'created_by'
         )
+
+        # フィルタリング
+        plan = self.request.query_params.get('plan', None)
+        if plan:
+            queryset = queryset.filter(plan_id=plan)
+
+        schedule_status = self.request.query_params.get('status', None)
+        if schedule_status:
+            queryset = queryset.filter(status=schedule_status)
+
+        assigned_to = self.request.query_params.get('assigned_to', None)
+        if assigned_to:
+            queryset = queryset.filter(assigned_to_id=assigned_to)
+
         return queryset
 
     def get_serializer_class(self):
@@ -198,8 +236,7 @@ class ProductionScheduleViewSet(viewsets.ModelViewSet):
 class MaterialViewSet(viewsets.ModelViewSet):
     """材料ViewSet"""
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['category', 'supplier_branch', 'is_active']
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['material_code', 'material_name', 'material_type', 'specification']
     ordering_fields = ['material_code', 'material_name', 'stock_quantity', 'created_at']
     ordering = ['material_code']
@@ -210,6 +247,19 @@ class MaterialViewSet(viewsets.ModelViewSet):
         queryset = queryset.select_related(
             'supplier_branch', 'supplier_branch__supplier', 'created_by'
         )
+
+        # フィルタリング
+        category = self.request.query_params.get('category', None)
+        if category:
+            queryset = queryset.filter(category=category)
+
+        supplier_branch = self.request.query_params.get('supplier_branch', None)
+        if supplier_branch:
+            queryset = queryset.filter(supplier_branch_id=supplier_branch)
+
+        is_active = self.request.query_params.get('is_active', None)
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
 
         # 在庫不足フィルター
         low_stock = self.request.query_params.get('low_stock', None)
@@ -237,7 +287,6 @@ class MaterialViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
         """在庫不足の材料を取得"""
-        from django.db.models import F
         queryset = self.get_queryset().filter(
             is_active=True,
             stock_quantity__lte=F('minimum_stock')
@@ -277,8 +326,7 @@ class MaterialViewSet(viewsets.ModelViewSet):
 class MaterialDeliveryScheduleViewSet(viewsets.ModelViewSet):
     """材料納入予定ViewSet"""
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['material', 'status']
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['material__material_code', 'material__material_name', 'order_reference']
     ordering_fields = ['scheduled_date', 'created_at']
     ordering = ['scheduled_date']
@@ -286,6 +334,16 @@ class MaterialDeliveryScheduleViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = MaterialDeliverySchedule.objects.all()
         queryset = queryset.select_related('material', 'created_by')
+
+        # フィルタリング
+        material = self.request.query_params.get('material', None)
+        if material:
+            queryset = queryset.filter(material_id=material)
+
+        delivery_status = self.request.query_params.get('status', None)
+        if delivery_status:
+            queryset = queryset.filter(status=delivery_status)
+
         return queryset
 
     def get_serializer_class(self):
@@ -332,8 +390,7 @@ class MaterialDeliveryScheduleViewSet(viewsets.ModelViewSet):
 class ManufacturingMaterialViewSet(viewsets.ModelViewSet):
     """制作品材料構成ViewSet"""
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['manufacturing_item', 'material']
+    filter_backends = [filters.SearchFilter]
     search_fields = [
         'manufacturing_item__manufacturing_number',
         'material__material_code'
@@ -344,6 +401,16 @@ class ManufacturingMaterialViewSet(viewsets.ModelViewSet):
         queryset = queryset.select_related(
             'manufacturing_item', 'material'
         )
+
+        # フィルタリング
+        manufacturing_item = self.request.query_params.get('manufacturing_item', None)
+        if manufacturing_item:
+            queryset = queryset.filter(manufacturing_item_id=manufacturing_item)
+
+        material = self.request.query_params.get('material', None)
+        if material:
+            queryset = queryset.filter(material_id=material)
+
         return queryset
 
     def get_serializer_class(self):
