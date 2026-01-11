@@ -27,6 +27,7 @@ urlpatterns = [
     path('api/customers/', include('api.customers.urls')), 
     path('api/products/', include('api.products.urls')),
     path('api/purchases/', include('api.purchases.urls')),
+    path('api/manufacturing/', include('api.manufacturing.urls')),
 ]
 
 # 開発環境でのメディアファイル配信

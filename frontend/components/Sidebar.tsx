@@ -36,6 +36,7 @@ import {
     ShoppingBag as ShoppingBagIcon,
     Home as HomeIcon,
     Settings as SettingsIcon,
+    PrecisionManufacturing as ManufacturingIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
 import { useMenu, MenuCategory, MENU_CATEGORIES } from '@/context/MenuContext';
@@ -159,6 +160,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                             text: '部品管理',
                             icon: <ShoppingCartIcon />,
                             path: '/parts',
+                        },
+                        {
+                            text: '製造・材料管理',
+                            icon: <ManufacturingIcon />,
+                            path: '/dashboard/master/manufacturing',
                         },
                     ],
                 };
