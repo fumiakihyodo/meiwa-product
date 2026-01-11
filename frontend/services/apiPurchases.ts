@@ -76,6 +76,8 @@ import {
     PendingOrderItemForReceiving,
     ReceivePartByQuantityRequest,
     ReceivePartByQuantityResponse,
+    BulkReceivePartsRequest,
+    BulkReceivePartsResponse,
 } from '@/types/purchases';
 
 import {
@@ -1085,6 +1087,17 @@ export const purchasesApi = {
     ): Promise<ReceivePartByQuantityResponse> => {
         const response = await apiClient.post<ReceivePartByQuantityResponse>(
             '/purchases/receive-part-by-quantity/',
+            data
+        );
+        return response.data;
+    },
+
+    // 一括部品受入
+    bulkReceiveParts: async (
+        data: BulkReceivePartsRequest
+    ): Promise<BulkReceivePartsResponse> => {
+        const response = await apiClient.post<BulkReceivePartsResponse>(
+            '/purchases/bulk-receive-parts/',
             data
         );
         return response.data;

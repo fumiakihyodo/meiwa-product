@@ -154,4 +154,5 @@ urlpatterns = [
     # 購入品受入一覧タブ用
     path('pending-order-items-for-receiving/', views.get_pending_order_items_for_receiving, name='pending_order_items_for_receiving'),
     path('receive-part-by-quantity/', views.receive_part_by_quantity, name='receive_part_by_quantity'),
+    path('bulk-receive-parts/', views.bulk_receive_parts_by_quantity, name='bulk_receive_parts_by_quantity'),
 ]

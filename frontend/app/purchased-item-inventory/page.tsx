@@ -384,36 +384,50 @@ export default function PurchasedItemInventoryPage() {
         }
     }, [receivingProductFilter, fetchPendingOrderItems]);
 
-    // 部品の受入処理（発注番号の若い順に消化）
-    const handleReceivePartQuantity = async (partId: number) => {
+    // 入力されている部品の数を取得
+    const getInputtedPartsCount = () => {
+        return Object.entries(receivingQuantities).filter(([, qty]) => qty > 0).length;
+    };
+
+    // 一括受入処理
+    const handleBulkReceive = async () => {
         if (!receivingProductFilter) return;
 
-        const quantity = receivingQuantities[partId];
-        if (!quantity || quantity <= 0) {
+        // 入力されている部品を抽出
+        const itemsToReceive = Object.entries(receivingQuantities)
+            .filter(([, qty]) => qty > 0)
+            .map(([partId, quantity]) => ({
+                part_id: parseInt(partId, 10),
+                quantity: quantity,
+            }));
+
+        if (itemsToReceive.length === 0) {
             alert('受入数量を入力してください');
+            return;
+        }
+
+        if (!window.confirm(`${itemsToReceive.length}件の部品を受入登録します。よろしいですか？`)) {
             return;
         }
 
         setProcessingReceiving(true);
         try {
-            const result = await purchasesApi.receivePartByQuantity({
-                part_id: partId,
+            const result = await purchasesApi.bulkReceiveParts({
                 product_id: receivingProductFilter,
-                quantity: quantity,
+                items: itemsToReceive,
             });
 
             alert(result.message);
 
+            // リストを更新
             await fetchPendingOrderItems(receivingProductFilter);
             await fetchData();
 
-            setReceivingQuantities(prev => ({
-                ...prev,
-                [partId]: 0,
-            }));
+            // 入力をクリア
+            setReceivingQuantities({});
         } catch (error: unknown) {
-            console.error('Failed to receive part:', error);
-            const errMessage = error instanceof Error ? error.message : '受入処理に失敗しました';
+            console.error('Failed to bulk receive parts:', error);
+            const errMessage = error instanceof Error ? error.message : '一括受入処理に失敗しました';
             alert(errMessage);
         } finally {
             setProcessingReceiving(false);
@@ -1177,7 +1191,7 @@ export default function PurchasedItemInventoryPage() {
                                             <TableCell>仕入先</TableCell>
                                             <TableCell align="right">発注数</TableCell>
                                             <TableCell align="right">注文残</TableCell>
-                                            <TableCell align="center" sx={{ width: 200 }}>受入入力</TableCell>
+                                            <TableCell align="center" sx={{ width: 150 }}>受入数量</TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
@@ -1220,45 +1234,21 @@ export default function PurchasedItemInventoryPage() {
                                                         </TableCell>
                                                         {orderIndex === 0 && (
                                                             <TableCell rowSpan={item.orders.length} align="center">
-                                                                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center' }}>
-                                                                    <TextField
-                                                                        type="number"
-                                                                        size="small"
-                                                                        value={receivingQuantities[item.part_id] || ''}
-                                                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                                                            const val = parseInt(e.target.value, 10) || 0;
-                                                                            setReceivingQuantities(prev => ({
-                                                                                ...prev,
-                                                                                [item.part_id]: val,
-                                                                            }));
-                                                                        }}
-                                                                        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                                                                            if (e.key === 'Enter') {
-                                                                                e.preventDefault();
-                                                                                handleReceivePartQuantity(item.part_id);
-                                                                            }
-                                                                        }}
-                                                                        placeholder="数量"
-                                                                        inputProps={{ min: 1, max: item.total_remaining }}
-                                                                        sx={{ width: 100 }}
-                                                                    />
-                                                                    <Tooltip title="受入実行（発注番号の若い順に消化）">
-                                                                        <span>
-                                                                            <Button
-                                                                                variant="contained"
-                                                                                size="small"
-                                                                                onClick={() => handleReceivePartQuantity(item.part_id)}
-                                                                                disabled={processingReceiving || !receivingQuantities[item.part_id]}
-                                                                            >
-                                                                                {processingReceiving ? (
-                                                                                    <CircularProgress size={16} />
-                                                                                ) : (
-                                                                                    '受入'
-                                                                                )}
-                                                                            </Button>
-                                                                        </span>
-                                                                    </Tooltip>
-                                                                </Box>
+                                                                <TextField
+                                                                    type="number"
+                                                                    size="small"
+                                                                    value={receivingQuantities[item.part_id] || ''}
+                                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                                                        const val = parseInt(e.target.value, 10) || 0;
+                                                                        setReceivingQuantities(prev => ({
+                                                                            ...prev,
+                                                                            [item.part_id]: val,
+                                                                        }));
+                                                                    }}
+                                                                    placeholder="数量"
+                                                                    inputProps={{ min: 1, max: item.total_remaining }}
+                                                                    sx={{ width: 100 }}
+                                                                />
                                                             </TableCell>
                                                         )}
                                                     </TableRow>
@@ -1270,11 +1260,31 @@ export default function PurchasedItemInventoryPage() {
                             </TableContainer>
                         )}
 
+                        {/* 一括受入登録ボタン */}
+                        {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length > 0 && (
+                            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
+                                <Typography variant="body2" color="text.secondary">
+                                    入力済み: {getInputtedPartsCount()} 件
+                                </Typography>
+                                <Button
+                                    variant="contained"
+                                    color="primary"
+                                    size="large"
+                                    startIcon={processingReceiving ? <CircularProgress size={20} color="inherit" /> : <ReceivingIcon />}
+                                    onClick={handleBulkReceive}
+                                    disabled={processingReceiving || getInputtedPartsCount() === 0}
+                                >
+                                    一括受入登録
+                                </Button>
+                            </Box>
+                        )}
+
                         {/* 使い方の説明 */}
                         {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length > 0 && (
                             <Alert severity="info" sx={{ mt: 2 }}>
                                 <Typography variant="body2">
-                                    • 受入数量を入力して「受入」ボタンをクリックすると、発注番号の若い順から在庫に追加されます。<br />
+                                    • 各部品の受入数量を入力してから「一括受入登録」ボタンをクリックしてください。<br />
+                                    • 入力された全ての部品が発注番号の若い順から在庫に追加されます。<br />
                                     • 発注数量を満たすと自動的に発注ステータスが更新されます。
                                 </Typography>
                             </Alert>

@@ -255,10 +255,19 @@ export default function InventoryAdjustmentPage() {
             };
 
             // 在庫タイプに応じてIDを設定
+            // inventory_idがある場合は在庫IDを使用、ない場合はマスターIDを使用
             if (selectedInventory.item_type === 'supplied') {
-                requestData.supplied_item_inventory = selectedInventory.inventory_id;
+                if (selectedInventory.inventory_id) {
+                    requestData.supplied_item_inventory = selectedInventory.inventory_id;
+                } else if (selectedInventory.master_item_id) {
+                    requestData.supplied_item = selectedInventory.master_item_id;
+                }
             } else {
-                requestData.purchased_item_inventory = selectedInventory.inventory_id;
+                if (selectedInventory.inventory_id) {
+                    requestData.purchased_item_inventory = selectedInventory.inventory_id;
+                } else if (selectedInventory.master_item_id) {
+                    requestData.part = selectedInventory.master_item_id;
+                }
             }
 
             await purchasesApi.createInventoryAdjustment(requestData);

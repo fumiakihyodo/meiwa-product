@@ -1084,6 +1084,9 @@ export interface InventoryAdjustmentCreateRequest {
     item_type: InventoryItemType;
     supplied_item_inventory?: number;
     purchased_item_inventory?: number;
+    // 在庫がない場合にマスターIDを指定
+    supplied_item?: number;
+    part?: number;
     adjustment_type: AdjustmentType;
     quantity: number;
     reason: InventoryAdjustmentReason;
@@ -1092,10 +1095,11 @@ export interface InventoryAdjustmentCreateRequest {
 
 // 在庫調整用の在庫アイテム（APIレスポンス）
 export interface InventoryForAdjustment {
-    id: number;
+    id: number | string;  // マスターIDとの組み合わせでユニークキーを生成する場合あり
     item_type: InventoryItemType;
     item_type_display: string;
-    inventory_id: number;
+    inventory_id: number | null;  // 在庫がない場合はnull
+    master_item_id?: number;  // マスターID（在庫がない場合に使用）
     item_number: string;
     item_name: string;
     unit?: string;
@@ -1165,4 +1169,32 @@ export interface ReceivePartByQuantityResponse {
     received_quantity: number;
     remaining_quantity: number;
     processed_items: ProcessedOrderItem[];
+}
+
+// 一括部品受入リクエスト
+export interface BulkReceivePartsRequest {
+    product_id: number;
+    items: {
+        part_id: number;
+        quantity: number;
+    }[];
+}
+
+// 一括部品受入結果
+export interface BulkReceivePartResult {
+    part_id: number;
+    part_number: string | null;
+    part_name: string | null;
+    received_quantity: number;
+    success: boolean;
+    error?: string;
+}
+
+// 一括部品受入レスポンス
+export interface BulkReceivePartsResponse {
+    message: string;
+    results: BulkReceivePartResult[];
+    total_received_count: number;
+    success_count: number;
+    error_count: number;
 }

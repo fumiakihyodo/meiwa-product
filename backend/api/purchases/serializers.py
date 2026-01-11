@@ -2082,11 +2082,15 @@ class InventoryAdjustmentCreateSerializer(serializers.ModelSerializer):
     created_by = serializers.HiddenField(
         default=serializers.CurrentUserDefault()
     )
+    # 在庫がない場合にマスターIDを受け取るためのフィールド
+    supplied_item = serializers.IntegerField(required=False, write_only=True)
+    part = serializers.IntegerField(required=False, write_only=True)
 
     class Meta:
         model = InventoryAdjustment
         fields = [
             'id', 'item_type', 'supplied_item_inventory', 'purchased_item_inventory',
+            'supplied_item', 'part',
             'adjustment_type', 'quantity', 'reason', 'notes', 'created_by'
         ]
         read_only_fields = ['id']
@@ -2095,21 +2099,29 @@ class InventoryAdjustmentCreateSerializer(serializers.ModelSerializer):
             'adjustment_type': {'required': True},
             'quantity': {'required': True},
             'reason': {'required': True},
+            'supplied_item_inventory': {'required': False},
+            'purchased_item_inventory': {'required': False},
         }
 
     def validate(self, attrs):
         item_type = attrs.get('item_type')
         supplied_inventory = attrs.get('supplied_item_inventory')
         purchased_inventory = attrs.get('purchased_item_inventory')
+        supplied_item_id = attrs.get('supplied_item')
+        part_id = attrs.get('part')
 
-        if item_type == 'supplied' and not supplied_inventory:
-            raise serializers.ValidationError({
-                'supplied_item_inventory': '支給品在庫を指定してください'
-            })
-        if item_type == 'purchased' and not purchased_inventory:
-            raise serializers.ValidationError({
-                'purchased_item_inventory': '購入品在庫を指定してください'
-            })
+        # 支給品の場合
+        if item_type == 'supplied':
+            if not supplied_inventory and not supplied_item_id:
+                raise serializers.ValidationError({
+                    'supplied_item_inventory': '支給品在庫または支給品マスターを指定してください'
+                })
+        # 購入品の場合
+        if item_type == 'purchased':
+            if not purchased_inventory and not part_id:
+                raise serializers.ValidationError({
+                    'purchased_item_inventory': '購入品在庫または部品マスターを指定してください'
+                })
 
         # 減少の場合、在庫数を超えていないかチェック
         adjustment_type = attrs.get('adjustment_type')
@@ -2121,6 +2133,11 @@ class InventoryAdjustmentCreateSerializer(serializers.ModelSerializer):
                 current_quantity = supplied_inventory.quantity
             elif item_type == 'purchased' and purchased_inventory:
                 current_quantity = purchased_inventory.quantity
+            # 在庫レコードがない場合（マスターIDのみ指定）は、現在の在庫は0
+            # 減少は0を超えることになるので常にエラー
+            elif (item_type == 'supplied' and supplied_item_id) or \
+                 (item_type == 'purchased' and part_id):
+                current_quantity = 0
 
             if quantity > current_quantity:
                 raise serializers.ValidationError({
@@ -2130,8 +2147,39 @@ class InventoryAdjustmentCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        # 調整前の数量を設定
+        from django.utils import timezone
+
         item_type = validated_data.get('item_type')
+        supplied_item_id = validated_data.pop('supplied_item', None)
+        part_id = validated_data.pop('part', None)
+        user = validated_data.get('created_by')
+
+        # 在庫レコードがない場合は新規作成
+        if item_type == 'supplied' and not validated_data.get('supplied_item_inventory') and supplied_item_id:
+            # 新しい在庫レコードを作成（数量0で）
+            from api.purchases.models import SuppliedItemInventory
+            new_inventory = SuppliedItemInventory.objects.create(
+                supplied_item_id=supplied_item_id,
+                quantity=0,
+                received_date=timezone.now().date(),
+                notes='在庫調整により作成',
+                created_by=user
+            )
+            validated_data['supplied_item_inventory'] = new_inventory
+
+        elif item_type == 'purchased' and not validated_data.get('purchased_item_inventory') and part_id:
+            # 新しい在庫レコードを作成（数量0で）
+            from api.purchases.models import PurchasedItemInventory
+            new_inventory = PurchasedItemInventory.objects.create(
+                part_id=part_id,
+                quantity=0,
+                received_date=timezone.now().date(),
+                notes='在庫調整により作成',
+                created_by=user
+            )
+            validated_data['purchased_item_inventory'] = new_inventory
+
+        # 調整前の数量を設定
         if item_type == 'supplied':
             validated_data['quantity_before'] = validated_data['supplied_item_inventory'].quantity
         elif item_type == 'purchased':
