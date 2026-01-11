@@ -705,9 +705,15 @@ export default function SuppliedItemInventoryPage() {
                 // 完了の場合: completeReceivingで完了処理を行う
                 await purchasesApi.completeReceiving(receiving.id);
                 setReceivingSuccess(`${validRows.length}件の受入れ登録を完了しました`);
-                setTimeout(() => {
+                setTimeout(async () => {
                     handleCloseReceivingModal();
-                    fetchData();
+                    await fetchData();
+                    // 部品一覧（受入一覧タブ）も更新
+                    await fetchReceivingItems();
+                    // 在庫一覧も更新（製品が選択されている場合）
+                    if (inventoryProductFilter) {
+                        await fetchItemsWithInventory(Number(inventoryProductFilter));
+                    }
                 }, 1500);
             } else {
                 // 一時保存の場合
@@ -1103,6 +1109,10 @@ const inventoryWithItemsColumns: GridColDef<SuppliedItemWithInventory>[] = [
             // 成功したらデータを再取得
             await fetchReceivingItems();
             await fetchData();
+            // 在庫一覧も更新（製品が選択されている場合）
+            if (inventoryProductFilter) {
+                await fetchItemsWithInventory(Number(inventoryProductFilter));
+            }
             setCancelReceivingItemDialogOpen(false);
             setCancellingReceivingItem(null);
             // 部品詳細モーダルを閉じる（データが変わったので）
@@ -1194,7 +1204,13 @@ const inventoryWithItemsColumns: GridColDef<SuppliedItemWithInventory>[] = [
             await purchasesApi.deleteSuppliedItemReceiving(selectedReceiving.id);
             setDeleteReceivingDialogOpen(false);
             setSelectedReceiving(null);
-            fetchData();
+            await fetchData();
+            // 部品一覧（受入一覧タブ）も更新
+            await fetchReceivingItems();
+            // 在庫一覧も更新（製品が選択されている場合）
+            if (inventoryProductFilter) {
+                await fetchItemsWithInventory(Number(inventoryProductFilter));
+            }
         } catch (error) {
             console.error('受入れ削除エラー:', error);
         }

@@ -9,6 +9,8 @@ import {
     TextField,
     InputAdornment,
     FormControl,
+    FormControlLabel,
+    Checkbox,
     InputLabel,
     Select,
     MenuItem,
@@ -179,6 +181,9 @@ export default function PurchasedItemInventoryPage() {
     const [productFilter, setProductFilter] = useState<number | ''>('');
     const [inventoryProductFilter, setInventoryProductFilter] = useState<number | ''>('');
 
+    // 完了済み表示フィルタ
+    const [showCompletedOrders, setShowCompletedOrders] = useState(false);
+
     // 発注作成モーダル関連
     const [createOrderDialogOpen, setCreateOrderDialogOpen] = useState(false);
     const [selectedProductForOrder, setSelectedProductForOrder] = useState<number | ''>('');
@@ -236,6 +241,14 @@ export default function PurchasedItemInventoryPage() {
     // フィルタリングされた発注一覧
     const filteredOrders = useMemo(() => {
         let result = orders;
+
+        // 完了済み（received, completed）をデフォルトで非表示
+        if (!showCompletedOrders) {
+            result = result.filter((o: PurchaseOrder) =>
+                o.status !== 'received' && o.status !== 'completed'
+            );
+        }
+
         if (searchText) {
             const lowerSearch = searchText.toLowerCase();
             result = result.filter((o: PurchaseOrder) =>
@@ -251,7 +264,7 @@ export default function PurchasedItemInventoryPage() {
             result = result.filter((o: PurchaseOrder) => o.product === productFilter);
         }
         return result;
-    }, [orders, searchText, statusFilter, productFilter]);
+    }, [orders, searchText, statusFilter, productFilter, showCompletedOrders]);
 
     // フィルタリングされた在庫一覧（partsWithInventoryを使用）
     const filteredPartsWithInventory = useMemo(() => {
@@ -620,6 +633,10 @@ export default function PurchasedItemInventoryPage() {
 
             handleCloseCreateOrderDialog();
             await fetchData();
+            // 受入一覧タブのデータも更新（製品が選択されている場合）
+            if (receivingProductFilter) {
+                await fetchPendingOrderItems(receivingProductFilter);
+            }
             alert(result.message);
         } catch (error) {
             console.error('Failed to create orders:', error);
@@ -742,6 +759,10 @@ export default function PurchasedItemInventoryPage() {
                 setSelectedOrder(updated);
             }
             await fetchData();
+            // 受入一覧タブのデータも更新（製品が選択されている場合）
+            if (receivingProductFilter) {
+                await fetchPendingOrderItems(receivingProductFilter);
+            }
             handleCancelItemReceiving();
         } catch (error) {
             console.error('Failed to receive item:', error);
@@ -766,6 +787,10 @@ export default function PurchasedItemInventoryPage() {
                 setSelectedOrder(updated);
             }
             await fetchData();
+            // 受入一覧タブのデータも更新（製品が選択されている場合）
+            if (receivingProductFilter) {
+                await fetchPendingOrderItems(receivingProductFilter);
+            }
             alert('受入をキャンセルしました');
         } catch (error) {
             console.error('Failed to cancel receiving:', error);
@@ -1095,6 +1120,15 @@ export default function PurchasedItemInventoryPage() {
                                     ))}
                                 </Select>
                             </FormControl>
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={showCompletedOrders}
+                                        onChange={(e) => setShowCompletedOrders(e.target.checked)}
+                                    />
+                                }
+                                label="完了済みを表示"
+                            />
                         </Box>
 
                         {/* 発注一覧DataGrid */}
