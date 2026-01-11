@@ -40,6 +40,7 @@ import {
     Add as AddIcon,
     TrendingUp as IncreaseIcon,
     TrendingDown as DecreaseIcon,
+    Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { purchasesApi } from '@/services/apiPurchases';
@@ -140,6 +141,11 @@ export default function InventoryAdjustmentPage() {
     const [adjustmentNotes, setAdjustmentNotes] = useState('');
     const [adjustingInProgress, setAdjustingInProgress] = useState(false);
 
+    // 調整履歴削除関連
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [deletingAdjustment, setDeletingAdjustment] = useState<InventoryAdjustment | null>(null);
+    const [deletingInProgress, setDeletingInProgress] = useState(false);
+
     // 製品一覧を取得
     const fetchProducts = useCallback(async () => {
         try {
@@ -232,6 +238,41 @@ export default function InventoryAdjustmentPage() {
         setAdjustmentQuantity(0);
         setAdjustmentReason('stocktaking');
         setAdjustmentNotes('');
+    };
+
+    // 調整履歴削除ダイアログを開く
+    const handleOpenDeleteDialog = (adjustment: InventoryAdjustment) => {
+        setDeletingAdjustment(adjustment);
+        setDeleteDialogOpen(true);
+    };
+
+    // 調整履歴削除ダイアログを閉じる
+    const handleCloseDeleteDialog = () => {
+        setDeleteDialogOpen(false);
+        setDeletingAdjustment(null);
+    };
+
+    // 調整履歴削除実行
+    const handleConfirmDelete = async () => {
+        if (!deletingAdjustment) return;
+
+        setDeletingInProgress(true);
+        try {
+            await purchasesApi.deleteInventoryAdjustment(deletingAdjustment.id);
+
+            // 成功したらリストを更新
+            await fetchAdjustmentHistory();
+            handleCloseDeleteDialog();
+
+            const sign = deletingAdjustment.adjustment_type === 'increase' ? '+' : '-';
+            alert(`調整履歴を削除しました: ${deletingAdjustment.item_number} (${sign}${deletingAdjustment.quantity})\n在庫数量が元に戻されました。`);
+        } catch (error: unknown) {
+            console.error('Failed to delete adjustment:', error);
+            const errMessage = error instanceof Error ? error.message : '調整履歴の削除に失敗しました';
+            alert(errMessage);
+        } finally {
+            setDeletingInProgress(false);
+        }
     };
 
     // 在庫調整実行
@@ -410,6 +451,23 @@ export default function InventoryAdjustmentPage() {
         { field: 'reason_display', headerName: '理由', width: 100 },
         { field: 'notes', headerName: '備考', width: 150 },
         { field: 'created_by_name', headerName: '担当者', width: 100 },
+        {
+            field: 'actions',
+            headerName: '操作',
+            width: 80,
+            sortable: false,
+            renderCell: (params: GridRenderCellParams<InventoryAdjustment>) => (
+                <Tooltip title="削除（在庫を元に戻す）">
+                    <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleOpenDeleteDialog(params.row)}
+                    >
+                        <DeleteIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            ),
+        },
     ];
 
     return (
@@ -789,6 +847,101 @@ export default function InventoryAdjustmentPage() {
                         }
                     >
                         {adjustingInProgress ? <CircularProgress size={20} /> : '調整実行'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* 調整履歴削除確認ダイアログ */}
+            <Dialog
+                open={deleteDialogOpen}
+                onClose={handleCloseDeleteDialog}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>調整履歴の削除確認</DialogTitle>
+                <DialogContent>
+                    {deletingAdjustment && (
+                        <Box sx={{ mt: 1 }}>
+                            <Alert severity="warning" sx={{ mb: 2 }}>
+                                この調整履歴を削除すると、在庫数量が調整前の状態に戻されます。
+                            </Alert>
+
+                            <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
+                                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                    削除対象の調整履歴
+                                </Typography>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2" color="text.secondary">種別:</Typography>
+                                        <Chip
+                                            label={deletingAdjustment.item_type_display}
+                                            size="small"
+                                            color={deletingAdjustment.item_type === 'supplied' ? 'primary' : 'secondary'}
+                                        />
+                                    </Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2" color="text.secondary">品番:</Typography>
+                                        <Typography variant="body2" fontWeight="bold">{deletingAdjustment.item_number}</Typography>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2" color="text.secondary">品名:</Typography>
+                                        <Typography variant="body2">{deletingAdjustment.item_name}</Typography>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2" color="text.secondary">調整タイプ:</Typography>
+                                        <Chip
+                                            icon={deletingAdjustment.adjustment_type === 'increase' ? <IncreaseIcon /> : <DecreaseIcon />}
+                                            label={deletingAdjustment.adjustment_type_display}
+                                            size="small"
+                                            color={deletingAdjustment.adjustment_type === 'increase' ? 'success' : 'error'}
+                                        />
+                                    </Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2" color="text.secondary">調整数量:</Typography>
+                                        <Typography
+                                            variant="body2"
+                                            fontWeight="bold"
+                                            color={deletingAdjustment.adjustment_type === 'increase' ? 'success.main' : 'error.main'}
+                                        >
+                                            {deletingAdjustment.adjustment_type === 'increase' ? '+' : '-'}{deletingAdjustment.quantity}
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2" color="text.secondary">変化:</Typography>
+                                        <Typography variant="body2">
+                                            {deletingAdjustment.quantity_before} → {deletingAdjustment.quantity_after}
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2" color="text.secondary">理由:</Typography>
+                                        <Typography variant="body2">{deletingAdjustment.reason_display}</Typography>
+                                    </Box>
+                                    {deletingAdjustment.notes && (
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <Typography variant="body2" color="text.secondary">備考:</Typography>
+                                            <Typography variant="body2">{deletingAdjustment.notes}</Typography>
+                                        </Box>
+                                    )}
+                                </Box>
+                            </Paper>
+
+                            <Alert severity="info" sx={{ mt: 2 }}>
+                                <Typography variant="body2">
+                                    削除後の在庫数量: {deletingAdjustment.quantity_before}
+                                </Typography>
+                            </Alert>
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseDeleteDialog}>キャンセル</Button>
+                    <Button
+                        variant="contained"
+                        color="error"
+                        onClick={handleConfirmDelete}
+                        disabled={deletingInProgress}
+                    >
+                        {deletingInProgress ? <CircularProgress size={20} /> : '削除する'}
                     </Button>
                 </DialogActions>
             </Dialog>

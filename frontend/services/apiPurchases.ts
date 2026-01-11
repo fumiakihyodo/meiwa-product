@@ -1042,6 +1042,11 @@ export const purchasesApi = {
         return response.data;
     },
 
+    // 在庫調整削除（在庫数量を元に戻す）
+    deleteInventoryAdjustment: async (id: number): Promise<void> => {
+        await apiClient.delete(`/purchases/inventory-adjustments/${id}/`);
+    },
+
     // 在庫調整作成
     createInventoryAdjustment: async (
         data: InventoryAdjustmentCreateRequest

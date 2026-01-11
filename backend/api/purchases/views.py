@@ -4571,8 +4571,8 @@ class InventoryAdjustmentListCreateView(generics.ListCreateAPIView):
         return InventoryAdjustmentListSerializer
 
 
-class InventoryAdjustmentDetailView(generics.RetrieveAPIView):
-    """在庫調整詳細取得ビュー"""
+class InventoryAdjustmentDetailView(generics.RetrieveDestroyAPIView):
+    """在庫調整詳細取得・削除ビュー"""
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InventoryAdjustmentDetailSerializer
     lookup_field = 'pk'
@@ -4587,6 +4587,45 @@ class InventoryAdjustmentDetailView(generics.RetrieveAPIView):
             'purchased_item_inventory__part__product',
             'created_by'
         )
+
+    def destroy(self, request, *args, **kwargs):
+        """在庫調整を削除し、在庫数量を元に戻す"""
+        adjustment = self.get_object()
+
+        # 在庫数量を元に戻す
+        # adjustment_type が 'increase' の場合、quantity を減算
+        # adjustment_type が 'decrease' の場合、quantity を加算
+        quantity_change = adjustment.quantity
+        if adjustment.adjustment_type == 'increase':
+            quantity_change = -quantity_change  # 増加を取り消すので減算
+        # 'decrease' の場合は元の quantity をそのまま加算
+
+        # 対象の在庫を更新
+        if adjustment.item_type == 'supplied' and adjustment.supplied_item_inventory:
+            inventory = adjustment.supplied_item_inventory
+            new_quantity = inventory.quantity + quantity_change
+            if new_quantity < 0:
+                return Response(
+                    {'error': '在庫数量がマイナスになるため削除できません'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            inventory.quantity = new_quantity
+            inventory.save()
+        elif adjustment.item_type == 'purchased' and adjustment.purchased_item_inventory:
+            inventory = adjustment.purchased_item_inventory
+            new_quantity = inventory.quantity + quantity_change
+            if new_quantity < 0:
+                return Response(
+                    {'error': '在庫数量がマイナスになるため削除できません'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            inventory.quantity = new_quantity
+            inventory.save()
+
+        # 調整レコードを削除
+        adjustment.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(['GET'])

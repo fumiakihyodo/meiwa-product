@@ -229,6 +229,7 @@ export default function PurchasedItemInventoryPage() {
     const [pendingOrderItems, setPendingOrderItems] = useState<PendingOrderItemForReceiving[]>([]);
     const [loadingPendingItems, setLoadingPendingItems] = useState(false);
     const [receivingProductFilter, setReceivingProductFilter] = useState<number | ''>('');
+    const [receivingSupplierFilter, setReceivingSupplierFilter] = useState<string>('');
     const [receivingQuantities, setReceivingQuantities] = useState<Record<number, number>>({});
     const [processingReceiving, setProcessingReceiving] = useState(false);
 
@@ -256,6 +257,31 @@ export default function PurchasedItemInventoryPage() {
     const filteredPartsWithInventory = useMemo(() => {
         return partsWithInventory;
     }, [partsWithInventory]);
+
+    // 受入一覧タブ：仕入先一覧を抽出
+    const receivingSupplierList = useMemo(() => {
+        const suppliers = new Set<string>();
+        pendingOrderItems.forEach((item) => {
+            const supplierDisplay = item.supplier_branch_name
+                ? `${item.supplier_name} (${item.supplier_branch_name})`
+                : item.supplier_name || '';
+            if (supplierDisplay) {
+                suppliers.add(supplierDisplay);
+            }
+        });
+        return Array.from(suppliers).sort();
+    }, [pendingOrderItems]);
+
+    // フィルタリングされた受入待ち部品一覧
+    const filteredPendingOrderItems = useMemo(() => {
+        if (!receivingSupplierFilter) return pendingOrderItems;
+        return pendingOrderItems.filter((item) => {
+            const supplierDisplay = item.supplier_branch_name
+                ? `${item.supplier_name} (${item.supplier_branch_name})`
+                : item.supplier_name || '';
+            return supplierDisplay === receivingSupplierFilter;
+        });
+    }, [pendingOrderItems, receivingSupplierFilter]);
 
     // 納期自動計算（発注日 + リードタイム（平日））
     const calculateDeliveryDate = useCallback((leadTimeDays: number | undefined): string => {
@@ -388,6 +414,30 @@ export default function PurchasedItemInventoryPage() {
     const getInputtedPartsCount = () => {
         return Object.entries(receivingQuantities).filter(([, qty]) => qty > 0).length;
     };
+
+    // 受入一覧入力でEnterキーで次の入力に移動
+    const handleReceivingKeyDown = useCallback((
+        e: React.KeyboardEvent<HTMLInputElement>,
+        partId: number
+    ) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+
+            const allInputs = document.querySelectorAll<HTMLInputElement>('input[data-receiving-index]');
+            const inputsArray = Array.from(allInputs);
+            const currentIndex = inputsArray.findIndex(
+                input => input.getAttribute('data-receiving-index') === String(partId)
+            );
+
+            if (currentIndex !== -1 && currentIndex < inputsArray.length - 1) {
+                const nextInput = inputsArray[currentIndex + 1];
+                setTimeout(() => {
+                    nextInput.focus();
+                    nextInput.select();
+                }, 0);
+            }
+        }
+    }, []);
 
     // 一括受入処理
     const handleBulkReceive = async () => {
@@ -1128,6 +1178,39 @@ export default function PurchasedItemInventoryPage() {
                                         <ClearIcon />
                                     </IconButton>
                                 )}
+
+                                {/* 仕入先フィルタ */}
+                                {receivingProductFilter && receivingSupplierList.length > 0 && (
+                                    <>
+                                        <FormControl size="small" sx={{ minWidth: 200 }}>
+                                            <InputLabel>仕入先</InputLabel>
+                                            <Select
+                                                value={receivingSupplierFilter}
+                                                label="仕入先"
+                                                onChange={(e: SelectChangeEvent<string>) => {
+                                                    setReceivingSupplierFilter(e.target.value);
+                                                }}
+                                            >
+                                                <MenuItem value="">すべて</MenuItem>
+                                                {receivingSupplierList.map((supplier) => (
+                                                    <MenuItem key={supplier} value={supplier}>
+                                                        {supplier}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                        {receivingSupplierFilter && (
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => setReceivingSupplierFilter('')}
+                                                title="仕入先フィルタ解除"
+                                            >
+                                                <ClearIcon />
+                                            </IconButton>
+                                        )}
+                                    </>
+                                )}
+
                                 <IconButton
                                     onClick={() => receivingProductFilter && fetchPendingOrderItems(receivingProductFilter)}
                                     disabled={loadingPendingItems || !receivingProductFilter}
@@ -1159,20 +1242,27 @@ export default function PurchasedItemInventoryPage() {
                         )}
 
                         {/* 受入待ち部品サマリー */}
-                        {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length > 0 && (
+                        {receivingProductFilter && !loadingPendingItems && filteredPendingOrderItems.length > 0 && (
                             <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
-                                <Typography variant="subtitle2" sx={{ mb: 1 }}>受入待ちサマリー</Typography>
+                                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                                    受入待ちサマリー
+                                    {receivingSupplierFilter && (
+                                        <Typography component="span" variant="caption" sx={{ ml: 1, color: 'primary.main' }}>
+                                            （{receivingSupplierFilter}でフィルタ中: {filteredPendingOrderItems.length}/{pendingOrderItems.length}件）
+                                        </Typography>
+                                    )}
+                                </Typography>
                                 <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                                     <Box>
                                         <Typography variant="caption" color="text.secondary">部品数</Typography>
                                         <Typography variant="h6" fontWeight="bold">
-                                            {pendingOrderItems.length} 品目
+                                            {filteredPendingOrderItems.length} 品目
                                         </Typography>
                                     </Box>
                                     <Box>
                                         <Typography variant="caption" color="text.secondary">合計注文残</Typography>
                                         <Typography variant="h6" fontWeight="bold" color="warning.main">
-                                            {pendingOrderItems.reduce((acc, item) => acc + item.total_remaining, 0).toLocaleString()}
+                                            {filteredPendingOrderItems.reduce((acc, item) => acc + item.total_remaining, 0).toLocaleString()}
                                         </Typography>
                                     </Box>
                                 </Box>
@@ -1180,7 +1270,7 @@ export default function PurchasedItemInventoryPage() {
                         )}
 
                         {/* 受入一覧テーブル */}
-                        {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length > 0 && (
+                        {receivingProductFilter && !loadingPendingItems && filteredPendingOrderItems.length > 0 && (
                             <TableContainer component={Paper}>
                                 <Table size="small">
                                     <TableHead>
@@ -1195,7 +1285,7 @@ export default function PurchasedItemInventoryPage() {
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {pendingOrderItems.map((item) => (
+                                        {filteredPendingOrderItems.map((item) => (
                                             <React.Fragment key={item.part_id}>
                                                 {item.orders.map((order, orderIndex) => (
                                                     <TableRow key={`${item.part_id}-${order.order_item_id}`}>
@@ -1245,8 +1335,15 @@ export default function PurchasedItemInventoryPage() {
                                                                             [item.part_id]: val,
                                                                         }));
                                                                     }}
+                                                                    onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) =>
+                                                                        handleReceivingKeyDown(e, item.part_id)
+                                                                    }
                                                                     placeholder="数量"
-                                                                    inputProps={{ min: 1, max: item.total_remaining }}
+                                                                    inputProps={{
+                                                                        min: 1,
+                                                                        max: item.total_remaining,
+                                                                        'data-receiving-index': item.part_id,
+                                                                    }}
                                                                     sx={{ width: 100 }}
                                                                 />
                                                             </TableCell>
@@ -1261,7 +1358,7 @@ export default function PurchasedItemInventoryPage() {
                         )}
 
                         {/* 一括受入登録ボタン */}
-                        {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length > 0 && (
+                        {receivingProductFilter && !loadingPendingItems && filteredPendingOrderItems.length > 0 && (
                             <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
                                 <Typography variant="body2" color="text.secondary">
                                     入力済み: {getInputtedPartsCount()} 件
@@ -1280,7 +1377,7 @@ export default function PurchasedItemInventoryPage() {
                         )}
 
                         {/* 使い方の説明 */}
-                        {receivingProductFilter && !loadingPendingItems && pendingOrderItems.length > 0 && (
+                        {receivingProductFilter && !loadingPendingItems && filteredPendingOrderItems.length > 0 && (
                             <Alert severity="info" sx={{ mt: 2 }}>
                                 <Typography variant="body2">
                                     • 各部品の受入数量を入力してから「一括受入登録」ボタンをクリックしてください。<br />
