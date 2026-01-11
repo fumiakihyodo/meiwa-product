@@ -123,7 +123,6 @@ export default function InventoryAdjustmentPage() {
     // 追加設定
     const [includeAllMaster, setIncludeAllMaster] = useState(getIncludeAllMaster());
     const [loadLimit, setLoadLimit] = useState<number | ''>(getLoadLimit());
-    const [defaultsInitialized, setDefaultsInitialized] = useState(false);
 
     // 調整履歴一覧
     const [adjustmentHistory, setAdjustmentHistory] = useState<InventoryAdjustment[]>([]);
@@ -299,10 +298,16 @@ export default function InventoryAdjustmentPage() {
         {
             field: 'quantity',
             headerName: '在庫数',
-            width: 100,
+            width: 200,
             type: 'number',
             renderCell: (params: GridRenderCellParams<InventoryForAdjustment>) => (
-                <Typography fontWeight="bold">
+                <Typography sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    height: '100%',
+                    width: '100%',
+                }}>
                     {params.value} {params.row.unit || ''}
                 </Typography>
             ),
