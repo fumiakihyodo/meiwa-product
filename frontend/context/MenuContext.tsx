@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { usePathname } from 'next/navigation';
 
 // メニューカテゴリの定義
-export type MenuCategory = 'dashboard' | 'inventory' | 'master' | 'trading' | 'system';
+export type MenuCategory = 'dashboard' | 'inventory' | 'master' | 'trading' | 'system' | 'production';
 
 // 各カテゴリの情報
 export interface CategoryInfo {
@@ -31,6 +31,13 @@ export const MENU_CATEGORIES: CategoryInfo[] = [
         icon: 'Inventory',
     },
     {
+        id: 'production',
+        name: '生産計画',
+        description: '製造スケジュールと材料を管理',
+        color: '#e91e63',
+        icon: 'PrecisionManufacturing',
+    },
+    {
         id: 'trading',
         name: '取引先管理',
         description: '顧客・仕入先の情報を管理',
@@ -52,8 +59,10 @@ const PATH_TO_CATEGORY: Record<string, MenuCategory> = {
     '/inventory': 'inventory',
     '/supplied-item-inventory': 'inventory',
     '/purchased-item-inventory': 'inventory',
+    '/inventory-adjustment': 'inventory',
     '/products': 'master',
     '/parts': 'master',
+    '/dashboard/production-planning': 'production',
     '/customers': 'trading',
     '/customers/branches': 'trading',
     '/customers/contacts': 'trading',

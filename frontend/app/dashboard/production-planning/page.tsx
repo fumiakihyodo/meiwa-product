@@ -1,4 +1,4 @@
-// app/dashboard/master/manufacturing/page.tsx
+// app/dashboard/production-planning/page.tsx
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -21,7 +21,6 @@ import {
     MenuItem,
     Tabs,
     Tab,
-    CircularProgress,
     LinearProgress,
 } from '@mui/material';
 import {
@@ -37,8 +36,6 @@ import {
     Refresh as RefreshIcon,
     Visibility as VisibilityIcon,
     Search as SearchIcon,
-    PlayArrow as PlayIcon,
-    CheckCircle as CompleteIcon,
 } from '@mui/icons-material';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';
@@ -53,17 +50,40 @@ import {
 } from '@/services/apiManufacturing';
 import { productApi } from '@/services/apiProduct';
 import { Product } from '@/types/product';
+import {
+    ModalMode,
+    PLAN_STATUS_LABELS,
+    PLAN_STATUS_COLORS,
+    MATERIAL_CATEGORY_LABELS,
+    ProductionPlanStatus,
+    MaterialCategory,
+} from '@/types/production-planning';
 import toast from 'react-hot-toast';
-import ManufacturingItemModal from '@/components/manufacturing/ManufacturingItemModal';
-import ProductionPlanModal from '@/components/manufacturing/ProductionPlanModal';
-import MaterialModal from '@/components/manufacturing/MaterialModal';
 
-// Tab panel component
+// モーダルコンポーネントのインポート
+import ManufacturingItemModal from '@/components/production-planning/ManufacturingItemModal';
+import ProductionPlanModal from '@/components/production-planning/ProductionPlanModal';
+import MaterialModal from '@/components/production-planning/MaterialModal';
+
+// =============================================================================
+// Types
+// =============================================================================
+
 interface TabPanelProps {
     children?: React.ReactNode;
     index: number;
     value: number;
 }
+
+interface DeleteConfirmState {
+    open: boolean;
+    type: 'item' | 'plan' | 'material';
+    data: ManufacturingItem | ProductionPlan | Material | null;
+}
+
+// =============================================================================
+// Components
+// =============================================================================
 
 function TabPanel(props: TabPanelProps) {
     const { children, value, index, ...other } = props;
@@ -71,8 +91,8 @@ function TabPanel(props: TabPanelProps) {
         <div
             role="tabpanel"
             hidden={value !== index}
-            id={`manufacturing-tabpanel-${index}`}
-            aria-labelledby={`manufacturing-tab-${index}`}
+            id={`production-tabpanel-${index}`}
+            aria-labelledby={`production-tab-${index}`}
             {...other}
         >
             {value === index && <Box sx={{ pt: 2 }}>{children}</Box>}
@@ -80,60 +100,45 @@ function TabPanel(props: TabPanelProps) {
     );
 }
 
-// Status color mapping
-const planStatusColors: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
-    draft: 'default',
-    planned: 'info',
-    in_progress: 'warning',
-    completed: 'success',
-    cancelled: 'error',
-    on_hold: 'secondary',
-};
+// =============================================================================
+// Main Page Component
+// =============================================================================
 
-const planStatusLabels: Record<string, string> = {
-    draft: '下書き',
-    planned: '計画済み',
-    in_progress: '製造中',
-    completed: '完了',
-    cancelled: 'キャンセル',
-    on_hold: '保留',
-};
-
-const materialCategoryLabels: Record<string, string> = {
-    raw: '原材料',
-    semi_finished: '半製品',
-    component: '部品',
-    consumable: '消耗品',
-    other: 'その他',
-};
-
-export default function ManufacturingPage() {
+export default function ProductionPlanningPage() {
+    // Tab state
     const [tabValue, setTabValue] = useState(0);
 
     // Manufacturing Items state
     const [selectedItem, setSelectedItem] = useState<ManufacturingItem | null>(null);
     const [itemModalOpen, setItemModalOpen] = useState(false);
-    const [itemModalMode, setItemModalMode] = useState<'create' | 'edit' | 'view'>('create');
-    const [deleteItemDialogOpen, setDeleteItemDialogOpen] = useState(false);
+    const [itemModalMode, setItemModalMode] = useState<ModalMode>('create');
     const [itemSearchText, setItemSearchText] = useState('');
 
     // Production Plans state
     const [selectedPlan, setSelectedPlan] = useState<ProductionPlan | null>(null);
     const [planModalOpen, setPlanModalOpen] = useState(false);
-    const [planModalMode, setPlanModalMode] = useState<'create' | 'edit' | 'view'>('create');
-    const [deletePlanDialogOpen, setDeletePlanDialogOpen] = useState(false);
+    const [planModalMode, setPlanModalMode] = useState<ModalMode>('create');
     const [planSearchText, setPlanSearchText] = useState('');
-    const [selectedPlanStatus, setSelectedPlanStatus] = useState<string>('');
+    const [selectedPlanStatus, setSelectedPlanStatus] = useState<ProductionPlanStatus | ''>('');
 
     // Materials state
     const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
     const [materialModalOpen, setMaterialModalOpen] = useState(false);
-    const [materialModalMode, setMaterialModalMode] = useState<'create' | 'edit' | 'view'>('create');
-    const [deleteMaterialDialogOpen, setDeleteMaterialDialogOpen] = useState(false);
+    const [materialModalMode, setMaterialModalMode] = useState<ModalMode>('create');
     const [materialSearchText, setMaterialSearchText] = useState('');
-    const [selectedMaterialCategory, setSelectedMaterialCategory] = useState<string>('');
+    const [selectedMaterialCategory, setSelectedMaterialCategory] = useState<MaterialCategory | ''>('');
 
-    // Data fetching
+    // Delete confirmation state
+    const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>({
+        open: false,
+        type: 'item',
+        data: null,
+    });
+
+    // ==========================================================================
+    // Data Fetching
+    // ==========================================================================
+
     type ItemParams = { search?: string; product?: number; is_active?: boolean };
     type PlanParams = { search?: string; manufacturing_item?: number; product?: number; status?: string; priority?: number };
     type MaterialParams = { search?: string; category?: string; supplier_branch?: number; is_active?: boolean; low_stock?: boolean };
@@ -181,12 +186,18 @@ export default function ManufacturingPage() {
         fetchProducts();
     }, [fetchItems, fetchPlans, fetchMaterials, fetchProducts]);
 
-    // Tab change handler
-    const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    // ==========================================================================
+    // Tab Handler
+    // ==========================================================================
+
+    const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
         setTabValue(newValue);
     };
 
-    // ===== Manufacturing Items handlers =====
+    // ==========================================================================
+    // Manufacturing Items Handlers
+    // ==========================================================================
+
     const handleNewItem = useCallback(() => {
         setSelectedItem(null);
         setItemModalMode('create');
@@ -206,23 +217,8 @@ export default function ManufacturingPage() {
     }, []);
 
     const handleDeleteItemConfirm = useCallback((item: ManufacturingItem) => {
-        setSelectedItem(item);
-        setDeleteItemDialogOpen(true);
+        setDeleteConfirm({ open: true, type: 'item', data: item });
     }, []);
-
-    const handleDeleteItem = useCallback(async () => {
-        if (!selectedItem) return;
-        try {
-            await manufacturingItemApi.deleteItem(selectedItem.id);
-            toast.success('制作品を削除しました');
-            setDeleteItemDialogOpen(false);
-            setSelectedItem(null);
-            fetchItems();
-        } catch (error) {
-            console.error('削除エラー:', error);
-            toast.error('制作品の削除に失敗しました');
-        }
-    }, [selectedItem, fetchItems]);
 
     const handleItemModalClose = useCallback(() => {
         setItemModalOpen(false);
@@ -241,7 +237,15 @@ export default function ManufacturingPage() {
         fetchItems(params);
     }, [itemSearchText, fetchItems]);
 
-    // ===== Production Plans handlers =====
+    const handleItemSearchReset = useCallback(() => {
+        setItemSearchText('');
+        fetchItems();
+    }, [fetchItems]);
+
+    // ==========================================================================
+    // Production Plans Handlers
+    // ==========================================================================
+
     const handleNewPlan = useCallback(() => {
         setSelectedPlan(null);
         setPlanModalMode('create');
@@ -261,23 +265,8 @@ export default function ManufacturingPage() {
     }, []);
 
     const handleDeletePlanConfirm = useCallback((plan: ProductionPlan) => {
-        setSelectedPlan(plan);
-        setDeletePlanDialogOpen(true);
+        setDeleteConfirm({ open: true, type: 'plan', data: plan });
     }, []);
-
-    const handleDeletePlan = useCallback(async () => {
-        if (!selectedPlan) return;
-        try {
-            await productionPlanApi.deletePlan(selectedPlan.id);
-            toast.success('生産計画を削除しました');
-            setDeletePlanDialogOpen(false);
-            setSelectedPlan(null);
-            fetchPlans();
-        } catch (error) {
-            console.error('削除エラー:', error);
-            toast.error('生産計画の削除に失敗しました');
-        }
-    }, [selectedPlan, fetchPlans]);
 
     const handlePlanModalClose = useCallback(() => {
         setPlanModalOpen(false);
@@ -297,7 +286,16 @@ export default function ManufacturingPage() {
         fetchPlans(params);
     }, [planSearchText, selectedPlanStatus, fetchPlans]);
 
-    // ===== Materials handlers =====
+    const handlePlanSearchReset = useCallback(() => {
+        setPlanSearchText('');
+        setSelectedPlanStatus('');
+        fetchPlans();
+    }, [fetchPlans]);
+
+    // ==========================================================================
+    // Materials Handlers
+    // ==========================================================================
+
     const handleNewMaterial = useCallback(() => {
         setSelectedMaterial(null);
         setMaterialModalMode('create');
@@ -317,23 +315,8 @@ export default function ManufacturingPage() {
     }, []);
 
     const handleDeleteMaterialConfirm = useCallback((material: Material) => {
-        setSelectedMaterial(material);
-        setDeleteMaterialDialogOpen(true);
+        setDeleteConfirm({ open: true, type: 'material', data: material });
     }, []);
-
-    const handleDeleteMaterial = useCallback(async () => {
-        if (!selectedMaterial) return;
-        try {
-            await materialApi.deleteMaterial(selectedMaterial.id);
-            toast.success('材料を削除しました');
-            setDeleteMaterialDialogOpen(false);
-            setSelectedMaterial(null);
-            fetchMaterials();
-        } catch (error) {
-            console.error('削除エラー:', error);
-            toast.error('材料の削除に失敗しました');
-        }
-    }, [selectedMaterial, fetchMaterials]);
 
     const handleMaterialModalClose = useCallback(() => {
         setMaterialModalOpen(false);
@@ -353,7 +336,58 @@ export default function ManufacturingPage() {
         fetchMaterials(params);
     }, [materialSearchText, selectedMaterialCategory, fetchMaterials]);
 
-    // DataGrid columns
+    const handleMaterialSearchReset = useCallback(() => {
+        setMaterialSearchText('');
+        setSelectedMaterialCategory('');
+        fetchMaterials();
+    }, [fetchMaterials]);
+
+    // ==========================================================================
+    // Delete Handler
+    // ==========================================================================
+
+    const handleDelete = useCallback(async () => {
+        if (!deleteConfirm.data) return;
+
+        try {
+            switch (deleteConfirm.type) {
+                case 'item':
+                    await manufacturingItemApi.deleteItem((deleteConfirm.data as ManufacturingItem).id);
+                    toast.success('制作品を削除しました');
+                    fetchItems();
+                    break;
+                case 'plan':
+                    await productionPlanApi.deletePlan((deleteConfirm.data as ProductionPlan).id);
+                    toast.success('生産計画を削除しました');
+                    fetchPlans();
+                    break;
+                case 'material':
+                    await materialApi.deleteMaterial((deleteConfirm.data as Material).id);
+                    toast.success('材料を削除しました');
+                    fetchMaterials();
+                    break;
+            }
+        } catch (error) {
+            console.error('削除エラー:', error);
+            const errorMessages = {
+                item: '制作品の削除に失敗しました',
+                plan: '生産計画の削除に失敗しました',
+                material: '材料の削除に失敗しました',
+            };
+            toast.error(errorMessages[deleteConfirm.type]);
+        } finally {
+            setDeleteConfirm({ open: false, type: 'item', data: null });
+        }
+    }, [deleteConfirm, fetchItems, fetchPlans, fetchMaterials]);
+
+    const handleDeleteCancel = useCallback(() => {
+        setDeleteConfirm({ open: false, type: 'item', data: null });
+    }, []);
+
+    // ==========================================================================
+    // DataGrid Columns
+    // ==========================================================================
+
     const itemColumns: GridColDef[] = [
         { field: 'manufacturing_number', headerName: '品番', width: 130 },
         { field: 'manufacturing_name', headerName: '制作品名', width: 200 },
@@ -363,13 +397,14 @@ export default function ManufacturingPage() {
             field: 'standard_production_time',
             headerName: '標準製造時間',
             width: 120,
-            renderCell: (params) => params.value ? `${params.value}時間` : '-',
+            renderCell: (params: GridRenderCellParams<ManufacturingItem, number>) =>
+                params.value ? `${params.value}時間` : '-',
         },
         {
             field: 'is_active',
             headerName: 'ステータス',
             width: 100,
-            renderCell: (params: GridRenderCellParams) => (
+            renderCell: (params: GridRenderCellParams<ManufacturingItem, boolean>) => (
                 <Chip
                     label={params.value ? '有効' : '無効'}
                     color={params.value ? 'success' : 'default'}
@@ -426,13 +461,13 @@ export default function ManufacturingPage() {
             field: 'completion_rate',
             headerName: '進捗',
             width: 150,
-            renderCell: (params) => (
+            renderCell: (params: GridRenderCellParams<ProductionPlan, number>) => (
                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
                     <Box sx={{ width: '100%', mr: 1 }}>
                         <LinearProgress
                             variant="determinate"
                             value={params.value || 0}
-                            color={params.value >= 100 ? 'success' : 'primary'}
+                            color={params.value && params.value >= 100 ? 'success' : 'primary'}
                         />
                     </Box>
                     <Box sx={{ minWidth: 35 }}>
@@ -449,10 +484,10 @@ export default function ManufacturingPage() {
             field: 'status',
             headerName: 'ステータス',
             width: 110,
-            renderCell: (params: GridRenderCellParams) => (
+            renderCell: (params: GridRenderCellParams<ProductionPlan, ProductionPlanStatus>) => (
                 <Chip
-                    label={planStatusLabels[params.value] || params.value}
-                    color={planStatusColors[params.value] || 'default'}
+                    label={params.value ? PLAN_STATUS_LABELS[params.value] : params.value}
+                    color={params.value ? PLAN_STATUS_COLORS[params.value] : 'default'}
                     size="small"
                 />
             ),
@@ -495,7 +530,8 @@ export default function ManufacturingPage() {
             field: 'category',
             headerName: 'カテゴリ',
             width: 100,
-            renderCell: (params) => materialCategoryLabels[params.value] || params.value,
+            renderCell: (params: GridRenderCellParams<Material, MaterialCategory>) =>
+                params.value ? MATERIAL_CATEGORY_LABELS[params.value] : params.value,
         },
         { field: 'stock_quantity', headerName: '在庫数', width: 100, type: 'number' },
         { field: 'minimum_stock', headerName: '最小在庫', width: 100, type: 'number' },
@@ -504,7 +540,7 @@ export default function ManufacturingPage() {
             field: 'is_low_stock',
             headerName: '在庫状態',
             width: 100,
-            renderCell: (params: GridRenderCellParams) => (
+            renderCell: (params: GridRenderCellParams<Material, boolean>) => (
                 <Chip
                     label={params.value ? '要補充' : '正常'}
                     color={params.value ? 'error' : 'success'}
@@ -517,13 +553,14 @@ export default function ManufacturingPage() {
             field: 'unit_price',
             headerName: '単価',
             width: 100,
-            renderCell: (params) => params.value ? `¥${Number(params.value).toLocaleString()}` : '-',
+            renderCell: (params: GridRenderCellParams<Material, number>) =>
+                params.value ? `¥${Number(params.value).toLocaleString()}` : '-',
         },
         {
             field: 'is_active',
             headerName: 'ステータス',
             width: 100,
-            renderCell: (params: GridRenderCellParams) => (
+            renderCell: (params: GridRenderCellParams<Material, boolean>) => (
                 <Chip
                     label={params.value ? '有効' : '無効'}
                     color={params.value ? 'success' : 'default'}
@@ -560,27 +597,107 @@ export default function ManufacturingPage() {
         },
     ];
 
+    // ==========================================================================
+    // Delete Confirmation Dialog Content
+    // ==========================================================================
+
+    const getDeleteDialogContent = () => {
+        if (!deleteConfirm.data) return null;
+
+        switch (deleteConfirm.type) {
+            case 'item': {
+                const item = deleteConfirm.data as ManufacturingItem;
+                return (
+                    <>
+                        <DialogTitle>制作品の削除</DialogTitle>
+                        <DialogContent>
+                            <DialogContentText>
+                                以下の制作品を削除してもよろしいですか?
+                            </DialogContentText>
+                            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                                <Typography variant="body2" color="text.secondary">品番</Typography>
+                                <Typography variant="body1">{item.manufacturing_number}</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>制作品名</Typography>
+                                <Typography variant="body1">{item.manufacturing_name}</Typography>
+                            </Box>
+                            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+                                ※ この操作は取り消せません
+                            </Typography>
+                        </DialogContent>
+                    </>
+                );
+            }
+            case 'plan': {
+                const plan = deleteConfirm.data as ProductionPlan;
+                return (
+                    <>
+                        <DialogTitle>生産計画の削除</DialogTitle>
+                        <DialogContent>
+                            <DialogContentText>
+                                以下の生産計画を削除してもよろしいですか?
+                            </DialogContentText>
+                            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                                <Typography variant="body2" color="text.secondary">計画番号</Typography>
+                                <Typography variant="body1">{plan.plan_number}</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>制作品</Typography>
+                                <Typography variant="body1">{plan.manufacturing_item_name}</Typography>
+                            </Box>
+                            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+                                ※ この操作は取り消せません
+                            </Typography>
+                        </DialogContent>
+                    </>
+                );
+            }
+            case 'material': {
+                const material = deleteConfirm.data as Material;
+                return (
+                    <>
+                        <DialogTitle>材料の削除</DialogTitle>
+                        <DialogContent>
+                            <DialogContentText>
+                                以下の材料を削除してもよろしいですか?
+                            </DialogContentText>
+                            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                                <Typography variant="body2" color="text.secondary">品番</Typography>
+                                <Typography variant="body1">{material.material_code}</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>材料名</Typography>
+                                <Typography variant="body1">{material.material_name}</Typography>
+                            </Box>
+                            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+                                ※ この操作は取り消せません
+                            </Typography>
+                        </DialogContent>
+                    </>
+                );
+            }
+        }
+    };
+
+    // ==========================================================================
+    // Render
+    // ==========================================================================
+
     return (
         <AuthGuard>
             <Sidebar>
                 <Box sx={{ width: '100%' }}>
                     <Typography variant="h4" component="h1" sx={{ mb: 3 }}>
-                        製造・材料管理
+                        生産計画
                     </Typography>
 
                     <Paper sx={{ width: '100%' }}>
                         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                            <Tabs value={tabValue} onChange={handleTabChange} aria-label="manufacturing tabs">
-                                <Tab label="制作品管理" id="manufacturing-tab-0" />
-                                <Tab label="生産計画" id="manufacturing-tab-1" />
-                                <Tab label="材料管理" id="manufacturing-tab-2" />
+                            <Tabs value={tabValue} onChange={handleTabChange} aria-label="production planning tabs">
+                                <Tab label="制作品管理" id="production-tab-0" />
+                                <Tab label="生産計画" id="production-tab-1" />
+                                <Tab label="材料管理" id="production-tab-2" />
                             </Tabs>
                         </Box>
 
                         {/* 制作品管理タブ */}
                         <TabPanel value={tabValue} index={0}>
                             <Box sx={{ p: 2 }}>
-                                {/* ヘッダーとボタン */}
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                                         <TextField
@@ -594,7 +711,7 @@ export default function ManufacturingPage() {
                                         <Button variant="contained" startIcon={<SearchIcon />} onClick={handleItemSearch}>
                                             検索
                                         </Button>
-                                        <Button variant="outlined" onClick={() => { setItemSearchText(''); fetchItems(); }}>
+                                        <Button variant="outlined" onClick={handleItemSearchReset}>
                                             リセット
                                         </Button>
                                     </Box>
@@ -608,7 +725,6 @@ export default function ManufacturingPage() {
                                     </Box>
                                 </Box>
 
-                                {/* データグリッド */}
                                 <DataGrid
                                     rows={manufacturingItems ?? []}
                                     columns={itemColumns}
@@ -626,7 +742,6 @@ export default function ManufacturingPage() {
                         {/* 生産計画タブ */}
                         <TabPanel value={tabValue} index={1}>
                             <Box sx={{ p: 2 }}>
-                                {/* ヘッダーとボタン */}
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                                         <TextField
@@ -641,7 +756,7 @@ export default function ManufacturingPage() {
                                             <InputLabel>ステータス</InputLabel>
                                             <Select
                                                 value={selectedPlanStatus}
-                                                onChange={(e) => setSelectedPlanStatus(e.target.value)}
+                                                onChange={(e) => setSelectedPlanStatus(e.target.value as ProductionPlanStatus | '')}
                                                 label="ステータス"
                                             >
                                                 <MenuItem value="">すべて</MenuItem>
@@ -655,7 +770,7 @@ export default function ManufacturingPage() {
                                         <Button variant="contained" startIcon={<SearchIcon />} onClick={handlePlanSearch}>
                                             検索
                                         </Button>
-                                        <Button variant="outlined" onClick={() => { setPlanSearchText(''); setSelectedPlanStatus(''); fetchPlans(); }}>
+                                        <Button variant="outlined" onClick={handlePlanSearchReset}>
                                             リセット
                                         </Button>
                                     </Box>
@@ -669,7 +784,6 @@ export default function ManufacturingPage() {
                                     </Box>
                                 </Box>
 
-                                {/* データグリッド */}
                                 <DataGrid
                                     rows={productionPlans ?? []}
                                     columns={planColumns}
@@ -687,7 +801,6 @@ export default function ManufacturingPage() {
                         {/* 材料管理タブ */}
                         <TabPanel value={tabValue} index={2}>
                             <Box sx={{ p: 2 }}>
-                                {/* ヘッダーとボタン */}
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                                         <TextField
@@ -702,7 +815,7 @@ export default function ManufacturingPage() {
                                             <InputLabel>カテゴリ</InputLabel>
                                             <Select
                                                 value={selectedMaterialCategory}
-                                                onChange={(e) => setSelectedMaterialCategory(e.target.value)}
+                                                onChange={(e) => setSelectedMaterialCategory(e.target.value as MaterialCategory | '')}
                                                 label="カテゴリ"
                                             >
                                                 <MenuItem value="">すべて</MenuItem>
@@ -716,7 +829,7 @@ export default function ManufacturingPage() {
                                         <Button variant="contained" startIcon={<SearchIcon />} onClick={handleMaterialSearch}>
                                             検索
                                         </Button>
-                                        <Button variant="outlined" onClick={() => { setMaterialSearchText(''); setSelectedMaterialCategory(''); fetchMaterials(); }}>
+                                        <Button variant="outlined" onClick={handleMaterialSearchReset}>
                                             リセット
                                         </Button>
                                     </Box>
@@ -730,7 +843,6 @@ export default function ManufacturingPage() {
                                     </Box>
                                 </Box>
 
-                                {/* データグリッド */}
                                 <DataGrid
                                     rows={materials ?? []}
                                     columns={materialColumns}
@@ -746,7 +858,7 @@ export default function ManufacturingPage() {
                         </TabPanel>
                     </Paper>
 
-                    {/* 制作品モーダル */}
+                    {/* Modals */}
                     <ManufacturingItemModal
                         open={itemModalOpen}
                         onClose={handleItemModalClose}
@@ -756,7 +868,6 @@ export default function ManufacturingPage() {
                         products={products ?? []}
                     />
 
-                    {/* 生産計画モーダル */}
                     <ProductionPlanModal
                         open={planModalOpen}
                         onClose={handlePlanModalClose}
@@ -767,7 +878,6 @@ export default function ManufacturingPage() {
                         products={products ?? []}
                     />
 
-                    {/* 材料モーダル */}
                     <MaterialModal
                         open={materialModalOpen}
                         onClose={handleMaterialModalClose}
@@ -776,72 +886,12 @@ export default function ManufacturingPage() {
                         material={selectedMaterial}
                     />
 
-                    {/* 制作品削除確認ダイアログ */}
-                    <Dialog open={deleteItemDialogOpen} onClose={() => setDeleteItemDialogOpen(false)}>
-                        <DialogTitle>制作品の削除</DialogTitle>
-                        <DialogContent>
-                            <DialogContentText>
-                                以下の制作品を削除してもよろしいですか?
-                            </DialogContentText>
-                            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                                <Typography variant="body2" color="text.secondary">品番</Typography>
-                                <Typography variant="body1">{selectedItem?.manufacturing_number}</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>制作品名</Typography>
-                                <Typography variant="body1">{selectedItem?.manufacturing_name}</Typography>
-                            </Box>
-                            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
-                                ※ この操作は取り消せません
-                            </Typography>
-                        </DialogContent>
+                    {/* Delete Confirmation Dialog */}
+                    <Dialog open={deleteConfirm.open} onClose={handleDeleteCancel}>
+                        {getDeleteDialogContent()}
                         <DialogActions>
-                            <Button onClick={() => setDeleteItemDialogOpen(false)}>キャンセル</Button>
-                            <Button onClick={handleDeleteItem} color="error">削除</Button>
-                        </DialogActions>
-                    </Dialog>
-
-                    {/* 生産計画削除確認ダイアログ */}
-                    <Dialog open={deletePlanDialogOpen} onClose={() => setDeletePlanDialogOpen(false)}>
-                        <DialogTitle>生産計画の削除</DialogTitle>
-                        <DialogContent>
-                            <DialogContentText>
-                                以下の生産計画を削除してもよろしいですか?
-                            </DialogContentText>
-                            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                                <Typography variant="body2" color="text.secondary">計画番号</Typography>
-                                <Typography variant="body1">{selectedPlan?.plan_number}</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>制作品</Typography>
-                                <Typography variant="body1">{selectedPlan?.manufacturing_item_name}</Typography>
-                            </Box>
-                            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
-                                ※ この操作は取り消せません
-                            </Typography>
-                        </DialogContent>
-                        <DialogActions>
-                            <Button onClick={() => setDeletePlanDialogOpen(false)}>キャンセル</Button>
-                            <Button onClick={handleDeletePlan} color="error">削除</Button>
-                        </DialogActions>
-                    </Dialog>
-
-                    {/* 材料削除確認ダイアログ */}
-                    <Dialog open={deleteMaterialDialogOpen} onClose={() => setDeleteMaterialDialogOpen(false)}>
-                        <DialogTitle>材料の削除</DialogTitle>
-                        <DialogContent>
-                            <DialogContentText>
-                                以下の材料を削除してもよろしいですか?
-                            </DialogContentText>
-                            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                                <Typography variant="body2" color="text.secondary">品番</Typography>
-                                <Typography variant="body1">{selectedMaterial?.material_code}</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>材料名</Typography>
-                                <Typography variant="body1">{selectedMaterial?.material_name}</Typography>
-                            </Box>
-                            <Typography variant="body2" color="error" sx={{ mt: 2 }}>
-                                ※ この操作は取り消せません
-                            </Typography>
-                        </DialogContent>
-                        <DialogActions>
-                            <Button onClick={() => setDeleteMaterialDialogOpen(false)}>キャンセル</Button>
-                            <Button onClick={handleDeleteMaterial} color="error">削除</Button>
+                            <Button onClick={handleDeleteCancel}>キャンセル</Button>
+                            <Button onClick={handleDelete} color="error">削除</Button>
                         </DialogActions>
                     </Dialog>
                 </Box>

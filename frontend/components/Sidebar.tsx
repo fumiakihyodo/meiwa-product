@@ -227,6 +227,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                         },
                     ].filter(item => item.show !== false),
                 };
+            case 'production':
+                return {
+                    items: [
+                        {
+                            text: '生産計画TOP',
+                            icon: <ManufacturingIcon />,
+                            path: '/dashboard/production-planning',
+                        },
+                    ],
+                };
             case 'dashboard':
             default:
                 return {
@@ -283,6 +293,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                         icon={
                             currentCategory === 'inventory' ? <Inventory2Icon fontSize="small" /> :
                             currentCategory === 'master' ? <InventoryIcon fontSize="small" /> :
+                            currentCategory === 'production' ? <ManufacturingIcon fontSize="small" /> :
                             currentCategory === 'trading' ? <BusinessIcon fontSize="small" /> :
                             <SettingsIcon fontSize="small" />
                         }

@@ -14,6 +14,7 @@ import {
   Inventory as InventoryIcon,
   Business as BusinessIcon,
   Settings as SettingsIcon,
+  PrecisionManufacturing as ManufacturingIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -27,6 +28,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   Inventory: <InventoryIcon sx={{ fontSize: 48 }} />,
   Business: <BusinessIcon sx={{ fontSize: 48 }} />,
   Settings: <SettingsIcon sx={{ fontSize: 48 }} />,
+  PrecisionManufacturing: <ManufacturingIcon sx={{ fontSize: 48 }} />,
 };
 
 // カテゴリごとの初期遷移先
@@ -34,6 +36,7 @@ const CATEGORY_PATHS: Record<MenuCategory, string> = {
   dashboard: '/dashboard',
   inventory: '/inventory',
   master: '/products',
+  production: '/dashboard/production-planning',
   trading: '/customers',
   system: '/users',
 };
