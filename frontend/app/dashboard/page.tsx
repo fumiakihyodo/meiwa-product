@@ -35,7 +35,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 const CATEGORY_PATHS: Record<MenuCategory, string> = {
   dashboard: '/dashboard',
   inventory: '/inventory',
-  master: '/products',
+  master: '/master/products',
   production: '/dashboard/production-planning',
   trading: '/customers',
   system: '/users',
