@@ -8,6 +8,7 @@ import {
   Card,
   CardContent,
   CardActionArea,
+  Divider,
 } from '@mui/material';
 import {
   Inventory2 as Inventory2Icon,
@@ -29,6 +30,15 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   Business: <BusinessIcon sx={{ fontSize: 48 }} />,
   Settings: <SettingsIcon sx={{ fontSize: 48 }} />,
   PrecisionManufacturing: <ManufacturingIcon sx={{ fontSize: 48 }} />,
+};
+
+// 大きいアイコン（優先カテゴリ用）
+const CATEGORY_ICONS_LARGE: Record<string, React.ReactNode> = {
+  Inventory2: <Inventory2Icon sx={{ fontSize: 64 }} />,
+  Inventory: <InventoryIcon sx={{ fontSize: 64 }} />,
+  Business: <BusinessIcon sx={{ fontSize: 64 }} />,
+  Settings: <SettingsIcon sx={{ fontSize: 64 }} />,
+  PrecisionManufacturing: <ManufacturingIcon sx={{ fontSize: 64 }} />,
 };
 
 // カテゴリごとの初期遷移先
@@ -58,6 +68,10 @@ export default function DashboardPage() {
     }
   };
 
+  // 優先度でカテゴリを分類
+  const highPriorityCategories = MENU_CATEGORIES.filter(c => c.priority === 'high');
+  const normalPriorityCategories = MENU_CATEGORIES.filter(c => c.priority === 'normal');
+
   return (
     <AuthGuard>
       <Sidebar>
@@ -74,22 +88,88 @@ export default function DashboardPage() {
             管理したいメニューを選択してください
           </Typography>
 
-          <Grid container spacing={3}>
-            {MENU_CATEGORIES.map((category) => {
+          {/* 高優先度カテゴリ（大きなカード） */}
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+            メイン機能
+          </Typography>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            {highPriorityCategories.map((category) => (
+              <Grid item xs={12} sm={6} key={category.id}>
+                <Card
+                  sx={{
+                    height: '100%',
+                    minHeight: 200,
+                    transition: 'transform 0.2s, box-shadow 0.2s',
+                    border: `2px solid ${category.color}20`,
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: `0 8px 24px ${category.color}30`,
+                      border: `2px solid ${category.color}`,
+                    },
+                  }}
+                >
+                  <CardActionArea
+                    onClick={() => handleCategoryClick(category.id)}
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      py: 4,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 100,
+                        height: 100,
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: `${category.color}15`,
+                        color: category.color,
+                        mb: 2,
+                      }}
+                    >
+                      {CATEGORY_ICONS_LARGE[category.icon]}
+                    </Box>
+                    <CardContent sx={{ textAlign: 'center', pt: 0 }}>
+                      <Typography variant="h5" component="div" gutterBottom fontWeight="bold">
+                        {category.name}
+                      </Typography>
+                      <Typography variant="body1" color="text.secondary">
+                        {category.description}
+                      </Typography>
+                    </CardContent>
+                  </CardActionArea>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Divider sx={{ my: 4 }} />
+
+          {/* 通常優先度カテゴリ（小さなカード） */}
+          <Typography variant="h6" sx={{ mb: 2, color: 'text.secondary' }}>
+            設定・マスタ管理
+          </Typography>
+          <Grid container spacing={2}>
+            {normalPriorityCategories.map((category) => {
               // システム管理は管理者のみ表示 or 一般ユーザーでも一括登録は使える
               const showCategory = category.id !== 'system' || isAdmin || true;
 
               if (!showCategory) return null;
 
               return (
-                <Grid item xs={12} sm={6} md={3} key={category.id}>
+                <Grid item xs={12} sm={6} md={4} key={category.id}>
                   <Card
                     sx={{
                       height: '100%',
                       transition: 'transform 0.2s, box-shadow 0.2s',
                       '&:hover': {
-                        transform: 'translateY(-4px)',
-                        boxShadow: 6,
+                        transform: 'translateY(-2px)',
+                        boxShadow: 4,
                       },
                     }}
                   >
@@ -98,35 +178,36 @@ export default function DashboardPage() {
                       sx={{
                         height: '100%',
                         display: 'flex',
-                        flexDirection: 'column',
+                        flexDirection: 'row',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        py: 4,
+                        justifyContent: 'flex-start',
+                        p: 2,
                       }}
                     >
                       <Box
                         sx={{
-                          width: 80,
-                          height: 80,
+                          width: 56,
+                          height: 56,
                           borderRadius: '50%',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           backgroundColor: `${category.color}15`,
                           color: category.color,
-                          mb: 2,
+                          mr: 2,
+                          flexShrink: 0,
                         }}
                       >
                         {CATEGORY_ICONS[category.icon]}
                       </Box>
-                      <CardContent sx={{ textAlign: 'center', pt: 0 }}>
-                        <Typography variant="h6" component="div" gutterBottom>
+                      <Box>
+                        <Typography variant="subtitle1" component="div" fontWeight="medium">
                           {category.name}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           {category.description}
                         </Typography>
-                      </CardContent>
+                      </Box>
                     </CardActionArea>
                   </Card>
                 </Grid>

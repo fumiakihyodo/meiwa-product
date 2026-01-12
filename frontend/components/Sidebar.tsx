@@ -167,9 +167,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                             path: '/master/supplied-items',
                         },
                         {
-                            text: '製造・材料管理',
+                            text: '制作品管理',
                             icon: <ManufacturingIcon />,
                             path: '/master/manufacturing',
+                        },
+                        {
+                            text: '材料管理',
+                            icon: <Inventory2Icon />,
+                            path: '/master/material',
                         },
                     ],
                 };

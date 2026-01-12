@@ -274,6 +274,106 @@ export const productionScheduleApi = {
     },
 };
 
+// Manufacturing Material (BOM) Types
+export interface ManufacturingMaterial {
+    id: number;
+    manufacturing_item: number;
+    manufacturing_item_number?: string;
+    manufacturing_item_name?: string;
+    material: number;
+    material_code?: string;
+    material_name?: string;
+    material_unit?: string;
+    material_stock_quantity?: number;
+    quantity_required: number;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface ManufacturingMaterialCreate {
+    manufacturing_item: number;
+    material: number;
+    quantity_required: number;
+    notes?: string;
+}
+
+// Manufacturing Material (BOM) API
+export const manufacturingMaterialApi = {
+    getBomItems: async (params?: {
+        manufacturing_item?: number;
+        material?: number;
+    }): Promise<ManufacturingMaterial[]> => {
+        const response = await apiClient.get<PaginatedResponse<ManufacturingMaterial>>('/manufacturing/bom/', { params });
+        return response.data.results;
+    },
+
+    getBomItem: async (id: number): Promise<ManufacturingMaterial> => {
+        const response = await apiClient.get<ManufacturingMaterial>(`/manufacturing/bom/${id}/`);
+        return response.data;
+    },
+
+    createBomItem: async (data: ManufacturingMaterialCreate): Promise<ManufacturingMaterial> => {
+        const response = await apiClient.post<ManufacturingMaterial>('/manufacturing/bom/', data);
+        return response.data;
+    },
+
+    updateBomItem: async (id: number, data: Partial<ManufacturingMaterialCreate>): Promise<ManufacturingMaterial> => {
+        const response = await apiClient.patch<ManufacturingMaterial>(`/manufacturing/bom/${id}/`, data);
+        return response.data;
+    },
+
+    deleteBomItem: async (id: number): Promise<void> => {
+        await apiClient.delete(`/manufacturing/bom/${id}/`);
+    },
+
+    // 制作品に紐づく材料を一括更新
+    updateBomForItem: async (
+        manufacturingItemId: number,
+        materials: { material: number; quantity_required: number; notes?: string }[]
+    ): Promise<ManufacturingMaterial[]> => {
+        // 既存のBOMを取得
+        const existingBom = await manufacturingMaterialApi.getBomItems({ manufacturing_item: manufacturingItemId });
+        const existingMaterialIds = existingBom.map(bom => bom.material);
+        const newMaterialIds = materials.map(m => m.material);
+
+        // 削除すべきBOM（新しいリストにないもの）
+        const toDelete = existingBom.filter(bom => !newMaterialIds.includes(bom.material));
+
+        // 追加すべきBOM（既存リストにないもの）
+        const toAdd = materials.filter(m => !existingMaterialIds.includes(m.material));
+
+        // 更新すべきBOM（両方にあるもの）
+        const toUpdate = materials.filter(m => existingMaterialIds.includes(m.material));
+
+        // 削除実行
+        await Promise.all(toDelete.map(bom => manufacturingMaterialApi.deleteBomItem(bom.id)));
+
+        // 追加実行
+        await Promise.all(toAdd.map(m =>
+            manufacturingMaterialApi.createBomItem({
+                manufacturing_item: manufacturingItemId,
+                ...m
+            })
+        ));
+
+        // 更新実行
+        await Promise.all(toUpdate.map(m => {
+            const existing = existingBom.find(bom => bom.material === m.material);
+            if (existing) {
+                return manufacturingMaterialApi.updateBomItem(existing.id, {
+                    quantity_required: m.quantity_required,
+                    notes: m.notes
+                });
+            }
+            return Promise.resolve();
+        }));
+
+        // 更新後のBOMを取得して返す
+        return manufacturingMaterialApi.getBomItems({ manufacturing_item: manufacturingItemId });
+    },
+};
+
 // Material API
 export const materialApi = {
     getMaterials: async (params?: {

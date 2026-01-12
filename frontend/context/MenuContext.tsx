@@ -13,29 +13,35 @@ export interface CategoryInfo {
     description: string;
     color: string;
     icon: string;
+    priority: 'high' | 'normal'; // 表示優先度
 }
 
 export const MENU_CATEGORIES: CategoryInfo[] = [
+    // 高優先度（日常業務で最もよく使用）
+    {
+        id: 'production',
+        name: '生産計画',
+        description: '製造スケジュールと進捗を管理',
+        color: '#e91e63',
+        icon: 'PrecisionManufacturing',
+        priority: 'high',
+    },
     {
         id: 'inventory',
         name: '在庫管理',
         description: '支給品・購入品の在庫を管理',
         color: '#2196f3',
         icon: 'Inventory2',
+        priority: 'high',
     },
+    // 通常優先度（設定・マスタ管理）
     {
         id: 'master',
         name: 'マスター管理',
-        description: '製品・部品のマスターデータを管理',
+        description: '製品・部品・材料のマスターを管理',
         color: '#4caf50',
         icon: 'Inventory',
-    },
-    {
-        id: 'production',
-        name: '生産計画',
-        description: '製造スケジュールと材料を管理',
-        color: '#e91e63',
-        icon: 'PrecisionManufacturing',
+        priority: 'normal',
     },
     {
         id: 'trading',
@@ -43,6 +49,7 @@ export const MENU_CATEGORIES: CategoryInfo[] = [
         description: '顧客・仕入先の情報を管理',
         color: '#ff9800',
         icon: 'Business',
+        priority: 'normal',
     },
     {
         id: 'system',
@@ -50,6 +57,7 @@ export const MENU_CATEGORIES: CategoryInfo[] = [
         description: 'ユーザー・一括登録などの管理',
         color: '#9c27b0',
         icon: 'Settings',
+        priority: 'normal',
     },
 ];
 
