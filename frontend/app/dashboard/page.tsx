@@ -36,7 +36,7 @@ const CATEGORY_PATHS: Record<MenuCategory, string> = {
   dashboard: '/dashboard',
   inventory: '/inventory',
   master: '/master/products',
-  production: '/dashboard/production-planning',
+  production: '/production-planning',
   trading: '/customers',
   system: '/users',
 };

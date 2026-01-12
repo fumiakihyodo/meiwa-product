@@ -134,17 +134,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                         {
                             text: '支給品在庫管理',
                             icon: <Inventory2Icon />,
-                            path: '/supplied-item-inventory',
+                            path: '/inventory/supplied-item-inventory',
                         },
                         {
                             text: '購入品在庫管理',
                             icon: <ShoppingBagIcon />,
-                            path: '/purchased-item-inventory',
+                            path: '/inventory/purchased-item-inventory',
                         },
                         {
                             text: '在庫調整',
                             icon: <Inventory2Icon />,
-                            path: '/inventory-adjustment',
+                            path: '/inventory/inventory-adjustment',
                         },
                     ],
                 };
@@ -160,6 +160,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                             text: '部品管理',
                             icon: <ShoppingCartIcon />,
                             path: '/master/parts',
+                        },
+                        {
+                            text: '支給品管理',
+                            icon: <ShoppingCartIcon />,
+                            path: '/master/supplied-items',
                         },
                         {
                             text: '製造・材料管理',
@@ -292,10 +297,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                     <Chip
                         icon={
                             currentCategory === 'inventory' ? <Inventory2Icon fontSize="small" /> :
-                            currentCategory === 'master' ? <InventoryIcon fontSize="small" /> :
-                            currentCategory === 'production' ? <ManufacturingIcon fontSize="small" /> :
-                            currentCategory === 'trading' ? <BusinessIcon fontSize="small" /> :
-                            <SettingsIcon fontSize="small" />
+                                currentCategory === 'master' ? <InventoryIcon fontSize="small" /> :
+                                    currentCategory === 'production' ? <ManufacturingIcon fontSize="small" /> :
+                                        currentCategory === 'trading' ? <BusinessIcon fontSize="small" /> :
+                                            <SettingsIcon fontSize="small" />
                         }
                         label={currentCategoryInfo.name}
                         size="small"
