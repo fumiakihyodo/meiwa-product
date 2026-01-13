@@ -211,13 +211,13 @@ export default function ProductsPage() {
                     key="view"
                     icon={<VisibilityIcon />}
                     label="詳細"
-                    onClick={() => router.push(`/products/${params.row.id}`)}
+                    onClick={() => router.push(`/master/products/${params.row.id}`)}
                 />,
                 <GridActionsCellItem
                     key="edit"
                     icon={<EditIcon />}
                     label="編集"
-                    onClick={() => router.push(`/products/${params.row.id}/edit`)}
+                    onClick={() => router.push(`/master/products/${params.row.id}/edit`)}
                     showInMenu
                 />,
                 <GridActionsCellItem

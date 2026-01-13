@@ -495,7 +495,7 @@ export default function ProductDetailPage() {
                     <Box sx={{ mb: 3 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                             <IconButton
-                                onClick={() => router.push('/products')}
+                                onClick={() => router.push('/master/products')}
                                 sx={{ mr: 1 }}
                                 aria-label="製品一覧に戻る"
                             >

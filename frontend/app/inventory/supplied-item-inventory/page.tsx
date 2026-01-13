@@ -815,7 +815,7 @@ export default function SuppliedItemInventoryPage() {
                     <Tooltip title="詳細確認">
                         <IconButton
                             size="small"
-                            onClick={() => router.push(`/supplied-item-inventory/${params.row.id}`)}
+                            onClick={() => router.push(`/inventory/supplied-item-inventory/${params.row.id}`)}
                         >
                             <ViewIcon />
                         </IconButton>
@@ -824,7 +824,7 @@ export default function SuppliedItemInventoryPage() {
                         <IconButton
                             size="small"
                             color="primary"
-                            onClick={() => router.push(`/supplied-item-inventory/${params.row.id}?tab=receiving`)}
+                            onClick={() => router.push(`/inventory/supplied-item-inventory/${params.row.id}?tab=receiving`)}
                         >
                             <ReceivingIcon />
                         </IconButton>

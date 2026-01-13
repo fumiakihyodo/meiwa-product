@@ -558,7 +558,7 @@ function SuppliedItemListDetailContent() {
                 {/* ヘッダー */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <IconButton onClick={() => router.push('/supplied-item-inventory')}>
+                        <IconButton onClick={() => router.push('/inventory/supplied-item-inventory')}>
                             <BackIcon />
                         </IconButton>
                         <Typography variant="h5">{list.list_number}</Typography>
