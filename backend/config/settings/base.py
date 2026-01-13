@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "api.products",
     "api.purchases",
     "api.manufacturing",
+    "api.production_planning",
 ]
 
 MIDDLEWARE = [

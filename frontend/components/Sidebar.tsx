@@ -37,6 +37,8 @@ import {
     Home as HomeIcon,
     Settings as SettingsIcon,
     PrecisionManufacturing as ManufacturingIcon,
+    Factory as FactoryIcon,
+    Public as PublicIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
 import { useMenu, MenuCategory, MENU_CATEGORIES } from '@/context/MenuContext';
@@ -244,6 +246,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                             text: '生産計画TOP',
                             icon: <ManufacturingIcon />,
                             path: '/production-planning',
+                        },
+                        {
+                            text: '国内生産計画',
+                            icon: <FactoryIcon />,
+                            path: '/production-planning/domestic',
+                        },
+                        {
+                            text: '海外生産計画',
+                            icon: <PublicIcon />,
+                            path: '/production-planning/overseas',
                         },
                     ],
                 };

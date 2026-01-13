@@ -24,10 +24,11 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path('api/accounts/', include('api.accounts.urls')),
     path('api/supplier/', include('api.supplier.urls')),
-    path('api/customers/', include('api.customers.urls')), 
+    path('api/customers/', include('api.customers.urls')),
     path('api/products/', include('api.products.urls')),
     path('api/purchases/', include('api.purchases.urls')),
     path('api/manufacturing/', include('api.manufacturing.urls')),
+    path('api/production-planning/', include('api.production_planning.urls')),
 ]
 
 # 開発環境でのメディアファイル配信

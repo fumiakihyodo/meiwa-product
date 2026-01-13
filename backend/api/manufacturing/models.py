@@ -10,6 +10,10 @@ from decimal import Decimal
 class ManufacturingItem(models.Model):
     """制作品モデル"""
 
+    class ProductionType(models.TextChoices):
+        DOMESTIC = 'domestic', '国内生産'
+        OVERSEAS = 'overseas', '海外生産'
+
     # 製品との関連（オプション）
     product = models.ForeignKey(
         'products.Product',
@@ -31,6 +35,15 @@ class ManufacturingItem(models.Model):
     manufacturing_name = models.CharField(
         max_length=200,
         verbose_name="制作品名"
+    )
+
+    # 生産タイプ（国内/海外）
+    production_type = models.CharField(
+        max_length=20,
+        choices=ProductionType.choices,
+        default=ProductionType.DOMESTIC,
+        verbose_name="生産タイプ",
+        help_text="国内生産または海外生産"
     )
 
     # 仕様情報
@@ -97,6 +110,8 @@ class ManufacturingItem(models.Model):
             models.Index(fields=['manufacturing_number']),
             models.Index(fields=['product', 'is_active']),
             models.Index(fields=['is_active']),
+            models.Index(fields=['production_type']),
+            models.Index(fields=['production_type', 'is_active']),
             models.Index(fields=['created_at']),
         ]
 

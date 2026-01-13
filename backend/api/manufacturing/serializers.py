@@ -31,11 +31,16 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
         default=None
     )
     production_plan_count = serializers.IntegerField(read_only=True)
+    production_type_display = serializers.CharField(
+        source='get_production_type_display',
+        read_only=True
+    )
 
     class Meta:
         model = ManufacturingItem
         fields = [
             'id', 'manufacturing_number', 'manufacturing_name',
+            'production_type', 'production_type_display',
             'product', 'product_number', 'product_name',
             'unit', 'standard_production_time', 'is_active',
             'production_plan_count',
@@ -61,6 +66,10 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
         read_only=True,
         default=None
     )
+    production_type_display = serializers.CharField(
+        source='get_production_type_display',
+        read_only=True
+    )
     production_plans = serializers.SerializerMethodField()
     material_requirements = serializers.SerializerMethodField()
 
@@ -68,6 +77,7 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
         model = ManufacturingItem
         fields = [
             'id', 'manufacturing_number', 'manufacturing_name',
+            'production_type', 'production_type_display',
             'product', 'product_number', 'product_name',
             'specification', 'unit', 'standard_production_time',
             'is_active', 'notes',
@@ -94,6 +104,7 @@ class ManufacturingItemCreateUpdateSerializer(serializers.ModelSerializer):
         model = ManufacturingItem
         fields = [
             'manufacturing_number', 'manufacturing_name',
+            'production_type',
             'product', 'specification', 'unit',
             'standard_production_time', 'is_active', 'notes'
         ]

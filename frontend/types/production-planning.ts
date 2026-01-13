@@ -1,6 +1,9 @@
 // types/production-planning.ts
 // 生産計画機能で使用する型定義
 
+/** 生産タイプ（国内/海外） */
+export type ProductionType = 'domestic' | 'overseas';
+
 /** 生産計画のステータス */
 export type ProductionPlanStatus = 'draft' | 'planned' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold';
 
@@ -77,17 +80,177 @@ export const CATEGORY_OPTIONS: { value: MaterialCategory; label: string }[] = [
     { value: 'other', label: 'その他' },
 ];
 
+/** 生産タイプの表示ラベル */
+export const PRODUCTION_TYPE_LABELS: Record<ProductionType, string> = {
+    domestic: '国内生産',
+    overseas: '海外生産',
+};
+
+/** 生産タイプの色設定 */
+export const PRODUCTION_TYPE_COLORS: Record<ProductionType, 'primary' | 'secondary' | 'info' | 'success'> = {
+    domestic: 'primary',
+    overseas: 'secondary',
+};
+
+/** 生産タイプ選択オプション */
+export const PRODUCTION_TYPE_OPTIONS: { value: ProductionType; label: string }[] = [
+    { value: 'domestic', label: '国内生産' },
+    { value: 'overseas', label: '海外生産' },
+];
+
 /** 検索パラメータの型 */
 export interface PlanSearchParams {
     search?: string;
     status?: ProductionPlanStatus;
+    production_type?: ProductionType;
+    product_number?: string;
+    product_name?: string;
 }
 
 export interface ItemSearchParams {
     search?: string;
+    production_type?: ProductionType;
 }
 
 export interface MaterialSearchParams {
     search?: string;
     category?: MaterialCategory;
+}
+
+/** 生産計画統計情報 */
+export interface ProductionPlanStatistics {
+    production_type: ProductionType;
+    production_type_display: string;
+    total_plans: number;
+    active_plans: number;
+    completed_plans: number;
+    total_planned_quantity: number;
+    total_completed_quantity: number;
+    overall_completion_rate: number;
+}
+
+/** 生産計画概要レスポンス */
+export interface ProductionPlanOverview {
+    domestic: {
+        statistics: ProductionPlanStatistics;
+        recent_plans: ProductionPlanListItem[];
+    };
+    overseas: {
+        statistics: ProductionPlanStatistics;
+        recent_plans: ProductionPlanListItem[];
+    };
+}
+
+/** 生産計画一覧アイテム */
+export interface ProductionPlanListItem {
+    id: number;
+    plan_number: string;
+    manufacturing_item: number;
+    manufacturing_item_number: string;
+    manufacturing_item_name: string;
+    production_type: ProductionType;
+    production_type_display: string;
+    product: number | null;
+    product_number: string | null;
+    product_name: string | null;
+    total_planned_quantity: number;
+    completed_quantity: number;
+    remaining_quantity: number;
+    completion_rate: number;
+    schedule_count: number;
+    planned_start_date: string | null;
+    planned_end_date: string | null;
+    actual_start_date: string | null;
+    actual_end_date: string | null;
+    status: ProductionPlanStatus;
+    status_display: string;
+    priority: number;
+    notes: string;
+    created_at: string;
+    updated_at: string;
+}
+
+/** 生産計画詳細 */
+export interface ProductionPlanDetail extends ProductionPlanListItem {
+    total_scheduled_quantity: number;
+    schedules: ProductionScheduleItem[];
+    created_by: number | null;
+    created_by_name: string | null;
+}
+
+/** 生産スケジュールアイテム */
+export interface ProductionScheduleItem {
+    id: number;
+    schedule_number: string;
+    quantity: number;
+    completed_quantity: number;
+    completion_rate: number;
+    started_at: string | null;
+    finished_at: string | null;
+    actual_started_at: string | null;
+    actual_finished_at: string | null;
+    status: ProductionScheduleStatus;
+    assigned_to: number | null;
+    assigned_to_name: string | null;
+    production_line: string;
+    notes: string;
+    created_at: string;
+    updated_at: string;
+}
+
+/** 制作品一覧アイテム（生産計画用） */
+export interface ManufacturingItemForPlanning {
+    id: number;
+    manufacturing_number: string;
+    manufacturing_name: string;
+    production_type: ProductionType;
+    production_type_display: string;
+    product: number | null;
+    product_number: string | null;
+    product_name: string | null;
+    unit: string;
+    standard_production_time: string | null;
+    is_active: boolean;
+    active_plan_count: number;
+    total_planned_quantity: number | null;
+    created_at: string;
+    updated_at: string;
+}
+
+/** 生産計画作成データ */
+export interface ProductionPlanCreateData {
+    manufacturing_item: number;
+    product?: number | null;
+    total_planned_quantity: number;
+    planned_start_date?: string | null;
+    planned_end_date?: string | null;
+    status?: ProductionPlanStatus;
+    priority?: number;
+    notes?: string;
+    schedules?: ProductionScheduleCreateData[];
+}
+
+/** 生産計画更新データ */
+export interface ProductionPlanUpdateData {
+    manufacturing_item?: number;
+    product?: number | null;
+    total_planned_quantity?: number;
+    completed_quantity?: number;
+    planned_start_date?: string | null;
+    planned_end_date?: string | null;
+    actual_start_date?: string | null;
+    actual_end_date?: string | null;
+    status?: ProductionPlanStatus;
+    priority?: number;
+    notes?: string;
+}
+
+/** 生産スケジュール作成データ */
+export interface ProductionScheduleCreateData {
+    quantity: number;
+    started_at?: string | null;
+    finished_at?: string | null;
+    assigned_to?: number | null;
+    production_line?: string;
+    notes?: string;
 }
