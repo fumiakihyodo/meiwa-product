@@ -243,7 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                         {
                             text: '生産計画TOP',
                             icon: <ManufacturingIcon />,
-                            path: '/dashboard/production-planning',
+                            path: '/production-planning',
                         },
                     ],
                 };
