@@ -84,7 +84,7 @@ function StatisticsCard({ title, icon, statistics, color, loading, onNavigate }:
                 </Box>
 
                 <Grid container spacing={2}>
-                    <Grid size={{ xs: 6 }}>
+                    <Grid item xs={6}>
                         <Box sx={{ textAlign: 'center', p: 1 }}>
                             <Typography variant="h4" color={`${color}.main`}>
                                 {statistics?.total_plans ?? 0}
@@ -94,7 +94,7 @@ function StatisticsCard({ title, icon, statistics, color, loading, onNavigate }:
                             </Typography>
                         </Box>
                     </Grid>
-                    <Grid size={{ xs: 6 }}>
+                    <Grid item xs={6}>
                         <Box sx={{ textAlign: 'center', p: 1 }}>
                             <Typography variant="h4" color="warning.main">
                                 {statistics?.active_plans ?? 0}
@@ -104,7 +104,7 @@ function StatisticsCard({ title, icon, statistics, color, loading, onNavigate }:
                             </Typography>
                         </Box>
                     </Grid>
-                    <Grid size={{ xs: 6 }}>
+                    <Grid item xs={6}>
                         <Box sx={{ textAlign: 'center', p: 1 }}>
                             <Typography variant="h4" color="success.main">
                                 {statistics?.completed_plans ?? 0}
@@ -114,7 +114,7 @@ function StatisticsCard({ title, icon, statistics, color, loading, onNavigate }:
                             </Typography>
                         </Box>
                     </Grid>
-                    <Grid size={{ xs: 6 }}>
+                    <Grid item xs={6}>
                         <Box sx={{ textAlign: 'center', p: 1 }}>
                             <Typography variant="h4">
                                 {statistics?.overall_completion_rate ?? 0}%
@@ -307,14 +307,12 @@ export default function ProductionPlanningPortalPage() {
                                 onChange={(e) => setSearchText(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                 sx={{ flexGrow: 1, maxWidth: 400 }}
-                                slotProps={{
-                                    input: {
-                                        startAdornment: (
-                                            <InputAdornment position="start">
-                                                <SearchIcon />
-                                            </InputAdornment>
-                                        ),
-                                    },
+                                InputProps={{
+                                    startAdornment: (
+                                        <InputAdornment position="start">
+                                            <SearchIcon />
+                                        </InputAdornment>
+                                    ),
                                 }}
                             />
                             <Button
@@ -328,7 +326,7 @@ export default function ProductionPlanningPortalPage() {
 
                     {/* 統計カード */}
                     <Grid container spacing={3} sx={{ mb: 4 }}>
-                        <Grid size={{ xs: 12, md: 6 }}>
+                        <Grid item xs={12} md={6}>
                             <StatisticsCard
                                 title="国内生産"
                                 icon={<FactoryIcon fontSize="large" />}
@@ -338,7 +336,7 @@ export default function ProductionPlanningPortalPage() {
                                 onNavigate={handleNavigateDomestic}
                             />
                         </Grid>
-                        <Grid size={{ xs: 12, md: 6 }}>
+                        <Grid item xs={12} md={6}>
                             <StatisticsCard
                                 title="海外生産"
                                 icon={<PublicIcon fontSize="large" />}
@@ -380,7 +378,7 @@ export default function ProductionPlanningPortalPage() {
                         最近の生産計画
                     </Typography>
                     <Grid container spacing={3}>
-                        <Grid size={{ xs: 12, lg: 6 }}>
+                        <Grid item xs={12} lg={6}>
                             <RecentPlansTable
                                 title="国内生産 - 最近の計画"
                                 plans={overview?.domestic.recent_plans ?? []}
@@ -388,7 +386,7 @@ export default function ProductionPlanningPortalPage() {
                                 onRowClick={handlePlanClick}
                             />
                         </Grid>
-                        <Grid size={{ xs: 12, lg: 6 }}>
+                        <Grid item xs={12} lg={6}>
                             <RecentPlansTable
                                 title="海外生産 - 最近の計画"
                                 plans={overview?.overseas.recent_plans ?? []}
