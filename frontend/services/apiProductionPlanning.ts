@@ -56,7 +56,17 @@ export const domesticPlanApi = {
         const response = await api.get('/production-planning/domestic/plans/', {
             params: addCacheBuster(params as Record<string, unknown>)
         });
-        return response.data;
+        // レスポンスが配列でない場合は空配列を返す
+        const data = response.data;
+        if (Array.isArray(data)) {
+            return data;
+        }
+        // ページネーションレスポンスの場合
+        if (data && Array.isArray(data.results)) {
+            return data.results;
+        }
+        console.warn('Unexpected API response format:', data);
+        return [];
     },
 
     /**
@@ -135,7 +145,16 @@ export const overseasPlanApi = {
         const response = await api.get('/production-planning/overseas/plans/', {
             params: addCacheBuster(params as Record<string, unknown>)
         });
-        return response.data;
+        // レスポンスが配列でない場合は空配列を返す
+        const data = response.data;
+        if (Array.isArray(data)) {
+            return data;
+        }
+        if (data && Array.isArray(data.results)) {
+            return data.results;
+        }
+        console.warn('Unexpected API response format:', data);
+        return [];
     },
 
     /**
@@ -212,7 +231,14 @@ export const domesticItemApi = {
      */
     getItems: async (params?: ItemSearchParams): Promise<ManufacturingItemForPlanning[]> => {
         const response = await api.get('/production-planning/domestic/items/', { params });
-        return response.data;
+        const data = response.data;
+        if (Array.isArray(data)) {
+            return data;
+        }
+        if (data && Array.isArray(data.results)) {
+            return data.results;
+        }
+        return [];
     },
 
     /**
@@ -228,7 +254,14 @@ export const domesticItemApi = {
      */
     getActiveItems: async (): Promise<ManufacturingItemForPlanning[]> => {
         const response = await api.get('/production-planning/domestic/items/active/');
-        return response.data;
+        const data = response.data;
+        if (Array.isArray(data)) {
+            return data;
+        }
+        if (data && Array.isArray(data.results)) {
+            return data.results;
+        }
+        return [];
     },
 };
 
@@ -242,7 +275,14 @@ export const overseasItemApi = {
      */
     getItems: async (params?: ItemSearchParams): Promise<ManufacturingItemForPlanning[]> => {
         const response = await api.get('/production-planning/overseas/items/', { params });
-        return response.data;
+        const data = response.data;
+        if (Array.isArray(data)) {
+            return data;
+        }
+        if (data && Array.isArray(data.results)) {
+            return data.results;
+        }
+        return [];
     },
 
     /**
@@ -258,7 +298,14 @@ export const overseasItemApi = {
      */
     getActiveItems: async (): Promise<ManufacturingItemForPlanning[]> => {
         const response = await api.get('/production-planning/overseas/items/active/');
-        return response.data;
+        const data = response.data;
+        if (Array.isArray(data)) {
+            return data;
+        }
+        if (data && Array.isArray(data.results)) {
+            return data.results;
+        }
+        return [];
     },
 };
 

@@ -100,10 +100,13 @@ function DomesticProductionPlanContent() {
         try {
             setLoading(true);
             const data = await domesticPlanApi.getPlans(params);
-            setPlans(data);
+            // APIレスポンスが配列であることを保証
+            setPlans(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error('生産計画の取得に失敗しました:', error);
             toast.error('生産計画の取得に失敗しました');
+            // エラー時も配列を維持
+            setPlans([]);
         } finally {
             setLoading(false);
         }
@@ -112,9 +115,10 @@ function DomesticProductionPlanContent() {
     const fetchManufacturingItems = useCallback(async () => {
         try {
             const data = await domesticItemApi.getActiveItems();
-            setManufacturingItems(data);
+            setManufacturingItems(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error('制作品の取得に失敗しました:', error);
+            setManufacturingItems([]);
         }
     }, []);
 
@@ -190,7 +194,11 @@ function DomesticProductionPlanContent() {
 
         // 作成されたプランがある場合は即座にリストに追加して表示
         if (createdPlan) {
-            setPlans(prev => [createdPlan, ...prev]);
+            // 安全なスプレッド操作: prevが配列であることを保証
+            setPlans(prev => {
+                const currentPlans = Array.isArray(prev) ? prev : [];
+                return [createdPlan, ...currentPlans];
+            });
         }
 
         // バックグラウンドでデータを再取得して完全同期
