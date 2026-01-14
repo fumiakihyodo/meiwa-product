@@ -254,3 +254,31 @@ export interface ProductionScheduleCreateData {
     production_line?: string;
     notes?: string;
 }
+
+/** 分納スケジュール（フロントエンド表示用） */
+export interface DeliveryScheduleItem {
+    id?: number;
+    delivery_date: string;  // 分納日
+    quantity: number;       // 分納数量
+    auto_stock_enabled: boolean;  // 自動在庫登録有効フラグ
+}
+
+/** 分納スケジュール作成データ（API送信用） */
+export interface DeliveryScheduleCreateData {
+    quantity: number;
+    finished_at: string;  // 分納日をfinished_atとして送信
+    notes: string;        // JSON形式で追加設定を保存
+}
+
+/** 分納バリデーションエラー */
+export interface DeliveryValidationErrors {
+    delivery_date?: string;
+    quantity?: string;
+    total?: string;
+}
+
+/** 生産計画作成データ（分納対応版） */
+export interface ProductionPlanCreateDataWithDeliveries extends Omit<ProductionPlanCreateData, 'schedules'> {
+    auto_stock_enabled: boolean;  // 自動在庫登録フラグ
+    deliveries?: DeliveryScheduleItem[];  // 分納スケジュール
+}

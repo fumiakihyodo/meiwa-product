@@ -53,7 +53,7 @@ import {
     STATUS_OPTIONS,
     ModalMode,
 } from '@/types/production-planning';
-import ProductionPlanFormModal from '@/components/production-planning/ProductionPlanFormModal';
+import DomesticPlanFormModal from '../components/DomesticPlanFormModal';
 import toast from 'react-hot-toast';
 
 // =============================================================================
@@ -183,11 +183,16 @@ function DomesticProductionPlanContent() {
         setSelectedPlan(null);
     }, []);
 
-    const handleModalSuccess = useCallback(() => {
+    const handleModalSuccess = useCallback(async () => {
         setModalOpen(false);
         setSelectedPlan(null);
-        fetchPlans();
-    }, [fetchPlans]);
+        // 保存完了後、確実にデータを再取得するために非同期で実行
+        // 現在の検索条件を維持してデータを再取得
+        const params: { search?: string; status?: string } = {};
+        if (searchText) params.search = searchText;
+        if (selectedStatus) params.status = selectedStatus;
+        await fetchPlans(params);
+    }, [fetchPlans, searchText, selectedStatus]);
 
     // ==========================================================================
     // DataGrid カラム定義
@@ -199,8 +204,8 @@ function DomesticProductionPlanContent() {
         { field: 'product_name', headerName: '製品', width: 150 },
         {
             field: 'total_planned_quantity',
-            headerName: '予定数',
-            width: 100,
+            headerName: '生産計画数',
+            width: 110,
             type: 'number',
         },
         {
@@ -367,12 +372,11 @@ function DomesticProductionPlanContent() {
             </Paper>
 
             {/* モーダル */}
-            <ProductionPlanFormModal
+            <DomesticPlanFormModal
                 open={modalOpen}
                 onClose={handleModalClose}
                 onSuccess={handleModalSuccess}
                 mode={modalMode}
-                productionType="domestic"
                 plan={selectedPlan}
                 manufacturingItems={manufacturingItems}
             />

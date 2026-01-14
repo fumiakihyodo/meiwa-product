@@ -16,7 +16,13 @@ import {
     ManufacturingItemForPlanning,
     ProductionScheduleCreateData,
     ProductionScheduleItem,
+    DeliveryScheduleCreateData,
 } from '@/types/production-planning';
+
+// キャッシュバスト用のタイムスタンプを追加するユーティリティ
+const addCacheBuster = (params?: Record<string, unknown>): Record<string, unknown> => {
+    return { ...params, _t: Date.now() };
+};
 
 // =============================================================================
 // 型定義
@@ -47,7 +53,9 @@ export const domesticPlanApi = {
      * 国内生産計画一覧を取得
      */
     getPlans: async (params?: PlanSearchParams): Promise<ProductionPlanListItem[]> => {
-        const response = await api.get('/production-planning/domestic/plans/', { params });
+        const response = await api.get('/production-planning/domestic/plans/', {
+            params: addCacheBuster(params as Record<string, unknown>)
+        });
         return response.data;
     },
 
@@ -109,7 +117,7 @@ export const domesticPlanApi = {
     /**
      * 国内生産計画にスケジュールを追加
      */
-    addSchedule: async (planId: number, data: ProductionScheduleCreateData): Promise<ProductionScheduleItem> => {
+    addSchedule: async (planId: number, data: ProductionScheduleCreateData | DeliveryScheduleCreateData): Promise<ProductionScheduleItem> => {
         const response = await api.post(`/production-planning/domestic/plans/${planId}/add_schedule/`, data);
         return response.data;
     },
@@ -124,7 +132,9 @@ export const overseasPlanApi = {
      * 海外生産計画一覧を取得
      */
     getPlans: async (params?: PlanSearchParams): Promise<ProductionPlanListItem[]> => {
-        const response = await api.get('/production-planning/overseas/plans/', { params });
+        const response = await api.get('/production-planning/overseas/plans/', {
+            params: addCacheBuster(params as Record<string, unknown>)
+        });
         return response.data;
     },
 
