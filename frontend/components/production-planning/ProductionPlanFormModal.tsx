@@ -257,7 +257,7 @@ export default function ProductionPlanFormModal({
                 ) : (
                     <Grid container spacing={3}>
                         {/* 基本情報 */}
-                        <Grid size={{ xs: 12 }}>
+                        <Grid item xs={12}>
                             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                                 基本情報
                             </Typography>
@@ -265,7 +265,7 @@ export default function ProductionPlanFormModal({
 
                         {/* 計画番号（編集・閲覧時のみ） */}
                         {!isCreateMode && planDetail && (
-                            <Grid size={{ xs: 12, sm: 6 }}>
+                            <Grid item xs={12} sm={6}>
                                 <TextField
                                     label="計画番号"
                                     value={planDetail.plan_number}
@@ -276,7 +276,7 @@ export default function ProductionPlanFormModal({
                         )}
 
                         {/* 制作品選択 */}
-                        <Grid size={{ xs: 12, sm: isCreateMode ? 12 : 6 }}>
+                        <Grid item xs={12} sm={isCreateMode ? 12 : 6}>
                             <FormControl fullWidth error={!!errors.manufacturing_item}>
                                 <InputLabel>制作品 *</InputLabel>
                                 <Select
@@ -301,7 +301,7 @@ export default function ProductionPlanFormModal({
 
                         {/* 選択された制作品の情報 */}
                         {selectedItem && (
-                            <Grid size={{ xs: 12 }}>
+                            <Grid item xs={12}>
                                 <Box
                                     sx={{
                                         p: 2,
@@ -319,7 +319,7 @@ export default function ProductionPlanFormModal({
                         )}
 
                         {/* 数量情報 */}
-                        <Grid size={{ xs: 12, sm: 6 }}>
+                        <Grid item xs={12} sm={6}>
                             <TextField
                                 label="予定数量 *"
                                 type="number"
@@ -329,15 +329,13 @@ export default function ProductionPlanFormModal({
                                 disabled={isViewMode}
                                 error={!!errors.total_planned_quantity}
                                 helperText={errors.total_planned_quantity}
-                                slotProps={{
-                                    htmlInput: { min: 1 },
-                                }}
+                                inputProps={{ min: 1 }}
                             />
                         </Grid>
 
                         {/* 進捗情報（編集・閲覧時のみ） */}
                         {!isCreateMode && planDetail && (
-                            <Grid size={{ xs: 12, sm: 6 }}>
+                            <Grid item xs={12} sm={6}>
                                 <Box>
                                     <Typography variant="body2" color="text.secondary" gutterBottom>
                                         進捗状況
@@ -361,7 +359,7 @@ export default function ProductionPlanFormModal({
                         )}
 
                         {/* 日程 */}
-                        <Grid size={{ xs: 12, sm: 6 }}>
+                        <Grid item xs={12} sm={6}>
                             <TextField
                                 label="開始予定日"
                                 type="date"
@@ -369,13 +367,11 @@ export default function ProductionPlanFormModal({
                                 onChange={(e) => handleChange('planned_start_date', e.target.value)}
                                 fullWidth
                                 disabled={isViewMode}
-                                slotProps={{
-                                    inputLabel: { shrink: true },
-                                }}
+                                InputLabelProps={{ shrink: true }}
                             />
                         </Grid>
 
-                        <Grid size={{ xs: 12, sm: 6 }}>
+                        <Grid item xs={12} sm={6}>
                             <TextField
                                 label="完了予定日"
                                 type="date"
@@ -383,14 +379,12 @@ export default function ProductionPlanFormModal({
                                 onChange={(e) => handleChange('planned_end_date', e.target.value)}
                                 fullWidth
                                 disabled={isViewMode}
-                                slotProps={{
-                                    inputLabel: { shrink: true },
-                                }}
+                                InputLabelProps={{ shrink: true }}
                             />
                         </Grid>
 
                         {/* ステータスと優先度 */}
-                        <Grid size={{ xs: 12, sm: 6 }}>
+                        <Grid item xs={12} sm={6}>
                             <FormControl fullWidth>
                                 <InputLabel>ステータス</InputLabel>
                                 <Select
@@ -408,7 +402,7 @@ export default function ProductionPlanFormModal({
                             </FormControl>
                         </Grid>
 
-                        <Grid size={{ xs: 12, sm: 6 }}>
+                        <Grid item xs={12} sm={6}>
                             <TextField
                                 label="優先度"
                                 type="number"
@@ -417,14 +411,12 @@ export default function ProductionPlanFormModal({
                                 fullWidth
                                 disabled={isViewMode}
                                 helperText="1が最高優先度"
-                                slotProps={{
-                                    htmlInput: { min: 1 },
-                                }}
+                                inputProps={{ min: 1 }}
                             />
                         </Grid>
 
                         {/* 備考 */}
-                        <Grid size={{ xs: 12 }}>
+                        <Grid item xs={12}>
                             <TextField
                                 label="備考"
                                 value={formData.notes}
@@ -439,13 +431,13 @@ export default function ProductionPlanFormModal({
                         {/* スケジュール一覧（閲覧・編集時のみ） */}
                         {!isCreateMode && planDetail && planDetail.schedules.length > 0 && (
                             <>
-                                <Grid size={{ xs: 12 }}>
+                                <Grid item xs={12}>
                                     <Divider sx={{ my: 2 }} />
                                     <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                                         スケジュール一覧 ({planDetail.schedules.length}件)
                                     </Typography>
                                 </Grid>
-                                <Grid size={{ xs: 12 }}>
+                                <Grid item xs={12}>
                                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                                         {planDetail.schedules.map((schedule: ProductionScheduleItem) => (
                                             <Box
@@ -490,7 +482,7 @@ export default function ProductionPlanFormModal({
 
                         {/* エラーメッセージ */}
                         {errors.general && (
-                            <Grid size={{ xs: 12 }}>
+                            <Grid item xs={12}>
                                 <Typography color="error" variant="body2">
                                     {errors.general}
                                 </Typography>
