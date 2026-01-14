@@ -46,6 +46,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { domesticPlanApi, domesticItemApi } from '@/services/apiProductionPlanning';
 import {
     ProductionPlanListItem,
+    ProductionPlanDetail,
     ManufacturingItemForPlanning,
     ProductionPlanStatus,
     PLAN_STATUS_LABELS,
@@ -183,11 +184,18 @@ function DomesticProductionPlanContent() {
         setSelectedPlan(null);
     }, []);
 
-    const handleModalSuccess = useCallback(async () => {
+    const handleModalSuccess = useCallback(async (createdPlan?: ProductionPlanDetail) => {
         setModalOpen(false);
         setSelectedPlan(null);
-        // 保存完了後、確実にデータを再取得するために非同期で実行
-        // 現在の検索条件を維持してデータを再取得
+
+        // 作成されたプランがある場合は即座にリストに追加して表示
+        if (createdPlan) {
+            setPlans(prev => [createdPlan, ...prev]);
+        }
+
+        // バックグラウンドでデータを再取得して完全同期
+        // 少し遅延を入れてバックエンドの処理完了を確実に待つ
+        await new Promise(resolve => setTimeout(resolve, 100));
         const params: { search?: string; status?: string } = {};
         if (searchText) params.search = searchText;
         if (selectedStatus) params.status = selectedStatus;

@@ -49,7 +49,7 @@ import toast from 'react-hot-toast';
 interface DomesticPlanFormModalProps {
     open: boolean;
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess: (createdPlan?: ProductionPlanDetail) => void;
     mode: ModalMode;
     plan: ProductionPlanListItem | null;
     manufacturingItems: ManufacturingItemForPlanning[];
@@ -383,8 +383,9 @@ export default function DomesticPlanFormModal({
                     schedules: schedulesData,
                 };
 
-                await domesticPlanApi.createPlan(createData);
+                const createdPlan = await domesticPlanApi.createPlan(createData);
                 toast.success('生産計画を作成しました');
+                onSuccess(createdPlan);
             } else if (isEditMode && plan) {
                 // 更新（分納は別途更新が必要な場合がある）
                 const updateData = {
@@ -406,9 +407,8 @@ export default function DomesticPlanFormModal({
                 }
 
                 toast.success('生産計画を更新しました');
+                onSuccess();
             }
-
-            onSuccess();
         } catch (error) {
             console.error('保存に失敗しました:', error);
             toast.error('保存に失敗しました');
