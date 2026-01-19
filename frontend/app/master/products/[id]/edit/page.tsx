@@ -167,7 +167,7 @@ export default function ProductFormPage() {
         } catch (error) {
             console.error(error);
             toast.error('製品情報の取得に失敗しました');
-            router.push('/products');
+            router.push('/master/products');
         } finally {
             setLoading(false);
         }
@@ -190,11 +190,11 @@ export default function ProductFormPage() {
             if (isEdit && product) {
                 await productApi.updateProduct(product.id, submitData as ProductUpdateData);
                 toast.success('製品を更新しました');
-                router.push(`/products/${product.id}`);
+                router.push(`/master/products/${product.id}`);
             } else {
                 const newProduct = await productApi.createProduct(submitData as ProductCreateData);
                 toast.success('製品を作成しました');
-                router.push(`/products/${newProduct.id}`);
+                router.push(`/master/products/${newProduct.id}`);
             }
         } catch (error: unknown) {
             if (error && typeof error === 'object' && 'response' in error) {
@@ -314,7 +314,7 @@ export default function ProductFormPage() {
             <Sidebar>
                 <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                        <IconButton onClick={() => router.push('/products')}>
+                        <IconButton onClick={() => router.push('/master/products')}>
                             <ArrowBackIcon />
                         </IconButton>
                         <Typography variant="h4" component="h1">
@@ -482,7 +482,7 @@ export default function ProductFormPage() {
                             <Box sx={{ mt: 4, display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
                                 <Button
                                     variant="outlined"
-                                    onClick={() => router.push(isEdit && product ? `/products/${product.id}` : '/products')}
+                                    onClick={() => router.push(isEdit && product ? `/master/products/${product.id}` : '/master/products')}
                                 >
                                     キャンセル
                                 </Button>

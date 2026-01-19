@@ -259,7 +259,7 @@ export default function ProductsPage() {
                             <Button
                                 variant="contained"
                                 startIcon={<AddIcon />}
-                                onClick={() => router.push('/products/new')}
+                                onClick={() => router.push('/master/products/new')}
                             >
                                 新規製品
                             </Button>
