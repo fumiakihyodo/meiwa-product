@@ -282,3 +282,59 @@ export interface ProductionPlanCreateDataWithDeliveries extends Omit<ProductionP
     auto_stock_enabled: boolean;  // 自動在庫登録フラグ
     deliveries?: DeliveryScheduleItem[];  // 分納スケジュール
 }
+
+// =============================================================================
+// スケジューラービュー用型定義
+// =============================================================================
+
+/** スケジューラー用の計画データ */
+export interface SchedulerPlanData {
+    id: number;
+    plan_number: string;
+    manufacturing_item_name: string;
+    manufacturing_item_number: string;
+    product_name: string | null;
+    total_planned_quantity: number;
+    completed_quantity: number;
+    completion_rate: number;
+    planned_start_date: string | null;
+    planned_end_date: string | null;
+    status: ProductionPlanStatus;
+    production_type: ProductionType;
+    schedules: SchedulerDeliveryData[];
+}
+
+/** スケジューラー用の分納データ */
+export interface SchedulerDeliveryData {
+    id: number;
+    delivery_date: string;
+    quantity: number;
+}
+
+/** スケジューラーのセルデータ */
+export interface SchedulerCellData {
+    planId: number;
+    isStart: boolean;
+    isEnd: boolean;
+    isMiddle: boolean;
+    quantity?: number;
+    deliveries: SchedulerDeliveryData[];
+}
+
+/** スケジューラーの日付ヘッダーデータ */
+export interface SchedulerDateHeader {
+    date: string;
+    dayOfWeek: string;
+    isWeekend: boolean;
+    isToday: boolean;
+}
+
+/** スケジューラーモーダルのProps */
+export interface ProductionPlanSchedulerModalProps {
+    open: boolean;
+    onClose: () => void;
+    onSuccess: (plan?: ProductionPlanDetail) => void;
+    mode: ModalMode;
+    planId: number | null;
+    productionType: ProductionType;
+}
