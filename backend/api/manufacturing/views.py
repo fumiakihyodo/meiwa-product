@@ -417,3 +417,226 @@ class ManufacturingMaterialViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update']:
             return ManufacturingMaterialCreateUpdateSerializer
         return ManufacturingMaterialSerializer
+
+
+class FinishedGoodsInventoryViewSet(viewsets.ViewSet):
+    """製作品在庫ViewSet
+
+    生産計画の完成数量を在庫として表示するビュー。
+    既存のDBスキーマを活用し、新しいテーブルは作成しない。
+    """
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """製作品別の在庫一覧を取得"""
+        from django.db.models import Sum
+        from api.manufacturing.serializers import FinishedGoodsInventorySerializer
+
+        # パラメータ取得
+        product_id = request.query_params.get('product', None)
+        search = request.query_params.get('search', None)
+        include_records = request.query_params.get('include_records', 'false').lower() == 'true'
+
+        # 有効な制作品を取得
+        items = ManufacturingItem.objects.filter(is_active=True)
+        if product_id:
+            items = items.filter(product_id=product_id)
+        if search:
+            items = items.filter(
+                Q(manufacturing_number__icontains=search) |
+                Q(manufacturing_name__icontains=search)
+            )
+        items = items.select_related('product')
+
+        # 各制作品の在庫情報を構築
+        result = []
+        for item in items:
+            # この制作品の完了した生産計画を集計
+            plans = ProductionPlan.objects.filter(
+                manufacturing_item=item,
+                status='completed',
+                completed_quantity__gt=0
+            ).select_related('product')
+
+            total_quantity = plans.aggregate(
+                total=Sum('completed_quantity')
+            )['total'] or 0
+
+            inventory_data = {
+                'manufacturing_item_id': item.id,
+                'manufacturing_number': item.manufacturing_number,
+                'manufacturing_name': item.manufacturing_name,
+                'product_id': item.product_id,
+                'product_number': item.product.product_number if item.product else None,
+                'product_name': item.product.product_name if item.product else None,
+                'unit': item.unit,
+                'total_quantity': total_quantity,
+                'available_quantity': total_quantity,  # 簡略化のため全て出荷可能
+                'reserved_quantity': 0,
+                'quarantine_quantity': 0,
+                'defective_quantity': 0,
+            }
+
+            # レコード詳細を含める場合
+            if include_records:
+                records = []
+                for plan in plans:
+                    records.append({
+                        'id': plan.id,
+                        'quantity': plan.completed_quantity,
+                        'lot_number': plan.plan_number,
+                        'storage_location': None,
+                        'status': 'available',
+                        'status_display': '出荷可能',
+                        'plan_number': plan.plan_number,
+                        'completed_at': plan.actual_end_date.isoformat() if plan.actual_end_date else None,
+                        'notes': plan.notes,
+                        'created_at': plan.created_at.isoformat(),
+                        'created_by_name': plan.created_by.full_name if plan.created_by else None,
+                    })
+                inventory_data['inventory_records'] = records
+
+            result.append(inventory_data)
+
+        return Response(result)
+
+    @action(detail=False, methods=['post'])
+    def adjust(self, request):
+        """在庫調整（生産計画の完成数量を更新）"""
+        manufacturing_item_id = request.data.get('manufacturing_item_id')
+        adjustment_type = request.data.get('adjustment_type')  # 'increase' or 'decrease'
+        quantity = request.data.get('quantity', 0)
+        reason = request.data.get('reason', 'correction')
+        notes = request.data.get('notes', '')
+        lot_number = request.data.get('lot_number', '')
+
+        if not manufacturing_item_id:
+            return Response(
+                {'error': '製作品IDが必要です'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            quantity = int(quantity)
+            if quantity <= 0:
+                return Response(
+                    {'error': '数量は正の整数で指定してください'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except ValueError:
+            return Response(
+                {'error': '数量は整数で指定してください'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            manufacturing_item = ManufacturingItem.objects.get(id=manufacturing_item_id)
+        except ManufacturingItem.DoesNotExist:
+            return Response(
+                {'error': '製作品が見つかりません'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 調整用の生産計画を作成または更新
+        from django.utils import timezone
+
+        if adjustment_type == 'increase':
+            # 新しい在庫を追加（調整用の生産計画を作成）
+            plan = ProductionPlan.objects.create(
+                manufacturing_item=manufacturing_item,
+                product=manufacturing_item.product,
+                total_planned_quantity=quantity,
+                completed_quantity=quantity,
+                status='completed',
+                priority=99,  # 調整用は低優先度
+                notes=f"[在庫調整-{reason}] {notes}".strip(),
+                actual_end_date=timezone.now().date(),
+                created_by=request.user
+            )
+
+            return Response({
+                'message': f'{quantity}個の在庫を追加しました',
+                'inventory': {
+                    'id': plan.id,
+                    'manufacturing_item': manufacturing_item.id,
+                    'quantity': plan.completed_quantity,
+                    'lot_number': plan.plan_number,
+                },
+                'quantity_before': 0,
+                'quantity_after': quantity,
+            })
+        else:
+            # 在庫を減らす（既存の計画の完成数量を調整）
+            # 簡略化のため、調整用のマイナス計画は作成せず、警告を返す
+            # 実際の実装では、より詳細な在庫管理テーブルが必要
+            return Response({
+                'message': '在庫減少は現在サポートされていません。生産計画から直接調整してください。',
+            }, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+    @action(detail=False, methods=['get'])
+    def adjustment_history(self, request):
+        """在庫調整履歴を取得（調整用生産計画を一覧）"""
+        manufacturing_item_id = request.query_params.get('manufacturing_item', None)
+        limit = int(request.query_params.get('limit', 50))
+
+        queryset = ProductionPlan.objects.filter(
+            notes__startswith='[在庫調整'
+        ).select_related('manufacturing_item', 'created_by')
+
+        if manufacturing_item_id:
+            queryset = queryset.filter(manufacturing_item_id=manufacturing_item_id)
+
+        queryset = queryset.order_by('-created_at')[:limit]
+
+        result = []
+        for plan in queryset:
+            result.append({
+                'id': plan.id,
+                'inventory_id': plan.id,
+                'manufacturing_number': plan.manufacturing_item.manufacturing_number,
+                'manufacturing_name': plan.manufacturing_item.manufacturing_name,
+                'adjustment_type': 'increase',
+                'adjustment_type_display': '増加',
+                'quantity': plan.completed_quantity,
+                'quantity_before': 0,
+                'quantity_after': plan.completed_quantity,
+                'reason': 'correction',
+                'reason_display': '訂正',
+                'lot_number': plan.plan_number,
+                'notes': plan.notes,
+                'created_at': plan.created_at.isoformat(),
+                'created_by': plan.created_by_id,
+                'created_by_name': plan.created_by.full_name if plan.created_by else None,
+            })
+
+        return Response(result)
+
+    @action(detail=False, methods=['get'])
+    def dashboard(self, request):
+        """ダッシュボードデータを取得"""
+        from django.db.models import Sum
+
+        # 全制作品の在庫集計
+        items = ManufacturingItem.objects.filter(is_active=True)
+        total_items = items.count()
+
+        plans = ProductionPlan.objects.filter(
+            status='completed',
+            completed_quantity__gt=0
+        )
+
+        total_quantity = plans.aggregate(
+            total=Sum('completed_quantity')
+        )['total'] or 0
+
+        # 在庫なしの制作品
+        items_with_stock = plans.values('manufacturing_item').distinct().count()
+
+        return Response({
+            'total_items': total_items,
+            'total_quantity': total_quantity,
+            'available_quantity': total_quantity,
+            'reserved_quantity': 0,
+            'low_stock_items': [],
+            'recent_adjustments': [],
+        })

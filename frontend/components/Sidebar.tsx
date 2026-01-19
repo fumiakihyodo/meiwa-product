@@ -144,6 +144,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                             path: '/inventory/purchased-item-inventory',
                         },
                         {
+                            text: '製作品在庫管理',
+                            icon: <ManufacturingIcon />,
+                            path: '/inventory/finished-goods-inventory',
+                        },
+                        {
                             text: '在庫調整',
                             icon: <Inventory2Icon />,
                             path: '/inventory/inventory-adjustment',

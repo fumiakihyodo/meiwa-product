@@ -10,6 +10,7 @@ from api.manufacturing.views import (
     MaterialViewSet,
     MaterialDeliveryScheduleViewSet,
     ManufacturingMaterialViewSet,
+    FinishedGoodsInventoryViewSet,
 )
 
 router = DefaultRouter()
@@ -19,6 +20,7 @@ router.register(r'schedules', ProductionScheduleViewSet, basename='production-sc
 router.register(r'materials', MaterialViewSet, basename='material')
 router.register(r'material-deliveries', MaterialDeliveryScheduleViewSet, basename='material-delivery')
 router.register(r'bom', ManufacturingMaterialViewSet, basename='manufacturing-material')
+router.register(r'finished-goods-inventory', FinishedGoodsInventoryViewSet, basename='finished-goods-inventory')
 
 urlpatterns = [
     path('', include(router.urls)),

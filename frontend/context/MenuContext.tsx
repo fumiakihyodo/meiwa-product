@@ -67,6 +67,7 @@ const PATH_TO_CATEGORY: Record<string, MenuCategory> = {
     '/inventory': 'inventory',
     '/supplied-item-inventory': 'inventory',
     '/purchased-item-inventory': 'inventory',
+    '/finished-goods-inventory': 'inventory',
     '/inventory-adjustment': 'inventory',
     '/products': 'master',
     '/parts': 'master',
