@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, SyntheticEvent } from 'react';
 import {
     Box,
     Typography,
@@ -53,10 +53,16 @@ import {
     StarBorder as StarBorderIcon,
     ViewList as ViewListIcon,
     ViewModule as ViewModuleIcon,
+    Factory as FactoryIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { purchasesApi } from '@/services/apiPurchases';
 import { productApi } from '@/services/apiProduct';
+import {
+    manufacturingItemApi,
+    ManufacturingItem,
+    ProductionType,
+} from '@/services/apiManufacturing';
 import {
     InventoryDashboardData,
     PendingSuppliedItemList,
@@ -88,6 +94,9 @@ const setDefaultProductId = (productId: number | null): void => {
         localStorage.removeItem(DEFAULT_PRODUCT_KEY);
     }
 };
+
+// 製作品タブの型定義
+type ManufacturingTabValue = 'all' | 'domestic' | 'overseas';
 
 // ステータスチップ（購入発注用）
 function PurchaseStatusChip({ status, statusDisplay }: { status: PurchaseOrderStatus; statusDisplay?: string }) {
@@ -136,6 +145,27 @@ function SuppliedListStatusChip({ status, statusDisplay }: { status: SuppliedIte
             size="small"
         />
     );
+}
+
+// 制作拠点チップ
+function ProductionTypeChip({ type }: { type: ProductionType }) {
+    const getLabel = () => {
+        switch (type) {
+            case 'domestic': return '国内';
+            case 'overseas': return '海外';
+            case 'both': return '両方';
+            default: return type;
+        }
+    };
+    const getColor = (): 'primary' | 'secondary' | 'success' => {
+        switch (type) {
+            case 'domestic': return 'primary';
+            case 'overseas': return 'secondary';
+            case 'both': return 'success';
+            default: return 'primary';
+        }
+    };
+    return <Chip label={getLabel()} color={getColor()} size="small" variant="outlined" />;
 }
 
 // 受領入力ダイアログ
@@ -279,8 +309,13 @@ export default function InventoryDashboardPage() {
     const [receiveDialogOpen, setReceiveDialogOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<UnreceivedPurchaseItem | null>(null);
 
-    // 表示モード: 'dashboard' | 'product'
-    const [viewMode, setViewMode] = useState<'dashboard' | 'product'>('dashboard');
+    // 表示モード: 'dashboard' | 'product' | 'manufacturing'
+    const [viewMode, setViewMode] = useState<'dashboard' | 'product' | 'manufacturing'>('dashboard');
+
+    // 製作品データ
+    const [manufacturingItems, setManufacturingItems] = useState<ManufacturingItem[]>([]);
+    const [loadingManufacturing, setLoadingManufacturing] = useState(false);
+    const [manufacturingTab, setManufacturingTab] = useState<ManufacturingTabValue>('all');
 
     // 在庫データ（製品別表示用）
     const [suppliedInventories, setSuppliedInventories] = useState<SuppliedItemInventory[]>([]);
@@ -321,6 +356,26 @@ export default function InventoryDashboardPage() {
         fetchDashboardData();
     }, [fetchDashboardData]);
 
+    // 製作品データ取得
+    const fetchManufacturingData = useCallback(async () => {
+        setLoadingManufacturing(true);
+        try {
+            const data = await manufacturingItemApi.getItems();
+            setManufacturingItems(data);
+        } catch (e) {
+            console.error('Failed to fetch manufacturing items:', e);
+        } finally {
+            setLoadingManufacturing(false);
+        }
+    }, []);
+
+    // 製作品表示モードに切り替えた時にデータを取得
+    useEffect(() => {
+        if (viewMode === 'manufacturing' && manufacturingItems.length === 0) {
+            fetchManufacturingData();
+        }
+    }, [viewMode, manufacturingItems.length, fetchManufacturingData]);
+
     // 在庫データ取得（製品別表示モード用）
     const fetchInventoriesData = useCallback(async () => {
         setLoadingInventories(true);
@@ -344,6 +399,42 @@ export default function InventoryDashboardPage() {
             fetchInventoriesData();
         }
     }, [viewMode, suppliedInventories.length, purchasedInventories.length, fetchInventoriesData]);
+
+    // 製作品タブ変更ハンドラー
+    const handleManufacturingTabChange = useCallback((_event: SyntheticEvent, newValue: ManufacturingTabValue) => {
+        setManufacturingTab(newValue);
+    }, []);
+
+    // 製作品フィルタリング
+    const filteredManufacturingItems = useMemo(() => {
+        if (!manufacturingItems) return [];
+
+        switch (manufacturingTab) {
+            case 'domestic':
+                return manufacturingItems.filter(
+                    item => item.production_type === 'domestic' || item.production_type === 'both'
+                );
+            case 'overseas':
+                return manufacturingItems.filter(
+                    item => item.production_type === 'overseas' || item.production_type === 'both'
+                );
+            default:
+                return manufacturingItems;
+        }
+    }, [manufacturingItems, manufacturingTab]);
+
+    // 製作品在庫サマリー
+    const manufacturingStockSummary = useMemo(() => {
+        const activeItems = manufacturingItems.filter(item => item.is_active);
+        return {
+            totalItems: activeItems.length,
+            domesticItems: activeItems.filter(i => i.production_type === 'domestic' || i.production_type === 'both').length,
+            overseasItems: activeItems.filter(i => i.production_type === 'overseas' || i.production_type === 'both').length,
+            totalDomesticStock: activeItems.reduce((sum, i) => sum + (i.domestic_stock || 0), 0),
+            totalOverseasStock: activeItems.reduce((sum, i) => sum + (i.overseas_stock || 0), 0),
+            totalStock: activeItems.reduce((sum, i) => sum + (i.total_stock || 0), 0),
+        };
+    }, [manufacturingItems]);
 
     // 製品別在庫サマリーの型定義
     interface ProductInventorySummary {
@@ -488,6 +579,17 @@ export default function InventoryDashboardPage() {
         setReceiveDialogOpen(true);
     };
 
+    // 更新ハンドラー
+    const handleRefresh = () => {
+        if (viewMode === 'dashboard') {
+            fetchDashboardData();
+        } else if (viewMode === 'product') {
+            fetchInventoriesData();
+        } else if (viewMode === 'manufacturing') {
+            fetchManufacturingData();
+        }
+    };
+
     if (loading && !dashboardData) {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
@@ -520,18 +622,17 @@ export default function InventoryDashboardPage() {
                                 <ViewModuleIcon />
                             </Tooltip>
                         </ToggleButton>
+                        <ToggleButton value="manufacturing">
+                            <Tooltip title="製作品在庫">
+                                <FactoryIcon />
+                            </Tooltip>
+                        </ToggleButton>
                     </ToggleButtonGroup>
                     <Button
                         variant="outlined"
                         startIcon={<RefreshIcon />}
-                        onClick={() => {
-                            if (viewMode === 'dashboard') {
-                                fetchDashboardData();
-                            } else {
-                                fetchInventoriesData();
-                            }
-                        }}
-                        disabled={loading || loadingInventories}
+                        onClick={handleRefresh}
+                        disabled={loading || loadingInventories || loadingManufacturing}
                     >
                         更新
                     </Button>
@@ -1091,6 +1192,183 @@ export default function InventoryDashboardPage() {
                                 </Accordion>
                             ))}
                         </Box>
+                    )}
+                </Box>
+            )}
+
+            {/* 製作品在庫表示 */}
+            {viewMode === 'manufacturing' && (
+                <Box>
+                    {loadingManufacturing ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                            <CircularProgress />
+                        </Box>
+                    ) : (
+                        <>
+                            {/* サマリーカード */}
+                            <Grid container spacing={3} sx={{ mb: 4 }}>
+                                <Grid item xs={12} sm={6} md={3}>
+                                    <Card>
+                                        <CardContent>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <FactoryIcon color="primary" />
+                                                <Typography variant="subtitle2" color="text.secondary">
+                                                    国内在庫合計
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="h3" sx={{ mt: 1 }}>
+                                                {manufacturingStockSummary.totalDomesticStock.toLocaleString()}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                {manufacturingStockSummary.domesticItems}品目
+                                            </Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={3}>
+                                    <Card>
+                                        <CardContent>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <FactoryIcon color="secondary" />
+                                                <Typography variant="subtitle2" color="text.secondary">
+                                                    海外在庫合計
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="h3" sx={{ mt: 1 }}>
+                                                {manufacturingStockSummary.totalOverseasStock.toLocaleString()}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                {manufacturingStockSummary.overseasItems}品目
+                                            </Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={3}>
+                                    <Card>
+                                        <CardContent>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <CheckCircleIcon color="success" />
+                                                <Typography variant="subtitle2" color="text.secondary">
+                                                    総在庫合計
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="h3" sx={{ mt: 1 }}>
+                                                {manufacturingStockSummary.totalStock.toLocaleString()}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                {manufacturingStockSummary.totalItems}品目
+                                            </Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={3}>
+                                    <Card>
+                                        <CardContent>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <ArrowForwardIcon color="info" />
+                                                <Typography variant="subtitle2" color="text.secondary">
+                                                    製作品管理
+                                                </Typography>
+                                            </Box>
+                                            <Box sx={{ mt: 2 }}>
+                                                <Button
+                                                    variant="outlined"
+                                                    size="small"
+                                                    endIcon={<ArrowForwardIcon />}
+                                                    onClick={() => router.push('/master/manufacturing')}
+                                                >
+                                                    製作品一覧へ
+                                                </Button>
+                                            </Box>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                            </Grid>
+
+                            {/* タブ */}
+                            <Paper sx={{ p: 2 }}>
+                                <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+                                    <Tabs
+                                        value={manufacturingTab}
+                                        onChange={handleManufacturingTabChange}
+                                        aria-label="製作品在庫タブ"
+                                    >
+                                        <Tab label="すべて" value="all" />
+                                        <Tab label="国内生産品" value="domestic" />
+                                        <Tab label="海外生産品" value="overseas" />
+                                    </Tabs>
+                                </Box>
+
+                                {filteredManufacturingItems.length === 0 ? (
+                                    <Alert severity="info">
+                                        製作品在庫データがありません
+                                    </Alert>
+                                ) : (
+                                    <TableContainer>
+                                        <Table size="small">
+                                            <TableHead>
+                                                <TableRow>
+                                                    <TableCell>品番</TableCell>
+                                                    <TableCell>制作品名</TableCell>
+                                                    <TableCell>制作拠点</TableCell>
+                                                    <TableCell>単位</TableCell>
+                                                    {(manufacturingTab === 'all' || manufacturingTab === 'domestic') && (
+                                                        <TableCell align="right">国内在庫</TableCell>
+                                                    )}
+                                                    {(manufacturingTab === 'all' || manufacturingTab === 'overseas') && (
+                                                        <TableCell align="right">海外在庫</TableCell>
+                                                    )}
+                                                    <TableCell align="right">合計在庫</TableCell>
+                                                    <TableCell>ステータス</TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {filteredManufacturingItems.map((item) => (
+                                                    <TableRow key={item.id}>
+                                                        <TableCell>
+                                                            <Button
+                                                                size="small"
+                                                                onClick={() => router.push('/master/manufacturing')}
+                                                                sx={{ textTransform: 'none' }}
+                                                            >
+                                                                {item.manufacturing_number}
+                                                            </Button>
+                                                        </TableCell>
+                                                        <TableCell>{item.manufacturing_name}</TableCell>
+                                                        <TableCell>
+                                                            <ProductionTypeChip type={item.production_type} />
+                                                        </TableCell>
+                                                        <TableCell>{item.unit}</TableCell>
+                                                        {(manufacturingTab === 'all' || manufacturingTab === 'domestic') && (
+                                                            <TableCell align="right">
+                                                                {item.production_type === 'overseas' ? '-' : (item.domestic_stock || 0).toLocaleString()}
+                                                            </TableCell>
+                                                        )}
+                                                        {(manufacturingTab === 'all' || manufacturingTab === 'overseas') && (
+                                                            <TableCell align="right">
+                                                                {item.production_type === 'domestic' ? '-' : (item.overseas_stock || 0).toLocaleString()}
+                                                            </TableCell>
+                                                        )}
+                                                        <TableCell align="right">
+                                                            <Typography fontWeight="bold">
+                                                                {(item.total_stock || 0).toLocaleString()}
+                                                            </Typography>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Chip
+                                                                label={item.is_active ? '有効' : '無効'}
+                                                                color={item.is_active ? 'success' : 'default'}
+                                                                size="small"
+                                                            />
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>
+                                )}
+                            </Paper>
+                        </>
                     )}
                 </Box>
             )}
