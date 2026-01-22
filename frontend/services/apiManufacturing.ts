@@ -4,10 +4,14 @@ import apiClient from './api';
 import { PaginatedResponse } from '@/types/business';
 
 // Types
+export type ProductionType = 'domestic' | 'overseas' | 'both';
+
 export interface ManufacturingItem {
     id: number;
     manufacturing_number: string;
     manufacturing_name: string;
+    production_type: ProductionType;
+    production_type_display?: string;
     product?: number;
     product_number?: string;
     product_name?: string;
@@ -16,6 +20,11 @@ export interface ManufacturingItem {
     standard_production_time?: number;
     is_active: boolean;
     notes?: string;
+    // 拠点別在庫情報
+    domestic_stock: number;
+    overseas_stock: number;
+    total_stock: number;
+    text_notes?: string;
     production_plan_count?: number;
     created_at: string;
     updated_at: string;
@@ -25,12 +34,16 @@ export interface ManufacturingItem {
 export interface ManufacturingItemCreate {
     manufacturing_number: string;
     manufacturing_name: string;
+    production_type?: ProductionType;
     product?: number;
     specification?: string;
     unit?: string;
     standard_production_time?: number;
     is_active?: boolean;
-    notes?: string;
+    // 拠点別在庫情報
+    domestic_stock?: number;
+    overseas_stock?: number;
+    text_notes?: string;
 }
 
 export interface ProductionSchedule {
@@ -149,7 +162,12 @@ export interface MaterialCreate {
 
 // Manufacturing Item API
 export const manufacturingItemApi = {
-    getItems: async (params?: { search?: string; product?: number; is_active?: boolean }): Promise<ManufacturingItem[]> => {
+    getItems: async (params?: {
+        search?: string;
+        product?: number;
+        is_active?: boolean;
+        production_type?: ProductionType;
+    }): Promise<ManufacturingItem[]> => {
         const response = await apiClient.get<PaginatedResponse<ManufacturingItem>>('/manufacturing/items/', { params });
         return response.data.results;
     },

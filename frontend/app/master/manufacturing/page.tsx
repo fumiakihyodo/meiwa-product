@@ -1,7 +1,7 @@
 // app/master/manufacturing/page.tsx
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, SyntheticEvent } from 'react';
 import {
     Box,
     Paper,
@@ -15,6 +15,8 @@ import {
     DialogContentText,
     DialogTitle,
     TextField,
+    Tabs,
+    Tab,
 } from '@mui/material';
 import {
     DataGrid,
@@ -38,13 +40,36 @@ import {
     materialApi,
     ManufacturingItem,
     Material,
+    ProductionType,
 } from '@/services/apiManufacturing';
 import { productApi } from '@/services/apiProduct';
 import { Product } from '@/types/product';
 import toast from 'react-hot-toast';
 import ManufacturingItemModal from '@/components/manufacturing/ManufacturingItemModal';
 
+// タブの型定義
+type TabValue = 'all' | 'domestic' | 'overseas';
+
+// タブパネルのProps型定義
+interface TabPanelProps {
+    children?: React.ReactNode;
+    value: TabValue;
+    currentValue: TabValue;
+}
+
+// タブパネルコンポーネント
+function TabPanel({ children, value, currentValue }: TabPanelProps) {
+    return (
+        <div role="tabpanel" hidden={value !== currentValue}>
+            {value === currentValue && <Box sx={{ pt: 2 }}>{children}</Box>}
+        </div>
+    );
+}
+
 export default function ManufacturingPage() {
+    // タブの状態管理
+    const [activeTab, setActiveTab] = useState<TabValue>('all');
+
     // Manufacturing Items state
     const [selectedItem, setSelectedItem] = useState<ManufacturingItem | null>(null);
     const [itemModalOpen, setItemModalOpen] = useState(false);
@@ -53,7 +78,7 @@ export default function ManufacturingPage() {
     const [itemSearchText, setItemSearchText] = useState('');
 
     // Search params types
-    type ItemSearchParams = { search?: string };
+    type ItemSearchParams = { search?: string; production_type?: ProductionType };
 
     // Data fetching
     const {
@@ -87,6 +112,29 @@ export default function ManufacturingPage() {
         fetchMaterials();
         fetchProducts();
     }, [fetchItems, fetchMaterials, fetchProducts]);
+
+    // タブに応じたデータのフィルタリング
+    const filteredItems = useMemo(() => {
+        if (!manufacturingItems) return [];
+
+        switch (activeTab) {
+            case 'domestic':
+                return manufacturingItems.filter(
+                    item => item.production_type === 'domestic' || item.production_type === 'both'
+                );
+            case 'overseas':
+                return manufacturingItems.filter(
+                    item => item.production_type === 'overseas' || item.production_type === 'both'
+                );
+            default:
+                return manufacturingItems;
+        }
+    }, [manufacturingItems, activeTab]);
+
+    // タブ変更ハンドラー
+    const handleTabChange = useCallback((_event: SyntheticEvent, newValue: TabValue) => {
+        setActiveTab(newValue);
+    }, []);
 
     // ===== Manufacturing Items handlers =====
     const handleNewItem = useCallback(() => {
@@ -138,63 +186,152 @@ export default function ManufacturingPage() {
     }, [fetchItems]);
 
     const handleItemSearch = useCallback(() => {
-        const params: { search?: string } = {};
+        const params: ItemSearchParams = {};
         if (itemSearchText) params.search = itemSearchText;
         fetchItems(params);
     }, [itemSearchText, fetchItems]);
 
-    // DataGrid columns
-    const itemColumns: GridColDef[] = [
-        { field: 'manufacturing_number', headerName: '品番', width: 130 },
-        { field: 'manufacturing_name', headerName: '制作品名', width: 200 },
-        { field: 'product_name', headerName: '製品', width: 150 },
-        { field: 'unit', headerName: '単位', width: 80 },
-        {
-            field: 'standard_production_time',
-            headerName: '標準製造時間',
-            width: 120,
-            renderCell: (params) => params.value ? `${params.value}時間` : '-',
-        },
-        {
-            field: 'is_active',
-            headerName: 'ステータス',
+    // 制作拠点の表示名を取得
+    const getProductionTypeLabel = (type: ProductionType): string => {
+        switch (type) {
+            case 'domestic':
+                return '国内';
+            case 'overseas':
+                return '海外';
+            case 'both':
+                return '両方';
+            default:
+                return type;
+        }
+    };
+
+    // 制作拠点の色を取得
+    const getProductionTypeColor = (type: ProductionType): 'primary' | 'secondary' | 'success' => {
+        switch (type) {
+            case 'domestic':
+                return 'primary';
+            case 'overseas':
+                return 'secondary';
+            case 'both':
+                return 'success';
+            default:
+                return 'primary';
+        }
+    };
+
+    // DataGrid columns（タブに応じて在庫カラムを動的に変更）
+    const getItemColumns = useCallback((): GridColDef[] => {
+        const baseColumns: GridColDef[] = [
+            { field: 'manufacturing_number', headerName: '品番', width: 130 },
+            { field: 'manufacturing_name', headerName: '制作品名', width: 200 },
+            {
+                field: 'production_type',
+                headerName: '制作拠点',
+                width: 100,
+                renderCell: (params: GridRenderCellParams<ManufacturingItem>) => (
+                    <Chip
+                        label={getProductionTypeLabel(params.value as ProductionType)}
+                        color={getProductionTypeColor(params.value as ProductionType)}
+                        size="small"
+                        variant="outlined"
+                    />
+                ),
+            },
+            { field: 'product_name', headerName: '製品', width: 150 },
+            { field: 'unit', headerName: '単位', width: 80 },
+        ];
+
+        // タブに応じた在庫カラムを追加
+        if (activeTab === 'all' || activeTab === 'domestic') {
+            baseColumns.push({
+                field: 'domestic_stock',
+                headerName: '国内在庫',
+                width: 100,
+                type: 'number',
+                renderCell: (params: GridRenderCellParams<ManufacturingItem>) => {
+                    const item = params.row;
+                    if (item.production_type === 'overseas') return '-';
+                    return params.value ?? 0;
+                },
+            });
+        }
+
+        if (activeTab === 'all' || activeTab === 'overseas') {
+            baseColumns.push({
+                field: 'overseas_stock',
+                headerName: '海外在庫',
+                width: 100,
+                type: 'number',
+                renderCell: (params: GridRenderCellParams<ManufacturingItem>) => {
+                    const item = params.row;
+                    if (item.production_type === 'domestic') return '-';
+                    return params.value ?? 0;
+                },
+            });
+        }
+
+        baseColumns.push({
+            field: 'total_stock',
+            headerName: '合計在庫',
             width: 100,
-            renderCell: (params: GridRenderCellParams) => (
-                <Chip
-                    label={params.value ? '有効' : '無効'}
-                    color={params.value ? 'success' : 'default'}
-                    size="small"
-                />
-            ),
-        },
-        {
-            field: 'actions',
-            type: 'actions',
-            headerName: '操作',
-            width: 120,
-            getActions: (params) => [
-                <GridActionsCellItem
-                    key="view"
-                    icon={<VisibilityIcon />}
-                    label="詳細"
-                    onClick={() => handleViewItem(params.row)}
-                />,
-                <GridActionsCellItem
-                    key="edit"
-                    icon={<EditIcon />}
-                    label="編集"
-                    onClick={() => handleEditItem(params.row)}
-                />,
-                <GridActionsCellItem
-                    key="delete"
-                    icon={<DeleteIcon />}
-                    label="削除"
-                    onClick={() => handleDeleteItemConfirm(params.row)}
-                    showInMenu
-                />,
-            ],
-        },
-    ];
+            type: 'number',
+            renderCell: (params: GridRenderCellParams<ManufacturingItem>) => {
+                return params.value ?? 0;
+            },
+        });
+
+        baseColumns.push(
+            {
+                field: 'standard_production_time',
+                headerName: '標準製造時間',
+                width: 120,
+                renderCell: (params) => params.value ? `${params.value}時間` : '-',
+            },
+            {
+                field: 'is_active',
+                headerName: 'ステータス',
+                width: 100,
+                renderCell: (params: GridRenderCellParams) => (
+                    <Chip
+                        label={params.value ? '有効' : '無効'}
+                        color={params.value ? 'success' : 'default'}
+                        size="small"
+                    />
+                ),
+            },
+            {
+                field: 'actions',
+                type: 'actions',
+                headerName: '操作',
+                width: 120,
+                getActions: (params) => [
+                    <GridActionsCellItem
+                        key="view"
+                        icon={<VisibilityIcon />}
+                        label="詳細"
+                        onClick={() => handleViewItem(params.row)}
+                    />,
+                    <GridActionsCellItem
+                        key="edit"
+                        icon={<EditIcon />}
+                        label="編集"
+                        onClick={() => handleEditItem(params.row)}
+                    />,
+                    <GridActionsCellItem
+                        key="delete"
+                        icon={<DeleteIcon />}
+                        label="削除"
+                        onClick={() => handleDeleteItemConfirm(params.row)}
+                        showInMenu
+                    />,
+                ],
+            }
+        );
+
+        return baseColumns;
+    }, [activeTab, handleViewItem, handleEditItem, handleDeleteItemConfirm]);
+
+    const itemColumns = useMemo(() => getItemColumns(), [getItemColumns]);
 
     return (
         <AuthGuard>
@@ -205,6 +342,19 @@ export default function ManufacturingPage() {
                     </Typography>
 
                     <Paper sx={{ width: '100%', p: 2 }}>
+                        {/* タブ */}
+                        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+                            <Tabs
+                                value={activeTab}
+                                onChange={handleTabChange}
+                                aria-label="制作品タブ"
+                            >
+                                <Tab label="すべて" value="all" />
+                                <Tab label="国内生産品" value="domestic" />
+                                <Tab label="海外生産品" value="overseas" />
+                            </Tabs>
+                        </Box>
+
                         {/* ヘッダーとボタン */}
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -233,18 +383,48 @@ export default function ManufacturingPage() {
                             </Box>
                         </Box>
 
-                        {/* データグリッド */}
-                        <DataGrid
-                            rows={manufacturingItems ?? []}
-                            columns={itemColumns}
-                            loading={itemsLoading}
-                            pageSizeOptions={[10, 25, 50]}
-                            initialState={{
-                                pagination: { paginationModel: { pageSize: 10, page: 0 } },
-                            }}
-                            autoHeight
-                            disableRowSelectionOnClick
-                        />
+                        {/* データグリッド（タブごとに表示） */}
+                        <TabPanel value="all" currentValue={activeTab}>
+                            <DataGrid
+                                rows={filteredItems}
+                                columns={itemColumns}
+                                loading={itemsLoading}
+                                pageSizeOptions={[10, 25, 50]}
+                                initialState={{
+                                    pagination: { paginationModel: { pageSize: 10, page: 0 } },
+                                }}
+                                autoHeight
+                                disableRowSelectionOnClick
+                            />
+                        </TabPanel>
+
+                        <TabPanel value="domestic" currentValue={activeTab}>
+                            <DataGrid
+                                rows={filteredItems}
+                                columns={itemColumns}
+                                loading={itemsLoading}
+                                pageSizeOptions={[10, 25, 50]}
+                                initialState={{
+                                    pagination: { paginationModel: { pageSize: 10, page: 0 } },
+                                }}
+                                autoHeight
+                                disableRowSelectionOnClick
+                            />
+                        </TabPanel>
+
+                        <TabPanel value="overseas" currentValue={activeTab}>
+                            <DataGrid
+                                rows={filteredItems}
+                                columns={itemColumns}
+                                loading={itemsLoading}
+                                pageSizeOptions={[10, 25, 50]}
+                                initialState={{
+                                    pagination: { paginationModel: { pageSize: 10, page: 0 } },
+                                }}
+                                autoHeight
+                                disableRowSelectionOnClick
+                            />
+                        </TabPanel>
                     </Paper>
 
                     {/* 制作品モーダル */}
@@ -270,6 +450,10 @@ export default function ManufacturingPage() {
                                 <Typography variant="body1">{selectedItem?.manufacturing_number}</Typography>
                                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>制作品名</Typography>
                                 <Typography variant="body1">{selectedItem?.manufacturing_name}</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>制作拠点</Typography>
+                                <Typography variant="body1">
+                                    {selectedItem?.production_type ? getProductionTypeLabel(selectedItem.production_type) : '-'}
+                                </Typography>
                             </Box>
                             <Typography variant="body2" color="error" sx={{ mt: 2 }}>
                                 ※ この操作は取り消せません

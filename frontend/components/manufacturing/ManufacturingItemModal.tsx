@@ -1,7 +1,7 @@
 // components/manufacturing/ManufacturingItemModal.tsx
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, KeyboardEvent } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -29,6 +29,9 @@ import {
     TableRow,
     Paper,
     Autocomplete,
+    Checkbox,
+    FormGroup,
+    FormLabel,
 } from '@mui/material';
 import {
     Add as AddIcon,
@@ -41,13 +44,14 @@ import {
     ManufacturingItemCreate,
     Material,
     ManufacturingMaterial,
+    ProductionType,
 } from '@/services/apiManufacturing';
 import { Product } from '@/types/product';
 import toast from 'react-hot-toast';
 
 // 材料紐付けの型定義
 interface MaterialRequirement {
-    id?: number; // 既存のBOMの場合はID
+    id?: number;
     material: number | null;
     material_code?: string;
     material_name?: string;
@@ -56,6 +60,22 @@ interface MaterialRequirement {
     notes?: string;
 }
 
+// フォームデータの型定義
+interface FormData {
+    manufacturing_number: string;
+    manufacturing_name: string;
+    production_type: ProductionType;
+    product?: number;
+    specification: string;
+    unit: string;
+    standard_production_time?: number;
+    is_active: boolean;
+    domestic_stock: number;
+    overseas_stock: number;
+    text_notes: string;
+}
+
+// モーダルのProps型定義
 interface ManufacturingItemModalProps {
     open: boolean;
     onClose: () => void;
@@ -66,6 +86,13 @@ interface ManufacturingItemModalProps {
     materials: Material[];
 }
 
+// 制作拠点のオプション
+const PRODUCTION_TYPE_OPTIONS = [
+    { value: 'domestic' as ProductionType, label: '国内生産' },
+    { value: 'overseas' as ProductionType, label: '海外生産' },
+    { value: 'both' as ProductionType, label: '国内・海外両方' },
+];
+
 export default function ManufacturingItemModal({
     open,
     onClose,
@@ -75,20 +102,29 @@ export default function ManufacturingItemModal({
     products,
     materials,
 }: ManufacturingItemModalProps) {
-    const [formData, setFormData] = useState<ManufacturingItemCreate>({
+    // フォームデータの初期値
+    const getInitialFormData = useCallback((): FormData => ({
         manufacturing_number: '',
         manufacturing_name: '',
+        production_type: 'domestic',
         product: undefined,
         specification: '',
         unit: '個',
         standard_production_time: undefined,
         is_active: true,
-        notes: '',
-    });
+        domestic_stock: 0,
+        overseas_stock: 0,
+        text_notes: '',
+    }), []);
+
+    const [formData, setFormData] = useState<FormData>(getInitialFormData());
     const [materialRequirements, setMaterialRequirements] = useState<MaterialRequirement[]>([]);
     const [existingBom, setExistingBom] = useState<ManufacturingMaterial[]>([]);
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
+
+    // Enterキー遷移用のref
+    const inputRefs = useRef<(HTMLInputElement | HTMLTextAreaElement | null)[]>([]);
 
     // 既存の材料構成を読み込む
     const loadExistingBom = useCallback(async (itemId: number) => {
@@ -109,42 +145,53 @@ export default function ManufacturingItemModal({
         }
     }, []);
 
-    // Initialize form data
+    // フォームデータの初期化
     useEffect(() => {
         if (item && (mode === 'edit' || mode === 'view')) {
             setFormData({
                 manufacturing_number: item.manufacturing_number,
                 manufacturing_name: item.manufacturing_name,
+                production_type: item.production_type || 'domestic',
                 product: item.product,
                 specification: item.specification || '',
                 unit: item.unit,
                 standard_production_time: item.standard_production_time,
                 is_active: item.is_active,
-                notes: item.notes || '',
+                domestic_stock: item.domestic_stock || 0,
+                overseas_stock: item.overseas_stock || 0,
+                text_notes: item.text_notes || '',
             });
             loadExistingBom(item.id);
         } else {
-            setFormData({
-                manufacturing_number: '',
-                manufacturing_name: '',
-                product: undefined,
-                specification: '',
-                unit: '個',
-                standard_production_time: undefined,
-                is_active: true,
-                notes: '',
-            });
+            setFormData(getInitialFormData());
             setMaterialRequirements([]);
             setExistingBom([]);
         }
         setErrors({});
-    }, [item, mode, open, loadExistingBom]);
+    }, [item, mode, open, loadExistingBom, getInitialFormData]);
 
-    const handleChange = (field: keyof ManufacturingItemCreate, value: unknown) => {
+    // フィールド変更ハンドラー
+    const handleChange = (field: keyof FormData, value: unknown) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
         if (errors[field]) {
             setErrors((prev) => ({ ...prev, [field]: '' }));
         }
+    };
+
+    // Enterキーで次の入力項目へ移動
+    const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>, currentIndex: number) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const nextIndex = currentIndex + 1;
+            if (nextIndex < inputRefs.current.length) {
+                inputRefs.current[nextIndex]?.focus();
+            }
+        }
+    };
+
+    // inputRef登録用のヘルパー
+    const setInputRef = (index: number) => (el: HTMLInputElement | HTMLTextAreaElement | null) => {
+        inputRefs.current[index] = el;
     };
 
     // 材料行の追加
@@ -194,6 +241,7 @@ export default function ManufacturingItemModal({
         });
     };
 
+    // バリデーション
     const validate = (): boolean => {
         const newErrors: Record<string, string> = {};
 
@@ -204,7 +252,7 @@ export default function ManufacturingItemModal({
             newErrors.manufacturing_name = '制作品名は必須です';
         }
 
-        // 材料のバリデーション（材料が選択されている場合は使用数が必要）
+        // 材料のバリデーション
         materialRequirements.forEach((req, index) => {
             if (req.material && (!req.quantity_required || Number(req.quantity_required) <= 0)) {
                 newErrors[`material_${index}`] = '使用数を入力してください';
@@ -215,14 +263,24 @@ export default function ManufacturingItemModal({
         return Object.keys(newErrors).length === 0;
     };
 
+    // 送信ハンドラー
     const handleSubmit = async () => {
         if (!validate()) return;
 
         setLoading(true);
         try {
-            const submitData = {
-                ...formData,
+            const submitData: ManufacturingItemCreate = {
+                manufacturing_number: formData.manufacturing_number,
+                manufacturing_name: formData.manufacturing_name,
+                production_type: formData.production_type,
                 product: formData.product || undefined,
+                specification: formData.specification,
+                unit: formData.unit,
+                standard_production_time: formData.standard_production_time,
+                is_active: formData.is_active,
+                domestic_stock: formData.domestic_stock,
+                overseas_stock: formData.overseas_stock,
+                text_notes: formData.text_notes,
             };
 
             let itemId: number;
@@ -239,7 +297,7 @@ export default function ManufacturingItemModal({
                 return;
             }
 
-            // 材料紐付けの更新（材料が選択されているものだけ）
+            // 材料紐付けの更新
             const validMaterials = materialRequirements
                 .filter(req => req.material && Number(req.quantity_required) > 0)
                 .map(req => ({
@@ -277,13 +335,17 @@ export default function ManufacturingItemModal({
     const isViewMode = mode === 'view';
     const title = mode === 'create' ? '新規制作品登録' : mode === 'edit' ? '制作品編集' : '制作品詳細';
 
-    // 選択可能な材料のリスト（既に選択されているものを除外）
+    // 選択可能な材料のリスト
     const getAvailableMaterials = (currentIndex: number) => {
         const selectedIds = materialRequirements
             .map((req, i) => i !== currentIndex ? req.material : null)
             .filter(id => id !== null);
         return materials.filter(m => !selectedIds.includes(m.id));
     };
+
+    // 在庫入力が必要かどうか判定
+    const showDomesticStock = formData.production_type === 'domestic' || formData.production_type === 'both';
+    const showOverseasStock = formData.production_type === 'overseas' || formData.production_type === 'both';
 
     return (
         <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
@@ -301,6 +363,8 @@ export default function ManufacturingItemModal({
                             label="品番"
                             value={formData.manufacturing_number}
                             onChange={(e) => handleChange('manufacturing_number', e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, 0)}
+                            inputRef={setInputRef(0)}
                             fullWidth
                             required
                             disabled={isViewMode || mode === 'edit'}
@@ -313,12 +377,107 @@ export default function ManufacturingItemModal({
                             label="制作品名"
                             value={formData.manufacturing_name}
                             onChange={(e) => handleChange('manufacturing_name', e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, 1)}
+                            inputRef={setInputRef(1)}
                             fullWidth
                             required
                             disabled={isViewMode}
                             error={!!errors.manufacturing_name}
                             helperText={errors.manufacturing_name}
                         />
+                    </Grid>
+
+                    {/* 制作拠点選択 */}
+                    <Grid item xs={12}>
+                        <Divider sx={{ my: 1 }} />
+                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                            制作拠点
+                        </Typography>
+                    </Grid>
+                    <Grid item xs={12}>
+                        <FormControl component="fieldset" disabled={isViewMode}>
+                            <FormLabel component="legend">制作拠点を選択してください</FormLabel>
+                            <FormGroup row>
+                                {PRODUCTION_TYPE_OPTIONS.map((option) => (
+                                    <FormControlLabel
+                                        key={option.value}
+                                        control={
+                                            <Checkbox
+                                                checked={formData.production_type === option.value}
+                                                onChange={() => handleChange('production_type', option.value)}
+                                                disabled={isViewMode}
+                                            />
+                                        }
+                                        label={option.label}
+                                    />
+                                ))}
+                            </FormGroup>
+                        </FormControl>
+                    </Grid>
+
+                    {/* 拠点別在庫情報 */}
+                    <Grid item xs={12}>
+                        <Divider sx={{ my: 1 }} />
+                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                            在庫情報
+                        </Typography>
+                    </Grid>
+                    {showDomesticStock && (
+                        <Grid item xs={12} sm={4}>
+                            <TextField
+                                label="国内在庫"
+                                type="number"
+                                value={formData.domestic_stock}
+                                onChange={(e) => handleChange('domestic_stock', parseInt(e.target.value) || 0)}
+                                onKeyDown={(e) => handleKeyDown(e, 2)}
+                                inputRef={setInputRef(2)}
+                                fullWidth
+                                disabled={isViewMode}
+                                inputProps={{ min: 0 }}
+                                InputProps={{
+                                    endAdornment: <Typography variant="body2" color="text.secondary">{formData.unit}</Typography>
+                                }}
+                            />
+                        </Grid>
+                    )}
+                    {showOverseasStock && (
+                        <Grid item xs={12} sm={4}>
+                            <TextField
+                                label="海外在庫"
+                                type="number"
+                                value={formData.overseas_stock}
+                                onChange={(e) => handleChange('overseas_stock', parseInt(e.target.value) || 0)}
+                                onKeyDown={(e) => handleKeyDown(e, 3)}
+                                inputRef={setInputRef(3)}
+                                fullWidth
+                                disabled={isViewMode}
+                                inputProps={{ min: 0 }}
+                                InputProps={{
+                                    endAdornment: <Typography variant="body2" color="text.secondary">{formData.unit}</Typography>
+                                }}
+                            />
+                        </Grid>
+                    )}
+                    <Grid item xs={12} sm={4}>
+                        <TextField
+                            label="合計在庫"
+                            type="number"
+                            value={formData.domestic_stock + formData.overseas_stock}
+                            fullWidth
+                            disabled
+                            InputProps={{
+                                readOnly: true,
+                                endAdornment: <Typography variant="body2" color="text.secondary">{formData.unit}</Typography>
+                            }}
+                        />
+                    </Grid>
+
+                    {/* その他の基本情報 */}
+                    <Grid item xs={12}>
+                        <Divider sx={{ my: 1 }} />
+                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                            製造情報
+                        </Typography>
                     </Grid>
                     <Grid item xs={12} sm={6}>
                         <FormControl fullWidth disabled={isViewMode}>
@@ -342,6 +501,8 @@ export default function ManufacturingItemModal({
                             label="単位"
                             value={formData.unit}
                             onChange={(e) => handleChange('unit', e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, 4)}
+                            inputRef={setInputRef(4)}
                             fullWidth
                             disabled={isViewMode}
                         />
@@ -352,6 +513,8 @@ export default function ManufacturingItemModal({
                             type="number"
                             value={formData.standard_production_time ?? ''}
                             onChange={(e) => handleChange('standard_production_time', e.target.value ? Number(e.target.value) : undefined)}
+                            onKeyDown={(e) => handleKeyDown(e, 5)}
+                            inputRef={setInputRef(5)}
                             fullWidth
                             disabled={isViewMode}
                             inputProps={{ min: 0, step: 0.5 }}
@@ -383,8 +546,8 @@ export default function ManufacturingItemModal({
                     <Grid item xs={12}>
                         <TextField
                             label="備考"
-                            value={formData.notes}
-                            onChange={(e) => handleChange('notes', e.target.value)}
+                            value={formData.text_notes}
+                            onChange={(e) => handleChange('text_notes', e.target.value)}
                             fullWidth
                             multiline
                             rows={2}
