@@ -13,6 +13,7 @@ class ManufacturingItem(models.Model):
     class ProductionType(models.TextChoices):
         DOMESTIC = 'domestic', '国内生産'
         OVERSEAS = 'overseas', '海外生産'
+        BOTH = 'both', '国内・海外両方'
 
     # 製品との関連（オプション）
     product = models.ForeignKey(

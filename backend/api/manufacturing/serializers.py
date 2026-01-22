@@ -1,5 +1,6 @@
 # api/manufacturing/serializers.py
 
+import json
 from rest_framework import serializers
 from api.manufacturing.models import (
     ManufacturingItem,
@@ -9,6 +10,50 @@ from api.manufacturing.models import (
     MaterialDeliverySchedule,
     ManufacturingMaterial,
 )
+
+
+def parse_stock_info_from_notes(notes: str) -> dict:
+    """notesフィールドからstock_infoをパース"""
+    if not notes:
+        return {
+            'domestic_stock': 0,
+            'overseas_stock': 0,
+            'total_stock': 0,
+            'text_notes': ''
+        }
+    try:
+        data = json.loads(notes)
+        if isinstance(data, dict) and 'stock_info' in data:
+            stock_info = data.get('stock_info', {})
+            domestic = stock_info.get('domestic_stock', 0)
+            overseas = stock_info.get('overseas_stock', 0)
+            return {
+                'domestic_stock': domestic,
+                'overseas_stock': overseas,
+                'total_stock': domestic + overseas,
+                'text_notes': data.get('text_notes', '')
+            }
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # プレーンテキストの場合は後方互換性のためtext_notesとして扱う
+    return {
+        'domestic_stock': 0,
+        'overseas_stock': 0,
+        'total_stock': 0,
+        'text_notes': notes
+    }
+
+
+def build_notes_with_stock_info(stock_info: dict, text_notes: str) -> str:
+    """stock_infoとtext_notesをJSON形式のnotesフィールドに変換"""
+    data = {
+        'stock_info': {
+            'domestic_stock': stock_info.get('domestic_stock', 0),
+            'overseas_stock': stock_info.get('overseas_stock', 0)
+        },
+        'text_notes': text_notes or ''
+    }
+    return json.dumps(data, ensure_ascii=False)
 
 
 # ===== ManufacturingItem Serializers =====
@@ -35,6 +80,11 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
         source='get_production_type_display',
         read_only=True
     )
+    # 拠点別在庫情報
+    domestic_stock = serializers.SerializerMethodField()
+    overseas_stock = serializers.SerializerMethodField()
+    total_stock = serializers.SerializerMethodField()
+    text_notes = serializers.SerializerMethodField()
 
     class Meta:
         model = ManufacturingItem
@@ -44,9 +94,26 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
             'product', 'product_number', 'product_name',
             'unit', 'standard_production_time', 'is_active',
             'production_plan_count',
+            'domestic_stock', 'overseas_stock', 'total_stock', 'text_notes',
             'created_at', 'updated_at', 'created_by_name'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_domestic_stock(self, obj):
+        stock_info = parse_stock_info_from_notes(obj.notes)
+        return stock_info['domestic_stock']
+
+    def get_overseas_stock(self, obj):
+        stock_info = parse_stock_info_from_notes(obj.notes)
+        return stock_info['overseas_stock']
+
+    def get_total_stock(self, obj):
+        stock_info = parse_stock_info_from_notes(obj.notes)
+        return stock_info['total_stock']
+
+    def get_text_notes(self, obj):
+        stock_info = parse_stock_info_from_notes(obj.notes)
+        return stock_info['text_notes']
 
 
 class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
@@ -72,6 +139,11 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
     )
     production_plans = serializers.SerializerMethodField()
     material_requirements = serializers.SerializerMethodField()
+    # 拠点別在庫情報
+    domestic_stock = serializers.SerializerMethodField()
+    overseas_stock = serializers.SerializerMethodField()
+    total_stock = serializers.SerializerMethodField()
+    text_notes = serializers.SerializerMethodField()
 
     class Meta:
         model = ManufacturingItem
@@ -81,6 +153,7 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
             'product', 'product_number', 'product_name',
             'specification', 'unit', 'standard_production_time',
             'is_active', 'notes',
+            'domestic_stock', 'overseas_stock', 'total_stock', 'text_notes',
             'production_plans', 'material_requirements',
             'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
@@ -96,9 +169,29 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
         requirements = obj.material_requirements.all()
         return ManufacturingMaterialSerializer(requirements, many=True).data
 
+    def get_domestic_stock(self, obj):
+        stock_info = parse_stock_info_from_notes(obj.notes)
+        return stock_info['domestic_stock']
+
+    def get_overseas_stock(self, obj):
+        stock_info = parse_stock_info_from_notes(obj.notes)
+        return stock_info['overseas_stock']
+
+    def get_total_stock(self, obj):
+        stock_info = parse_stock_info_from_notes(obj.notes)
+        return stock_info['total_stock']
+
+    def get_text_notes(self, obj):
+        stock_info = parse_stock_info_from_notes(obj.notes)
+        return stock_info['text_notes']
+
 
 class ManufacturingItemCreateUpdateSerializer(serializers.ModelSerializer):
     """制作品作成・更新用シリアライザー"""
+    # 拠点別在庫情報の入力フィールド
+    domestic_stock = serializers.IntegerField(required=False, default=0, write_only=True)
+    overseas_stock = serializers.IntegerField(required=False, default=0, write_only=True)
+    text_notes = serializers.CharField(required=False, allow_blank=True, default='', write_only=True)
 
     class Meta:
         model = ManufacturingItem
@@ -106,11 +199,13 @@ class ManufacturingItemCreateUpdateSerializer(serializers.ModelSerializer):
             'manufacturing_number', 'manufacturing_name',
             'production_type',
             'product', 'specification', 'unit',
-            'standard_production_time', 'is_active', 'notes'
+            'standard_production_time', 'is_active', 'notes',
+            'domestic_stock', 'overseas_stock', 'text_notes'
         ]
         extra_kwargs = {
             'manufacturing_number': {'required': True},
             'manufacturing_name': {'required': True},
+            'notes': {'required': False, 'read_only': True},
         }
 
     def validate_manufacturing_number(self, value):
@@ -125,10 +220,40 @@ class ManufacturingItemCreateUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        # 在庫情報を抽出してnotesフィールドに変換
+        domestic_stock = validated_data.pop('domestic_stock', 0)
+        overseas_stock = validated_data.pop('overseas_stock', 0)
+        text_notes = validated_data.pop('text_notes', '')
+
+        stock_info = {
+            'domestic_stock': domestic_stock,
+            'overseas_stock': overseas_stock
+        }
+        validated_data['notes'] = build_notes_with_stock_info(stock_info, text_notes)
+
         request = self.context.get('request')
         if request and hasattr(request, 'user'):
             validated_data['created_by'] = request.user
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # 在庫情報を抽出してnotesフィールドに変換
+        domestic_stock = validated_data.pop('domestic_stock', None)
+        overseas_stock = validated_data.pop('overseas_stock', None)
+        text_notes = validated_data.pop('text_notes', None)
+
+        # 既存の在庫情報を取得
+        existing_stock_info = parse_stock_info_from_notes(instance.notes)
+
+        # 新しい値があれば更新、なければ既存の値を維持
+        stock_info = {
+            'domestic_stock': domestic_stock if domestic_stock is not None else existing_stock_info['domestic_stock'],
+            'overseas_stock': overseas_stock if overseas_stock is not None else existing_stock_info['overseas_stock']
+        }
+        final_text_notes = text_notes if text_notes is not None else existing_stock_info['text_notes']
+        validated_data['notes'] = build_notes_with_stock_info(stock_info, final_text_notes)
+
+        return super().update(instance, validated_data)
 
 
 # ===== ProductionSchedule Serializers =====

@@ -61,6 +61,19 @@ class ManufacturingItemViewSet(viewsets.ModelViewSet):
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
 
+        # 生産タイプフィルター（国内/海外/両方）
+        production_type = self.request.query_params.get('production_type', None)
+        if production_type:
+            if production_type == 'domestic':
+                # 国内生産品: domesticまたはboth
+                queryset = queryset.filter(production_type__in=['domestic', 'both'])
+            elif production_type == 'overseas':
+                # 海外生産品: overseasまたはboth
+                queryset = queryset.filter(production_type__in=['overseas', 'both'])
+            else:
+                # その他（exact match）
+                queryset = queryset.filter(production_type=production_type)
+
         return queryset
 
     def get_serializer_class(self):

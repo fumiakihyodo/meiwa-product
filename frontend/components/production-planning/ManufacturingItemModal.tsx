@@ -55,12 +55,15 @@ interface ApiError {
 const initialFormData: ManufacturingItemCreate = {
     manufacturing_number: '',
     manufacturing_name: '',
+    production_type: 'domestic',
     product: undefined,
     specification: '',
     unit: '個',
     standard_production_time: undefined,
     is_active: true,
-    notes: '',
+    domestic_stock: 0,
+    overseas_stock: 0,
+    text_notes: '',
 };
 
 // =============================================================================
@@ -85,12 +88,15 @@ export default function ManufacturingItemModal({
             setFormData({
                 manufacturing_number: item.manufacturing_number,
                 manufacturing_name: item.manufacturing_name,
+                production_type: item.production_type || 'domestic',
                 product: item.product,
                 specification: item.specification || '',
                 unit: item.unit,
                 standard_production_time: item.standard_production_time,
                 is_active: item.is_active,
-                notes: item.notes || '',
+                domestic_stock: item.domestic_stock || 0,
+                overseas_stock: item.overseas_stock || 0,
+                text_notes: item.text_notes || '',
             });
         } else {
             setFormData(initialFormData);
@@ -248,8 +254,8 @@ export default function ManufacturingItemModal({
                     <Grid item xs={12}>
                         <TextField
                             label="備考"
-                            value={formData.notes}
-                            onChange={(e) => handleChange('notes', e.target.value)}
+                            value={formData.text_notes}
+                            onChange={(e) => handleChange('text_notes', e.target.value)}
                             fullWidth
                             multiline
                             rows={2}
