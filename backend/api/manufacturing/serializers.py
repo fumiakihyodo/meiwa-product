@@ -80,11 +80,11 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
         source='get_production_type_display',
         read_only=True
     )
-    # 拠点別在庫情報
-    domestic_stock = serializers.SerializerMethodField()
-    overseas_stock = serializers.SerializerMethodField()
-    total_stock = serializers.SerializerMethodField()
-    text_notes = serializers.SerializerMethodField()
+    # 拠点別在庫情報（to_representationで一括設定）
+    domestic_stock = serializers.IntegerField(read_only=True, default=0)
+    overseas_stock = serializers.IntegerField(read_only=True, default=0)
+    total_stock = serializers.IntegerField(read_only=True, default=0)
+    text_notes = serializers.CharField(read_only=True, default='')
 
     class Meta:
         model = ManufacturingItem
@@ -99,21 +99,15 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
-    def get_domestic_stock(self, obj):
-        stock_info = parse_stock_info_from_notes(obj.notes)
-        return stock_info['domestic_stock']
-
-    def get_overseas_stock(self, obj):
-        stock_info = parse_stock_info_from_notes(obj.notes)
-        return stock_info['overseas_stock']
-
-    def get_total_stock(self, obj):
-        stock_info = parse_stock_info_from_notes(obj.notes)
-        return stock_info['total_stock']
-
-    def get_text_notes(self, obj):
-        stock_info = parse_stock_info_from_notes(obj.notes)
-        return stock_info['text_notes']
+    def to_representation(self, instance):
+        """在庫情報を1回のパースで一括設定"""
+        ret = super().to_representation(instance)
+        stock_info = parse_stock_info_from_notes(instance.notes)
+        ret['domestic_stock'] = stock_info['domestic_stock']
+        ret['overseas_stock'] = stock_info['overseas_stock']
+        ret['total_stock'] = stock_info['total_stock']
+        ret['text_notes'] = stock_info['text_notes']
+        return ret
 
 
 class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
@@ -139,11 +133,11 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
     )
     production_plans = serializers.SerializerMethodField()
     material_requirements = serializers.SerializerMethodField()
-    # 拠点別在庫情報
-    domestic_stock = serializers.SerializerMethodField()
-    overseas_stock = serializers.SerializerMethodField()
-    total_stock = serializers.SerializerMethodField()
-    text_notes = serializers.SerializerMethodField()
+    # 拠点別在庫情報（to_representationで一括設定）
+    domestic_stock = serializers.IntegerField(read_only=True, default=0)
+    overseas_stock = serializers.IntegerField(read_only=True, default=0)
+    total_stock = serializers.IntegerField(read_only=True, default=0)
+    text_notes = serializers.CharField(read_only=True, default='')
 
     class Meta:
         model = ManufacturingItem
@@ -169,21 +163,15 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
         requirements = obj.material_requirements.all()
         return ManufacturingMaterialSerializer(requirements, many=True).data
 
-    def get_domestic_stock(self, obj):
-        stock_info = parse_stock_info_from_notes(obj.notes)
-        return stock_info['domestic_stock']
-
-    def get_overseas_stock(self, obj):
-        stock_info = parse_stock_info_from_notes(obj.notes)
-        return stock_info['overseas_stock']
-
-    def get_total_stock(self, obj):
-        stock_info = parse_stock_info_from_notes(obj.notes)
-        return stock_info['total_stock']
-
-    def get_text_notes(self, obj):
-        stock_info = parse_stock_info_from_notes(obj.notes)
-        return stock_info['text_notes']
+    def to_representation(self, instance):
+        """在庫情報を1回のパースで一括設定"""
+        ret = super().to_representation(instance)
+        stock_info = parse_stock_info_from_notes(instance.notes)
+        ret['domestic_stock'] = stock_info['domestic_stock']
+        ret['overseas_stock'] = stock_info['overseas_stock']
+        ret['total_stock'] = stock_info['total_stock']
+        ret['text_notes'] = stock_info['text_notes']
+        return ret
 
 
 class ManufacturingItemCreateUpdateSerializer(serializers.ModelSerializer):

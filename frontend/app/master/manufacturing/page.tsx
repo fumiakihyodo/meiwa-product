@@ -50,22 +50,6 @@ import ManufacturingItemModal from '@/components/manufacturing/ManufacturingItem
 // タブの型定義
 type TabValue = 'all' | 'domestic' | 'overseas';
 
-// タブパネルのProps型定義
-interface TabPanelProps {
-    children?: React.ReactNode;
-    value: TabValue;
-    currentValue: TabValue;
-}
-
-// タブパネルコンポーネント
-function TabPanel({ children, value, currentValue }: TabPanelProps) {
-    return (
-        <div role="tabpanel" hidden={value !== currentValue}>
-            {value === currentValue && <Box sx={{ pt: 2 }}>{children}</Box>}
-        </div>
-    );
-}
-
 export default function ManufacturingPage() {
     // タブの状態管理
     const [activeTab, setActiveTab] = useState<TabValue>('all');
@@ -77,10 +61,15 @@ export default function ManufacturingPage() {
     const [deleteItemDialogOpen, setDeleteItemDialogOpen] = useState(false);
     const [itemSearchText, setItemSearchText] = useState('');
 
+    // モーダル用のデータ（遅延ロード）
+    const [materials, setMaterials] = useState<Material[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [modalDataLoaded, setModalDataLoaded] = useState(false);
+
     // Search params types
     type ItemSearchParams = { search?: string; production_type?: ProductionType };
 
-    // Data fetching
+    // Data fetching - 制作品一覧のみ初期ロード
     const {
         data: manufacturingItems,
         loading: itemsLoading,
@@ -90,28 +79,26 @@ export default function ManufacturingPage() {
         errorMessage: '制作品一覧の取得に失敗しました',
     });
 
-    const {
-        data: materials,
-        fetch: fetchMaterials,
-    } = useFetchData<Material[]>({
-        fetchFn: useCallback(() => materialApi.getMaterials(), []),
-        errorMessage: '材料一覧の取得に失敗しました',
-    });
-
-    const {
-        data: products,
-        fetch: fetchProducts,
-    } = useFetchData<Product[]>({
-        fetchFn: useCallback(() => productApi.getProducts(), []),
-        errorMessage: '製品一覧の取得に失敗しました',
-    });
-
-    // Initial data fetch
+    // 初期データフェッチ（制作品一覧のみ）
     useEffect(() => {
         fetchItems();
-        fetchMaterials();
-        fetchProducts();
-    }, [fetchItems, fetchMaterials, fetchProducts]);
+    }, [fetchItems]);
+
+    // モーダル用データの遅延ロード
+    const loadModalData = useCallback(async () => {
+        if (modalDataLoaded) return;
+        try {
+            const [materialsData, productsData] = await Promise.all([
+                materialApi.getMaterials(),
+                productApi.getProducts(),
+            ]);
+            setMaterials(materialsData);
+            setProducts(productsData);
+            setModalDataLoaded(true);
+        } catch (error) {
+            console.error('モーダルデータの取得に失敗:', error);
+        }
+    }, [modalDataLoaded]);
 
     // タブに応じたデータのフィルタリング
     const filteredItems = useMemo(() => {
@@ -137,23 +124,26 @@ export default function ManufacturingPage() {
     }, []);
 
     // ===== Manufacturing Items handlers =====
-    const handleNewItem = useCallback(() => {
+    const handleNewItem = useCallback(async () => {
+        await loadModalData();
         setSelectedItem(null);
         setItemModalMode('create');
         setItemModalOpen(true);
-    }, []);
+    }, [loadModalData]);
 
-    const handleViewItem = useCallback((item: ManufacturingItem) => {
+    const handleViewItem = useCallback(async (item: ManufacturingItem) => {
+        await loadModalData();
         setSelectedItem(item);
         setItemModalMode('view');
         setItemModalOpen(true);
-    }, []);
+    }, [loadModalData]);
 
-    const handleEditItem = useCallback((item: ManufacturingItem) => {
+    const handleEditItem = useCallback(async (item: ManufacturingItem) => {
+        await loadModalData();
         setSelectedItem(item);
         setItemModalMode('edit');
         setItemModalOpen(true);
-    }, []);
+    }, [loadModalData]);
 
     const handleDeleteItemConfirm = useCallback((item: ManufacturingItem) => {
         setSelectedItem(item);
@@ -192,7 +182,7 @@ export default function ManufacturingPage() {
     }, [itemSearchText, fetchItems]);
 
     // 制作拠点の表示名を取得
-    const getProductionTypeLabel = (type: ProductionType): string => {
+    const getProductionTypeLabel = useCallback((type: ProductionType): string => {
         switch (type) {
             case 'domestic':
                 return '国内';
@@ -203,10 +193,10 @@ export default function ManufacturingPage() {
             default:
                 return type;
         }
-    };
+    }, []);
 
     // 制作拠点の色を取得
-    const getProductionTypeColor = (type: ProductionType): 'primary' | 'secondary' | 'success' => {
+    const getProductionTypeColor = useCallback((type: ProductionType): 'primary' | 'secondary' | 'success' => {
         switch (type) {
             case 'domestic':
                 return 'primary';
@@ -217,10 +207,10 @@ export default function ManufacturingPage() {
             default:
                 return 'primary';
         }
-    };
+    }, []);
 
-    // DataGrid columns（タブに応じて在庫カラムを動的に変更）
-    const getItemColumns = useCallback((): GridColDef[] => {
+    // DataGrid columns（メモ化して再レンダリングを防止）
+    const itemColumns = useMemo((): GridColDef[] => {
         const baseColumns: GridColDef[] = [
             { field: 'manufacturing_number', headerName: '品番', width: 130 },
             { field: 'manufacturing_name', headerName: '制作品名', width: 200 },
@@ -329,9 +319,7 @@ export default function ManufacturingPage() {
         );
 
         return baseColumns;
-    }, [activeTab, handleViewItem, handleEditItem, handleDeleteItemConfirm]);
-
-    const itemColumns = useMemo(() => getItemColumns(), [getItemColumns]);
+    }, [activeTab, getProductionTypeLabel, getProductionTypeColor, handleViewItem, handleEditItem, handleDeleteItemConfirm]);
 
     return (
         <AuthGuard>
@@ -383,48 +371,19 @@ export default function ManufacturingPage() {
                             </Box>
                         </Box>
 
-                        {/* データグリッド（タブごとに表示） */}
-                        <TabPanel value="all" currentValue={activeTab}>
-                            <DataGrid
-                                rows={filteredItems}
-                                columns={itemColumns}
-                                loading={itemsLoading}
-                                pageSizeOptions={[10, 25, 50]}
-                                initialState={{
-                                    pagination: { paginationModel: { pageSize: 10, page: 0 } },
-                                }}
-                                autoHeight
-                                disableRowSelectionOnClick
-                            />
-                        </TabPanel>
-
-                        <TabPanel value="domestic" currentValue={activeTab}>
-                            <DataGrid
-                                rows={filteredItems}
-                                columns={itemColumns}
-                                loading={itemsLoading}
-                                pageSizeOptions={[10, 25, 50]}
-                                initialState={{
-                                    pagination: { paginationModel: { pageSize: 10, page: 0 } },
-                                }}
-                                autoHeight
-                                disableRowSelectionOnClick
-                            />
-                        </TabPanel>
-
-                        <TabPanel value="overseas" currentValue={activeTab}>
-                            <DataGrid
-                                rows={filteredItems}
-                                columns={itemColumns}
-                                loading={itemsLoading}
-                                pageSizeOptions={[10, 25, 50]}
-                                initialState={{
-                                    pagination: { paginationModel: { pageSize: 10, page: 0 } },
-                                }}
-                                autoHeight
-                                disableRowSelectionOnClick
-                            />
-                        </TabPanel>
+                        {/* データグリッド（1つに統合） */}
+                        <DataGrid
+                            rows={filteredItems}
+                            columns={itemColumns}
+                            loading={itemsLoading}
+                            pageSizeOptions={[10, 25, 50]}
+                            initialState={{
+                                pagination: { paginationModel: { pageSize: 10, page: 0 } },
+                            }}
+                            autoHeight
+                            disableRowSelectionOnClick
+                            getRowId={(row) => row.id}
+                        />
                     </Paper>
 
                     {/* 制作品モーダル */}
@@ -434,8 +393,8 @@ export default function ManufacturingPage() {
                         onSuccess={handleItemModalSuccess}
                         mode={itemModalMode}
                         item={selectedItem}
-                        products={products ?? []}
-                        materials={materials ?? []}
+                        products={products}
+                        materials={materials}
                     />
 
                     {/* 制作品削除確認ダイアログ */}
