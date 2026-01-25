@@ -281,7 +281,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     // Enterキーで次のフィールドにフォーカス移動
     const handleKeyDown = useCallback(
         (
-            e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+            e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement | HTMLDivElement>,
             rowId: string,
             field: keyof OCRFormRow,
             rowIndex: number

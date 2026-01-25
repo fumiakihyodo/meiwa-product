@@ -198,7 +198,7 @@ export const ImportPOModal: React.FC<ImportPOModalProps> = ({
     // Enterキーで次のフィールドにフォーカス移動
     const handleKeyDown = useCallback(
         (
-            e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+            e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement | HTMLDivElement>,
             rowId: string,
             field: keyof POItemRow,
             rowIndex: number
