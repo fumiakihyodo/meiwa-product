@@ -45,8 +45,31 @@ export const supplierApi = {
 
     // Overseas Suppliers
     createOverseasSupplier: async (data: OverseasSupplierCreateData): Promise<Supplier> => {
-        const response = await apiClient.post<{ success: boolean; message: string; data: Supplier }>('/supplier/suppliers/overseas/', data);
-        return response.data.data;
+        try {
+            // デバッグ用: 送信データをログ出力
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[API] Creating overseas supplier with data:', data);
+            }
+
+            const response = await apiClient.post<{ success: boolean; message: string; data: Supplier }>('/supplier/suppliers/overseas/', data);
+
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[API] Overseas supplier created successfully:', response.data);
+            }
+
+            return response.data.data;
+        } catch (error: any) {
+            // エラーの詳細をログ出力
+            console.error('[API Error] Failed to create overseas supplier:', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status,
+                data: data
+            });
+
+            // エラーを再スロー
+            throw error;
+        }
     },
 
     // Supplier Branches

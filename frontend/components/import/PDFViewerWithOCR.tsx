@@ -319,29 +319,37 @@ export const PDFViewerWithOCR: React.FC<PDFViewerWithOCRProps> = ({
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     {/* ズームコントロール */}
                     <Tooltip title="縮小">
-                        <IconButton size="small" onClick={handleZoomOut} disabled={zoom <= 50}>
-                            <ZoomOutIcon fontSize="small" />
-                        </IconButton>
+                        <span>
+                            <IconButton size="small" onClick={handleZoomOut} disabled={zoom <= 50}>
+                                <ZoomOutIcon fontSize="small" />
+                            </IconButton>
+                        </span>
                     </Tooltip>
                     <Typography variant="body2" sx={{ minWidth: 40, textAlign: 'center' }}>
                         {zoom}%
                     </Typography>
                     <Tooltip title="拡大">
-                        <IconButton size="small" onClick={handleZoomIn} disabled={zoom >= 200}>
-                            <ZoomInIcon fontSize="small" />
-                        </IconButton>
+                        <span>
+                            <IconButton size="small" onClick={handleZoomIn} disabled={zoom >= 200}>
+                                <ZoomInIcon fontSize="small" />
+                            </IconButton>
+                        </span>
                     </Tooltip>
                     <Tooltip title="リセット">
-                        <IconButton size="small" onClick={handleZoomReset}>
-                            <RefreshIcon fontSize="small" />
-                        </IconButton>
+                        <span>
+                            <IconButton size="small" onClick={handleZoomReset}>
+                                <RefreshIcon fontSize="small" />
+                            </IconButton>
+                        </span>
                     </Tooltip>
 
                     {/* ダウンロード */}
                     <Tooltip title="ダウンロード">
-                        <IconButton size="small" onClick={handleDownload} disabled={!fileUrl}>
-                            <DownloadIcon fontSize="small" />
-                        </IconButton>
+                        <span>
+                            <IconButton size="small" onClick={handleDownload} disabled={!fileUrl}>
+                                <DownloadIcon fontSize="small" />
+                            </IconButton>
+                        </span>
                     </Tooltip>
 
                     {/* OCRボタン */}

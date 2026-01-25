@@ -201,17 +201,62 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
             console.error('Form Submit Error: ', error);
 
             if (error && typeof error === 'object' && 'response' in error) {
-                const errorResponse = error as { response?: { data?: Record<string, unknown> } };
-                if (errorResponse.response?.data) {
-                    const errorData = errorResponse.response.data;
-                    const errorMessage = Object.entries(errorData)
-                        .map(([key, value]) => {
-                            const valueStr = Array.isArray(value) ? value.join(', ') : String(value);
-                            return `${key}: ${valueStr}`;
-                        })
-                        .join('\n');
+                const errorResponse = error as { response?: { data?: any; status?: number } };
+                const status = errorResponse.response?.status;
+                const errorData = errorResponse.response?.data;
 
-                    toast.error(`エラー: ${errorMessage}`);
+                // エラーの詳細をコンソールに出力
+                console.error('Error details:', {
+                    status,
+                    data: errorData,
+                    formData: data
+                });
+
+                if (errorData) {
+                    let errorMessage = '';
+
+                    // バックエンドからの構造化されたエラーメッセージを処理
+                    if (typeof errorData === 'object') {
+                        // エラーメッセージが error フィールドに含まれている場合
+                        if (errorData.error) {
+                            errorMessage = errorData.error;
+                        }
+                        // バリデーションエラーの場合（フィールドごとのエラー）
+                        else if (errorData.supplier_code || errorData.company_name || errorData.address ||
+                                 errorData.contact_name || errorData.contact_email || errorData.contact_phone ||
+                                 errorData.non_field_errors) {
+                            const errors = [];
+
+                            // 各フィールドのエラーを収集
+                            for (const [key, value] of Object.entries(errorData)) {
+                                const fieldName = key === 'non_field_errors' ? '' : `${key}: `;
+                                const valueStr = Array.isArray(value) ? value.join(', ') : String(value);
+                                errors.push(`${fieldName}${valueStr}`);
+                            }
+
+                            errorMessage = errors.join('\n');
+                        }
+                        // その他の構造化エラー
+                        else {
+                            errorMessage = Object.entries(errorData)
+                                .map(([key, value]) => {
+                                    const valueStr = Array.isArray(value) ? value.join(', ') : String(value);
+                                    return `${key}: ${valueStr}`;
+                                })
+                                .join('\n');
+                        }
+                    } else {
+                        errorMessage = String(errorData);
+                    }
+
+                    // エラーステータスに応じたメッセージ
+                    if (status === 400) {
+                        toast.error(`入力エラー: ${errorMessage}`, { duration: 5000 });
+                    } else if (status === 500) {
+                        toast.error(`サーバーエラー: ${errorMessage}`, { duration: 5000 });
+                    } else {
+                        toast.error(`エラー: ${errorMessage}`, { duration: 5000 });
+                    }
                 } else {
                     toast.error(isEditMode ? '仕入先の更新に失敗しました' : '仕入先の作成に失敗しました');
                 }

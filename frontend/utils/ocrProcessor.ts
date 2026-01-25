@@ -220,7 +220,36 @@ export const processOCR = async (
     const startTime = Date.now();
 
     try {
+        // 入力の検証
+        if (!imageSource) {
+            throw new Error('画像ソースが指定されていません');
+        }
+
+        // File/Blobの場合は有効性チェック
+        if (imageSource instanceof File || imageSource instanceof Blob) {
+            if (imageSource.size === 0) {
+                throw new Error('ファイルサイズが0バイトです');
+            }
+            if (imageSource.size > 50 * 1024 * 1024) {
+                throw new Error('ファイルサイズが大きすぎます（最大50MB）');
+            }
+
+            // Fileの場合はファイル名から拡張子をチェック
+            if (imageSource instanceof File) {
+                const fileName = imageSource.name.toLowerCase();
+                const validExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf'];
+                const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+
+                if (!hasValidExtension) {
+                    throw new Error(`サポートされていないファイル形式です: ${fileName}`);
+                }
+            }
+        }
+
         const worker = await initializeWorker();
+
+        // 進捗報告
+        if (onProgress) onProgress(0.1);
 
         // Tesseract.jsで認識
         const result: RecognizeResult = await worker.recognize(imageSource, {
@@ -228,12 +257,22 @@ export const processOCR = async (
             // 基本的な設定のみ使用
         });
 
+        // 進捗報告
+        if (onProgress) onProgress(0.8);
+
         const text = result.data.text;
+
+        if (!text || text.trim().length === 0) {
+            throw new Error('画像からテキストを抽出できませんでした。画像の品質を確認してください。');
+        }
 
         // テキストから情報を抽出
         const items = extractItems(text);
         const invoiceNumber = extractInvoiceNumber(text);
         const invoiceDate = extractDate(text);
+
+        // 進捗報告
+        if (onProgress) onProgress(1.0);
 
         return {
             success: true,
@@ -245,12 +284,29 @@ export const processOCR = async (
         };
     } catch (error) {
         console.error('[OCR Error]', error);
+
+        // より詳細なエラーメッセージを生成
+        let errorMessage = 'OCR処理中にエラーが発生しました';
+
+        if (error instanceof Error) {
+            errorMessage = error.message;
+
+            // Tesseract.jsの特定のエラーに対する詳細なメッセージ
+            if (error.message.includes('Error attempting to read image')) {
+                errorMessage = '画像を読み込めませんでした。ファイルが破損していないか、サポートされている形式か確認してください。';
+            } else if (error.message.includes('Worker')) {
+                errorMessage = 'OCRワーカーの初期化に失敗しました。ページを再読み込みしてください。';
+            } else if (error.message.includes('fetch') || error.message.includes('network')) {
+                errorMessage = 'ネットワークエラーが発生しました。インターネット接続を確認してください。';
+            }
+        }
+
         return {
             success: false,
             items: [],
             raw_text: '',
             processing_time_ms: Date.now() - startTime,
-            errors: [error instanceof Error ? error.message : 'OCR処理中にエラーが発生しました'],
+            errors: [errorMessage],
         };
     }
 };
@@ -286,52 +342,92 @@ export const preprocessImage = async (
     imageFile: File
 ): Promise<Blob> => {
     return new Promise((resolve, reject) => {
+        // 入力検証
+        if (!imageFile) {
+            reject(new Error('画像ファイルが指定されていません'));
+            return;
+        }
+
+        if (imageFile.size === 0) {
+            reject(new Error('ファイルサイズが0バイトです'));
+            return;
+        }
+
+        // ファイルタイプの検証
+        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
+        if (!validTypes.includes(imageFile.type.toLowerCase())) {
+            reject(new Error(`サポートされていない画像形式です: ${imageFile.type}`));
+            return;
+        }
+
         const img = new Image();
         const url = URL.createObjectURL(imageFile);
 
+        // タイムアウトを設定（30秒）
+        const timeoutId = setTimeout(() => {
+            URL.revokeObjectURL(url);
+            reject(new Error('画像の読み込みがタイムアウトしました'));
+        }, 30000);
+
         img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
+            clearTimeout(timeoutId);
 
-            if (!ctx) {
-                reject(new Error('Canvas context not available'));
-                return;
-            }
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
 
-            // 画像サイズの調整（OCR精度向上のため）
-            const maxDimension = 2000;
-            let { width, height } = img;
-
-            if (width > maxDimension || height > maxDimension) {
-                const ratio = Math.min(maxDimension / width, maxDimension / height);
-                width *= ratio;
-                height *= ratio;
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-
-            // グレースケール変換とコントラスト調整
-            ctx.filter = 'grayscale(100%) contrast(150%)';
-            ctx.drawImage(img, 0, 0, width, height);
-
-            canvas.toBlob(
-                (blob) => {
+                if (!ctx) {
                     URL.revokeObjectURL(url);
-                    if (blob) {
-                        resolve(blob);
-                    } else {
-                        reject(new Error('Failed to create blob'));
-                    }
-                },
-                'image/png',
-                1.0
-            );
+                    reject(new Error('Canvasコンテキストが利用できません'));
+                    return;
+                }
+
+                // 画像サイズの検証
+                if (img.width === 0 || img.height === 0) {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('無効な画像サイズです'));
+                    return;
+                }
+
+                // 画像サイズの調整（OCR精度向上のため）
+                const maxDimension = 2000;
+                let { width, height } = img;
+
+                if (width > maxDimension || height > maxDimension) {
+                    const ratio = Math.min(maxDimension / width, maxDimension / height);
+                    width *= ratio;
+                    height *= ratio;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                // グレースケール変換とコントラスト調整
+                ctx.filter = 'grayscale(100%) contrast(150%)';
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        URL.revokeObjectURL(url);
+                        if (blob) {
+                            resolve(blob);
+                        } else {
+                            reject(new Error('画像の変換に失敗しました'));
+                        }
+                    },
+                    'image/png',
+                    1.0
+                );
+            } catch (error) {
+                URL.revokeObjectURL(url);
+                reject(error instanceof Error ? error : new Error('画像の処理中にエラーが発生しました'));
+            }
         };
 
-        img.onerror = () => {
+        img.onerror = (event) => {
+            clearTimeout(timeoutId);
             URL.revokeObjectURL(url);
-            reject(new Error('Failed to load image'));
+            reject(new Error('画像の読み込みに失敗しました。ファイルが破損していないか確認してください。'));
         };
 
         img.src = url;

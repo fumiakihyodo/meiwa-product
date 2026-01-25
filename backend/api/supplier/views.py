@@ -301,53 +301,83 @@ class OverseasSupplierCreateView(APIView):
                 user_notes = data.get('notes', '').strip()
                 overseas_notes = f"[OVERSEAS]\n{user_notes}" if user_notes else "[OVERSEAS]"
 
-                supplier = Supplier.objects.create(
-                    supplier_code=data['supplier_code'],
-                    company_name=data['company_name'],
-                    website=data.get('website') or None,
-                    notes=overseas_notes,
-                    is_active=data.get('is_active', True)
-                )
+                try:
+                    supplier = Supplier.objects.create(
+                        supplier_code=data['supplier_code'],
+                        company_name=data['company_name'],
+                        website=data.get('website') or None,
+                        notes=overseas_notes,
+                        is_active=data.get('is_active', True)
+                    )
+                except Exception as e:
+                    logger.error(f"サプライヤー作成エラー: {str(e)}")
+                    return Response(
+                        {"error": f"サプライヤーの作成に失敗しました: {str(e)}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
                 # 2. Main Office 拠点作成
-                branch = SupplierBranch.objects.create(
-                    supplier=supplier,
-                    branch_code=f"{data['supplier_code']}-MAIN",
-                    branch_name="Main Office",
-                    branch_type=SupplierBranch.BranchType.HEAD_OFFICE,
-                    address=data['address'],
-                    postal_code=data.get('postal_code') or None,
-                    phone_number=data.get('phone_number') or None,
-                    email=data.get('email') or None,
-                    is_active=True
-                )
+                try:
+                    branch = SupplierBranch.objects.create(
+                        supplier=supplier,
+                        branch_code=f"{data['supplier_code']}-MAIN",
+                        branch_name="Main Office",
+                        branch_type=SupplierBranch.BranchType.HEAD_OFFICE,
+                        address=data['address'],
+                        postal_code=data.get('postal_code') or None,
+                        phone_number=data.get('phone_number') or None,
+                        email=data.get('email') or None,
+                        is_active=True
+                    )
+                except Exception as e:
+                    logger.error(f"拠点作成エラー: {str(e)}")
+                    return Response(
+                        {"error": f"拠点の作成に失敗しました: {str(e)}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
                 # 3. 担当者作成
-                contact = SupplierContact.objects.create(
-                    branch=branch,
-                    name=data['contact_name'],
-                    email=data.get('contact_email') or None,
-                    phone_number=data.get('contact_phone') or None,
-                    department=data.get('contact_department') or None,
-                    position=data.get('contact_position') or None,
-                    responsibility=SupplierContact.ResponsibilityChoices.GENERAL,
-                    is_primary=True,
-                    is_active=True
-                )
+                try:
+                    contact = SupplierContact.objects.create(
+                        branch=branch,
+                        name=data['contact_name'],
+                        email=data.get('contact_email') or None,
+                        phone_number=data.get('contact_phone') or None,
+                        department=data.get('contact_department') or None,
+                        position=data.get('contact_position') or None,
+                        responsibility=SupplierContact.ResponsibilityChoices.GENERAL,
+                        is_primary=True,
+                        is_active=True
+                    )
+                except Exception as e:
+                    logger.error(f"担当者作成エラー: {str(e)}")
+                    return Response(
+                        {"error": f"担当者の作成に失敗しました: {str(e)}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
                 # 4. レスポンス用にデータを取得
-                supplier_detail = SupplierDetailSerializer(supplier).data
+                try:
+                    supplier_detail = SupplierDetailSerializer(supplier).data
 
-                return Response({
-                    'success': True,
-                    'message': '海外サプライヤーを作成しました',
-                    'data': supplier_detail
-                }, status=status.HTTP_201_CREATED)
+                    return Response({
+                        'success': True,
+                        'message': '海外サプライヤーを作成しました',
+                        'data': supplier_detail
+                    }, status=status.HTTP_201_CREATED)
+                except Exception as e:
+                    logger.error(f"シリアライズエラー: {str(e)}")
+                    # データは作成されたが、レスポンスの作成に失敗した場合
+                    return Response({
+                        'success': True,
+                        'message': '海外サプライヤーを作成しました',
+                        'data': {'id': supplier.id}
+                    }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger.error(f"海外サプライヤー作成エラー: {str(e)}")
+            logger.error(f"海外サプライヤー作成エラー（予期しないエラー）: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"海外サプライヤーの作成中にエラーが発生しました: {str(e)}"},
+                {"error": f"海外サプライヤーの作成中に予期しないエラーが発生しました: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
