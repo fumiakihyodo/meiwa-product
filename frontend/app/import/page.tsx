@@ -43,7 +43,7 @@ import {
     Description as DescriptionIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
-import { AuthGuard } from '@/components/AuthGuard';
+import { MainLayout } from '@/components/layout/MainLayout';
 import { ImportModal, ImportPOModal } from '@/components/import';
 import {
     ImportPO,
@@ -318,8 +318,8 @@ export default function ImportPage() {
     };
 
     return (
-        <AuthGuard>
-            <Container maxWidth="xl" sx={{ py: 3 }}>
+        <MainLayout>
+            <Box sx={{ flexGrow: 1 }}>
                 {/* ヘッダー */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                     <Box>
@@ -596,7 +596,7 @@ export default function ImportPage() {
                     availablePOs={purchaseOrders}
                     onRefresh={handleRefresh}
                 />
-            </Container>
-        </AuthGuard>
+            </Box>
+        </MainLayout>
     );
 }

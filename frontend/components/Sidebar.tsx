@@ -39,6 +39,11 @@ import {
     PrecisionManufacturing as ManufacturingIcon,
     Factory as FactoryIcon,
     Public as PublicIcon,
+    ImportExport as ImportExportIcon,
+    Description as DescriptionIcon,
+    LocalShipping as LocalShippingIcon,
+    Flight as FlightIcon,
+    CompareArrows as CompareArrowsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
 import { useMenu, MenuCategory, MENU_CATEGORIES } from '@/context/MenuContext';
@@ -264,6 +269,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                         },
                     ],
                 };
+            case 'importexport':
+                return {
+                    items: [
+                        {
+                            text: 'PO作成',
+                            icon: <DescriptionIcon />,
+                            path: '/po-create',
+                        },
+                        {
+                            text: '輸入管理',
+                            icon: <LocalShippingIcon />,
+                            path: '/import',
+                        },
+                        {
+                            text: '輸出管理',
+                            icon: <FlightIcon />,
+                            path: '/export',
+                        },
+                        {
+                            text: '差異管理',
+                            icon: <CompareArrowsIcon />,
+                            path: '/variance',
+                        },
+                    ],
+                };
             case 'dashboard':
             default:
                 return {
@@ -322,7 +352,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                                 currentCategory === 'master' ? <InventoryIcon fontSize="small" /> :
                                     currentCategory === 'production' ? <ManufacturingIcon fontSize="small" /> :
                                         currentCategory === 'trading' ? <BusinessIcon fontSize="small" /> :
-                                            <SettingsIcon fontSize="small" />
+                                            currentCategory === 'importexport' ? <ImportExportIcon fontSize="small" /> :
+                                                <SettingsIcon fontSize="small" />
                         }
                         label={currentCategoryInfo.name}
                         size="small"

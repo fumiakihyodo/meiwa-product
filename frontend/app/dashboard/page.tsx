@@ -16,6 +16,7 @@ import {
   Business as BusinessIcon,
   Settings as SettingsIcon,
   PrecisionManufacturing as ManufacturingIcon,
+  ImportExport as ImportExportIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -30,6 +31,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   Business: <BusinessIcon sx={{ fontSize: 48 }} />,
   Settings: <SettingsIcon sx={{ fontSize: 48 }} />,
   PrecisionManufacturing: <ManufacturingIcon sx={{ fontSize: 48 }} />,
+  ImportExport: <ImportExportIcon sx={{ fontSize: 48 }} />,
 };
 
 // 大きいアイコン（優先カテゴリ用）
@@ -39,6 +41,7 @@ const CATEGORY_ICONS_LARGE: Record<string, React.ReactNode> = {
   Business: <BusinessIcon sx={{ fontSize: 64 }} />,
   Settings: <SettingsIcon sx={{ fontSize: 64 }} />,
   PrecisionManufacturing: <ManufacturingIcon sx={{ fontSize: 64 }} />,
+  ImportExport: <ImportExportIcon sx={{ fontSize: 64 }} />,
 };
 
 // カテゴリごとの初期遷移先
@@ -49,6 +52,7 @@ const CATEGORY_PATHS: Record<MenuCategory, string> = {
   production: '/production-planning',
   trading: '/customers',
   system: '/users',
+  importexport: '/import',
 };
 
 export default function DashboardPage() {
