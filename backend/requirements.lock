@@ -11,3 +11,4 @@ python-decouple==3.8
 setuptools==75.6.0
 smmap==5.0.2
 sqlparse==0.5.3
+django-filter==25.2
