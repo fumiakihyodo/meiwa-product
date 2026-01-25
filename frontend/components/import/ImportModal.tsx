@@ -152,7 +152,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         const loadSupplierBranches = async () => {
             try {
                 setLoading(true);
-                const branches = await supplierApi.getSupplierBranches();
+                // 海外サプライヤーのみをフィルタリング
+                const branches = await supplierApi.getSupplierBranches({ is_overseas: 'true' });
                 setSupplierBranches(branches);
             } catch (error) {
                 console.error('Failed to load supplier branches:', error);

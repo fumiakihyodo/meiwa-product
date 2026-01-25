@@ -21,6 +21,7 @@ from api.supplier.serializers import (
     SupplierContactListSerializer,
     SupplierContactDetailSerializer,
     SupplierContactCreateUpdateSerializer,
+    OverseasSupplierCreateSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,19 +49,27 @@ class SupplierListCreateView(generics.ListCreateAPIView):
         queryset = Supplier.objects.annotate(
             active_branches_count=Count('branches', filter=Q(branches__is_active=True))
         )
-        
+
         # フィルタリング
         is_active = self.request.query_params.get('is_active', None)
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        
+
+        # 海外サプライヤーフィルター
+        is_overseas = self.request.query_params.get('is_overseas', None)
+        if is_overseas is not None:
+            if is_overseas.lower() == 'true':
+                queryset = queryset.filter(notes__icontains='[OVERSEAS]')
+            else:
+                queryset = queryset.exclude(notes__icontains='[OVERSEAS]')
+
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
                 Q(supplier_code__icontains=search) |
                 Q(company_name__icontains=search)
             )
-        
+
         return queryset.order_by('company_name')
 
     def get_serializer_class(self):
@@ -115,20 +124,28 @@ class SupplierBranchListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         """クエリセットを取得"""
         queryset = SupplierBranch.objects.select_related('supplier').prefetch_related('contacts')
-        
+
         # フィルタリング
         supplier_id = self.request.query_params.get('supplier', None)
         if supplier_id:
             queryset = queryset.filter(supplier_id=supplier_id)
-        
+
         branch_type = self.request.query_params.get('branch_type', None)
         if branch_type:
             queryset = queryset.filter(branch_type=branch_type)
-        
+
         is_active = self.request.query_params.get('is_active', None)
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        
+
+        # 海外サプライヤーフィルター
+        is_overseas = self.request.query_params.get('is_overseas', None)
+        if is_overseas is not None:
+            if is_overseas.lower() == 'true':
+                queryset = queryset.filter(supplier__notes__icontains='[OVERSEAS]')
+            else:
+                queryset = queryset.exclude(supplier__notes__icontains='[OVERSEAS]')
+
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
@@ -136,7 +153,7 @@ class SupplierBranchListCreateView(generics.ListCreateAPIView):
                 Q(branch_name__icontains=search) |
                 Q(supplier__company_name__icontains=search)
             )
-        
+
         return queryset.order_by('supplier', 'branch_type', 'branch_name')
 
     def get_serializer_class(self):
@@ -261,6 +278,78 @@ class SupplierContactDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         self.perform_destroy(self.get_object())
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ==================== Overseas Supplier Views ====================
+
+class OverseasSupplierCreateView(APIView):
+    """海外サプライヤー一括作成ビュー（サプライヤー + 拠点 + 担当者を同時作成）"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        """海外サプライヤーを作成（Supplier + Branch + Contact）"""
+        serializer = OverseasSupplierCreateSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+
+        try:
+            with transaction.atomic():
+                # 1. サプライヤー作成（[OVERSEAS]マーカーを notes に追加）
+                user_notes = data.get('notes', '').strip()
+                overseas_notes = f"[OVERSEAS]\n{user_notes}" if user_notes else "[OVERSEAS]"
+
+                supplier = Supplier.objects.create(
+                    supplier_code=data['supplier_code'],
+                    company_name=data['company_name'],
+                    website=data.get('website') or None,
+                    notes=overseas_notes,
+                    is_active=data.get('is_active', True)
+                )
+
+                # 2. Main Office 拠点作成
+                branch = SupplierBranch.objects.create(
+                    supplier=supplier,
+                    branch_code=f"{data['supplier_code']}-MAIN",
+                    branch_name="Main Office",
+                    branch_type=SupplierBranch.BranchType.HEAD_OFFICE,
+                    address=data['address'],
+                    postal_code=data.get('postal_code') or None,
+                    phone_number=data.get('phone_number') or None,
+                    email=data.get('email') or None,
+                    is_active=True
+                )
+
+                # 3. 担当者作成
+                contact = SupplierContact.objects.create(
+                    branch=branch,
+                    name=data['contact_name'],
+                    email=data.get('contact_email') or None,
+                    phone_number=data.get('contact_phone') or None,
+                    department=data.get('contact_department') or None,
+                    position=data.get('contact_position') or None,
+                    responsibility=SupplierContact.ResponsibilityChoices.GENERAL,
+                    is_primary=True,
+                    is_active=True
+                )
+
+                # 4. レスポンス用にデータを取得
+                supplier_detail = SupplierDetailSerializer(supplier).data
+
+                return Response({
+                    'success': True,
+                    'message': '海外サプライヤーを作成しました',
+                    'data': supplier_detail
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"海外サプライヤー作成エラー: {str(e)}")
+            return Response(
+                {"error": f"海外サプライヤーの作成中にエラーが発生しました: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # ==================== CSV Bulk Import/Export Views ====================

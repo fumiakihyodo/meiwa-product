@@ -130,3 +130,28 @@ export interface SupplierContactCreateData {
 }
 
 export type SupplierContactUpdateData = Partial<SupplierContactCreateData>;
+
+// Overseas supplier types
+export interface OverseasSupplierCreateData {
+    // サプライヤー情報
+    supplier_code: string;
+    company_name: string;
+    website?: string;
+
+    // 拠点情報（海外は1拠点のみ "Main Office"）
+    address: string;
+    postal_code?: string;
+    phone_number?: string;
+    email?: string;
+
+    // 担当者情報
+    contact_name: string;
+    contact_email?: string;
+    contact_phone?: string;
+    contact_department?: string;
+    contact_position?: string;
+
+    // その他
+    notes?: string;
+    is_active?: boolean;
+}

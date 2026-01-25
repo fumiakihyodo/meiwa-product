@@ -105,8 +105,8 @@ export const ImportPOModal: React.FC<ImportPOModalProps> = ({
         const loadSupplierBranches = async () => {
             try {
                 setLoading(true);
-                const branches = await supplierApi.getSupplierBranches();
-                // 海外サプライヤーをフィルタリング（実際の実装ではAPIでフィルタリング）
+                // 海外サプライヤーのみをフィルタリング
+                const branches = await supplierApi.getSupplierBranches({ is_overseas: 'true' });
                 setSupplierBranches(branches);
 
                 // 初期選択

@@ -13,6 +13,7 @@ from api.supplier.views import (
     # SupplierBranchBulkImportView と SupplierBranchCSVTemplateView は統合されたため削除
     SupplierContactBulkImportView,
     SupplierContactCSVTemplateView,
+    OverseasSupplierCreateView,
 )
 
 app_name = 'supplier'
@@ -23,6 +24,7 @@ urlpatterns = [
     path('suppliers/<int:pk>/', SupplierDetailView.as_view(), name='supplier_detail'),
     path('suppliers/bulk-import/', SupplierBulkImportView.as_view(), name='supplier_bulk_import'),
     path('suppliers/csv-template/', SupplierCSVTemplateView.as_view(), name='supplier_csv_template'),
+    path('suppliers/overseas/', OverseasSupplierCreateView.as_view(), name='overseas_supplier_create'),
 
     # サプライヤー拠点関連（個別CRUDのみ残す、一括登録は仕入先と統合済み）
     path('branches/', SupplierBranchListCreateView.as_view(), name='branch_list_create'),

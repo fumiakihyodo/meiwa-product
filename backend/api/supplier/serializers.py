@@ -217,3 +217,53 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
             if Supplier.objects.filter(company_name=value).exists():
                 raise serializers.ValidationError("この企業名は既に登録されています")
         return value
+
+
+class OverseasSupplierCreateSerializer(serializers.Serializer):
+    """海外サプライヤー一括作成用のシリアライザー（サプライヤー + 拠点 + 担当者を同時作成）"""
+
+    # サプライヤー情報
+    supplier_code = serializers.CharField(max_length=50, required=True)
+    company_name = serializers.CharField(max_length=200, required=True)
+    website = serializers.URLField(required=False, allow_blank=True)
+
+    # 拠点情報（海外は1拠点のみ "Main Office"）
+    address = serializers.CharField(required=True, allow_blank=False)
+    postal_code = serializers.CharField(max_length=10, required=False, allow_blank=True)
+    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+
+    # 担当者情報
+    contact_name = serializers.CharField(max_length=100, required=True)
+    contact_email = serializers.EmailField(required=False, allow_blank=True)
+    contact_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    contact_department = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    contact_position = serializers.CharField(max_length=100, required=False, allow_blank=True)
+
+    # その他
+    notes = serializers.CharField(required=False, allow_blank=True)
+    is_active = serializers.BooleanField(default=True)
+
+    def validate_supplier_code(self, value):
+        """サプライヤーコードの重複チェック"""
+        if Supplier.objects.filter(supplier_code=value).exists():
+            raise serializers.ValidationError("このサプライヤーコードは既に使用されています")
+        return value
+
+    def validate_company_name(self, value):
+        """企業名の重複チェック"""
+        if Supplier.objects.filter(company_name=value).exists():
+            raise serializers.ValidationError("この企業名は既に登録されています")
+        return value
+
+    def validate(self, attrs):
+        """担当者の連絡先バリデーション"""
+        contact_email = attrs.get('contact_email')
+        contact_phone = attrs.get('contact_phone')
+
+        if not contact_email and not contact_phone:
+            raise serializers.ValidationError(
+                "担当者のメールアドレスまたは電話番号のいずれかは必須です"
+            )
+
+        return attrs

@@ -9,6 +9,7 @@ import {
     SupplierBranchUpdateData,
     SupplierContactCreateData,
     SupplierContactUpdateData,
+    OverseasSupplierCreateData,
 } from '@/types/supplier';
 
 import {
@@ -18,7 +19,7 @@ import {
 // Supplier API
 export const supplierApi = {
     // Suppliers
-    getSuppliers: async (params?: { is_active?: string; search?: string }): Promise<Supplier[]> => {
+    getSuppliers: async (params?: { is_active?: string; is_overseas?: string; search?: string }): Promise<Supplier[]> => {
         const response = await apiClient.get<PaginatedResponse<Supplier>>('/supplier/suppliers/', { params });
         return response.data.results;
     },
@@ -42,12 +43,19 @@ export const supplierApi = {
         await apiClient.delete(`/supplier/suppliers/${id}/`);
     },
 
+    // Overseas Suppliers
+    createOverseasSupplier: async (data: OverseasSupplierCreateData): Promise<Supplier> => {
+        const response = await apiClient.post<{ success: boolean; message: string; data: Supplier }>('/supplier/suppliers/overseas/', data);
+        return response.data.data;
+    },
+
     // Supplier Branches
-    getSupplierBranches: async (params?: { 
-        supplier?: number; 
-        branch_type?: string; 
-        is_active?: string; 
-        search?: string 
+    getSupplierBranches: async (params?: {
+        supplier?: number;
+        branch_type?: string;
+        is_active?: string;
+        is_overseas?: string;
+        search?: string
     }): Promise<SupplierBranch[]> => {
         const response = await apiClient.get<PaginatedResponse<SupplierBranch>>('/supplier/branches/', { params });
         return response.data.results;
