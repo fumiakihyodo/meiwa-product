@@ -6,7 +6,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     Box,
-    Container,
     Typography,
     Button,
     Paper,
@@ -24,23 +23,19 @@ import {
     InputAdornment,
     CircularProgress,
     Alert,
-    Tooltip,
     Menu,
     MenuItem,
     ListItemIcon,
     ListItemText,
 } from '@mui/material';
 import {
-    Add as AddIcon,
     Search as SearchIcon,
     Refresh as RefreshIcon,
     MoreVert as MoreVertIcon,
     Edit as EditIcon,
     Delete as DeleteIcon,
-    Visibility as VisibilityIcon,
     Receipt as ReceiptIcon,
     LocalShipping as ShippingIcon,
-    Description as DescriptionIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -215,7 +210,6 @@ export default function ImportPage() {
     // Invoice保存処理
     const handleSaveInvoice = async (
         data: ImportInvoiceCreateData,
-        files: { type: ImportFileType; file: File }[]
     ) => {
         try {
             // 実際のAPI呼び出し
