@@ -144,7 +144,6 @@ export interface OverseasSupplierCreateData {
     postal_code?: string;
     phone_number?: string;
     email?: string;
-    default_currency?: string;
 
     // 担当者情報
     contact_name: string;

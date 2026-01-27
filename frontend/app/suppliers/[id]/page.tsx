@@ -517,6 +517,145 @@ export default function SupplierDetailPage() {
                                 </>
                             )}
                         </Paper>
+
+                        {/* 海外サプライヤー専用情報 */}
+                        {supplier.notes?.includes('[OVERSEAS]') && branches.length > 0 && (
+                            <Paper
+                                sx={{
+                                    p: 3,
+                                    mt: 2,
+                                    bgcolor: 'info.50',
+                                    borderLeft: 4,
+                                    borderColor: 'info.main',
+                                }}
+                            >
+                                <Box sx={{ mb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                                        <PublicIcon color="info" />
+                                        <Typography variant="h6" fontWeight="bold">
+                                            Main Office 情報
+                                        </Typography>
+                                    </Box>
+                                </Box>
+
+                                {/* 拠点情報 */}
+                                <Box sx={{ mb: 3 }}>
+                                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                        拠点情報
+                                    </Typography>
+                                    <Box sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                                        gap: 2,
+                                        mt: 1
+                                    }}>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary" display="block">
+                                                住所
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                {branches[0].address || '-'}
+                                            </Typography>
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary" display="block">
+                                                郵便番号
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                {branches[0].postal_code || '-'}
+                                            </Typography>
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary" display="block">
+                                                電話番号
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                {branches[0].phone_number ? (
+                                                    <a
+                                                        href={`tel:${branches[0].phone_number}`}
+                                                        style={{ color: '#1976d2', textDecoration: 'none' }}
+                                                    >
+                                                        📞 {branches[0].phone_number}
+                                                    </a>
+                                                ) : '-'}
+                                            </Typography>
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary" display="block">
+                                                メールアドレス
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                {branches[0].email ? (
+                                                    <a
+                                                        href={`mailto:${branches[0].email}`}
+                                                        style={{ color: '#1976d2', textDecoration: 'none' }}
+                                                    >
+                                                        📧 {branches[0].email}
+                                                    </a>
+                                                ) : '-'}
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+
+                                {/* 担当者情報 */}
+                                {branches[0].primary_contact && (
+                                    <>
+                                        <Divider sx={{ my: 2 }} />
+                                        <Box>
+                                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                                主担当者情報
+                                            </Typography>
+                                            <Box sx={{
+                                                display: 'grid',
+                                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                                                gap: 2,
+                                                mt: 1
+                                            }}>
+                                                <Box>
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        担当者名
+                                                    </Typography>
+                                                    <Typography variant="body2" fontWeight="medium">
+                                                        {branches[0].primary_contact.name}
+                                                    </Typography>
+                                                </Box>
+                                                <Box>
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        電話番号
+                                                    </Typography>
+                                                    <Typography variant="body2">
+                                                        {branches[0].primary_contact.phone_number ? (
+                                                            <a
+                                                                href={`tel:${branches[0].primary_contact.phone_number}`}
+                                                                style={{ color: '#1976d2', textDecoration: 'none' }}
+                                                            >
+                                                                📞 {branches[0].primary_contact.phone_number}
+                                                            </a>
+                                                        ) : '-'}
+                                                    </Typography>
+                                                </Box>
+                                                <Box>
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        メールアドレス
+                                                    </Typography>
+                                                    <Typography variant="body2">
+                                                        {branches[0].primary_contact.email ? (
+                                                            <a
+                                                                href={`mailto:${branches[0].primary_contact.email}`}
+                                                                style={{ color: '#1976d2', textDecoration: 'none' }}
+                                                            >
+                                                                📧 {branches[0].primary_contact.email}
+                                                            </a>
+                                                        ) : '-'}
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+                                        </Box>
+                                    </>
+                                )}
+                            </Paper>
+                        )}
                     </Box>
 
                     {/* タブ */}

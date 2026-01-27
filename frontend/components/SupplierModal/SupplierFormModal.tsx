@@ -45,7 +45,6 @@ interface SupplierFormData {
     postal_code?: string;
     phone_number?: string;
     email?: string;
-    default_currency?: string;
     contact_name?: string;
     contact_email?: string;
     contact_phone?: string;
@@ -88,7 +87,6 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
             postal_code: '',
             phone_number: '',
             email: '',
-            default_currency: 'USD',
             contact_name: '',
             contact_email: '',
             contact_phone: '',
@@ -152,7 +150,6 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                 postal_code: branchData?.postal_code || '',
                 phone_number: branchData?.phone_number || '',
                 email: branchData?.email || '',
-                default_currency: branchData?.default_currency || 'USD',
                 contact_name: contactData?.name || '',
                 contact_email: contactData?.email || '',
                 contact_phone: contactData?.phone_number || '',
@@ -216,7 +213,6 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                             postal_code: data.postal_code || undefined,
                             phone_number: data.phone_number || undefined,
                             email: data.email || undefined,
-                            default_currency: data.default_currency || 'USD',
                         };
                         await supplierApi.updateSupplierBranch(branchData.id, branchUpdateData);
                     }
@@ -244,7 +240,6 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                         postal_code: data.postal_code || undefined,
                         phone_number: data.phone_number || undefined,
                         email: data.email || undefined,
-                        default_currency: data.default_currency || 'USD',
                         contact_name: data.contact_name!,
                         contact_email: data.contact_email || undefined,
                         contact_phone: data.contact_phone || undefined,
@@ -563,24 +558,6 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                         {...register('email')}
                                         onKeyDown={handleKeyDown}
                                     />
-                                </Grid>
-
-                                {/* デフォルト通貨 */}
-                                <Grid item xs={12}>
-                                    <TextField
-                                        fullWidth
-                                        label="デフォルト通貨"
-                                        select
-                                        SelectProps={{ native: true }}
-                                        {...register('default_currency')}
-                                        onKeyDown={handleKeyDown}
-                                        helperText="この海外サプライヤーとの取引で使用するデフォルトの通貨を選択してください"
-                                    >
-                                        <option value="USD">USD (米ドル)</option>
-                                        <option value="EUR">EUR (ユーロ)</option>
-                                        <option value="CNY">CNY (人民元)</option>
-                                        <option value="JPY">JPY (日本円)</option>
-                                    </TextField>
                                 </Grid>
 
                                 {/* 担当者情報セクション */}
