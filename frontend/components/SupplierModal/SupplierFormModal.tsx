@@ -520,6 +520,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                         rows={2}
                                         error={!!errors.address}
                                         helperText={errors.address?.message}
+                                        InputLabelProps={{ shrink: true }}
                                         {...register('address', {
                                             required: supplierType === 'overseas' ? '住所は必須です' : false,
                                         })}
@@ -533,6 +534,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                         fullWidth
                                         label="郵便番号"
                                         placeholder="海外郵便番号"
+                                        InputLabelProps={{ shrink: true }}
                                         {...register('postal_code')}
                                         onKeyDown={handleKeyDown}
                                     />
@@ -544,6 +546,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                         fullWidth
                                         label="電話番号"
                                         placeholder="+1-XXX-XXX-XXXX"
+                                        InputLabelProps={{ shrink: true }}
                                         {...register('phone_number')}
                                         onKeyDown={handleKeyDown}
                                     />
@@ -555,6 +558,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                         fullWidth
                                         label="メールアドレス"
                                         type="email"
+                                        InputLabelProps={{ shrink: true }}
                                         {...register('email')}
                                         onKeyDown={handleKeyDown}
                                     />
@@ -586,6 +590,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                         label="担当者名 *"
                                         error={!!errors.contact_name}
                                         helperText={errors.contact_name?.message}
+                                        InputLabelProps={{ shrink: true }}
                                         {...register('contact_name', {
                                             required: supplierType === 'overseas' ? '担当者名は必須です' : false,
                                         })}
@@ -598,6 +603,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                     <TextField
                                         fullWidth
                                         label="部署"
+                                        InputLabelProps={{ shrink: true }}
                                         {...register('contact_department')}
                                         onKeyDown={handleKeyDown}
                                     />
@@ -608,6 +614,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                     <TextField
                                         fullWidth
                                         label="役職"
+                                        InputLabelProps={{ shrink: true }}
                                         {...register('contact_position')}
                                         onKeyDown={handleKeyDown}
                                     />
@@ -621,6 +628,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                         type="email"
                                         error={!!errors.contact_email}
                                         helperText={errors.contact_email?.message || '※メールまたは電話番号のいずれかは必須'}
+                                        InputLabelProps={{ shrink: true }}
                                         {...register('contact_email', {
                                             validate: (value) => {
                                                 const contactPhone = watch('contact_phone');
@@ -641,6 +649,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                         label="担当者電話"
                                         error={!!errors.contact_phone}
                                         helperText={errors.contact_phone?.message || '※メールまたは電話番号のいずれかは必須'}
+                                        InputLabelProps={{ shrink: true }}
                                         {...register('contact_phone', {
                                             validate: (value) => {
                                                 const contactEmail = watch('contact_email');

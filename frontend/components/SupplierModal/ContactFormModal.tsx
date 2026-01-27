@@ -422,6 +422,7 @@ const ContactFormModalComponent: React.FC<ContactFormModalProps> = ({
                             <TextField
                                 fullWidth
                                 label="氏名（カナ）"
+                                InputLabelProps={{ shrink: true }}
                                 {...register('name_kana')}
                             />
                         </Grid>
@@ -431,6 +432,7 @@ const ContactFormModalComponent: React.FC<ContactFormModalProps> = ({
                             <TextField
                                 fullWidth
                                 label="部署"
+                                InputLabelProps={{ shrink: true }}
                                 {...register('department')}
                             />
                         </Grid>
@@ -440,6 +442,7 @@ const ContactFormModalComponent: React.FC<ContactFormModalProps> = ({
                             <TextField
                                 fullWidth
                                 label="役職"
+                                InputLabelProps={{ shrink: true }}
                                 {...register('position')}
                             />
                         </Grid>
@@ -475,6 +478,7 @@ const ContactFormModalComponent: React.FC<ContactFormModalProps> = ({
                                 placeholder="tanaka@example.com"
                                 error={!!errors.email}
                                 helperText={errors.email?.message}
+                                InputLabelProps={{ shrink: true }}
                                 {...register('email', {
                                     pattern: {
                                         value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
@@ -492,6 +496,7 @@ const ContactFormModalComponent: React.FC<ContactFormModalProps> = ({
                                 placeholder="03-1234-5678"
                                 error={!!errors.phone_number}
                                 helperText={errors.phone_number?.message}
+                                InputLabelProps={{ shrink: true }}
                                 {...register('phone_number', {
                                     pattern: {
                                         value: /^[0-9\-\+\(\)]+$/,
@@ -507,6 +512,7 @@ const ContactFormModalComponent: React.FC<ContactFormModalProps> = ({
                                 fullWidth
                                 label="内線番号"
                                 placeholder="1234"
+                                InputLabelProps={{ shrink: true }}
                                 {...register('extension_number')}
                             />
                         </Grid>
@@ -519,6 +525,7 @@ const ContactFormModalComponent: React.FC<ContactFormModalProps> = ({
                                 placeholder="090-1234-5678"
                                 error={!!errors.mobile_number}
                                 helperText={errors.mobile_number?.message}
+                                InputLabelProps={{ shrink: true }}
                                 {...register('mobile_number', {
                                     pattern: {
                                         value: /^[0-9\-\+\(\)]+$/,
@@ -580,6 +587,7 @@ const ContactFormModalComponent: React.FC<ContactFormModalProps> = ({
                                 rows={3}
                                 label="担当業務詳細"
                                 placeholder="具体的な担当業務内容を記載してください"
+                                InputLabelProps={{ shrink: true }}
                                 {...register('responsibility_detail')}
                             />
                         </Grid>
@@ -610,6 +618,7 @@ const ContactFormModalComponent: React.FC<ContactFormModalProps> = ({
                                 rows={4}
                                 label="備考詳細"
                                 placeholder="備考を入力してください"
+                                InputLabelProps={{ shrink: true }}
                                 {...register('notes')}
                             />
                         </Grid>

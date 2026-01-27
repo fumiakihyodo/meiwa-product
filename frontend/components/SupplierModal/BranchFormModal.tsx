@@ -451,6 +451,7 @@ const BranchFormModalComponent: React.FC<BranchFormModalProps> = ({
                                 fullWidth
                                 label="郵便番号"
                                 placeholder="123-4567"
+                                InputLabelProps={{ shrink: true }}
                                 {...register('postal_code')}
                             />
                         </Grid>
@@ -465,6 +466,7 @@ const BranchFormModalComponent: React.FC<BranchFormModalProps> = ({
                                 multiline
                                 rows={2}
                                 label="住所"
+                                InputLabelProps={{ shrink: true }}
                                 {...register('address')}
                             />
                         </Grid>
@@ -477,6 +479,7 @@ const BranchFormModalComponent: React.FC<BranchFormModalProps> = ({
                                 placeholder="03-1234-5678"
                                 error={!!errors.phone_number}
                                 helperText={errors.phone_number?.message}
+                                InputLabelProps={{ shrink: true }}
                                 {...register('phone_number', {
                                     pattern: {
                                         value: /^[0-9\-\+\(\)]+$/,
@@ -494,6 +497,7 @@ const BranchFormModalComponent: React.FC<BranchFormModalProps> = ({
                                 placeholder="03-1234-5679"
                                 error={!!errors.fax_number}
                                 helperText={errors.fax_number?.message}
+                                InputLabelProps={{ shrink: true }}
                                 {...register('fax_number', {
                                     pattern: {
                                         value: /^[0-9\-\+\(\)]+$/,
@@ -512,6 +516,7 @@ const BranchFormModalComponent: React.FC<BranchFormModalProps> = ({
                                 placeholder="info@example.com"
                                 error={!!errors.email}
                                 helperText={errors.email?.message}
+                                InputLabelProps={{ shrink: true }}
                                 {...register('email', {
                                     pattern: {
                                         value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
@@ -547,6 +552,7 @@ const BranchFormModalComponent: React.FC<BranchFormModalProps> = ({
                                 rows={4}
                                 label="備考詳細"
                                 placeholder="備考を入力してください"
+                                InputLabelProps={{ shrink: true }}
                                 {...register('notes')}
                             />
                         </Grid>
