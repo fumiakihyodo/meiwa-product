@@ -61,10 +61,14 @@ export default function SuppliersPage() {
     const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
 
     // 仕入先一覧取得
-    const fetchSuppliers = useCallback(async (search?: string) => {
+    const fetchSuppliers = useCallback(async (search?: string, isOverseas?: boolean) => {
         setLoading(true);
         try {
-            const data = await supplierApi.getSuppliers({ search });
+            const params: { search?: string; is_overseas?: string } = { search };
+            if (isOverseas !== undefined) {
+                params.is_overseas = isOverseas ? 'true' : 'false';
+            }
+            const data = await supplierApi.getSuppliers(params);
             setSuppliers(data);
         } catch (error) {
             if (axios.isAxiosError(error)) {
@@ -76,14 +80,17 @@ export default function SuppliersPage() {
         }
     }, []);
 
+    // タブが変更されたらデータを再取得
     useEffect(() => {
-        fetchSuppliers();
-    }, [fetchSuppliers]);
+        const isOverseas = activeTab === 'overseas';
+        fetchSuppliers(searchText, isOverseas);
+    }, [activeTab, fetchSuppliers, searchText]);
 
     // 検索処理
     const handleSearch = useCallback(() => {
-        fetchSuppliers(searchText);
-    }, [fetchSuppliers, searchText]);
+        const isOverseas = activeTab === 'overseas';
+        fetchSuppliers(searchText, isOverseas);
+    }, [fetchSuppliers, searchText, activeTab]);
 
     // 新規作成モーダルを開く
     const handleOpenCreateModal = useCallback(() => {
@@ -92,9 +99,16 @@ export default function SuppliersPage() {
     }, []);
 
     // 編集モーダルを開く
-    const handleOpenEditModal = useCallback((supplier: Supplier) => {
-        setEditSupplier(supplier);
-        setSupplierModalOpen(true);
+    const handleOpenEditModal = useCallback(async (supplier: Supplier) => {
+        try {
+            // 詳細情報を取得（notesフィールドを含む）
+            const detailData = await supplierApi.getSupplier(supplier.id);
+            setEditSupplier(detailData);
+            setSupplierModalOpen(true);
+        } catch (error) {
+            toast.error('仕入先詳細の取得に失敗しました');
+            console.error(error);
+        }
     }, []);
 
     // モーダルを閉じる
@@ -105,8 +119,9 @@ export default function SuppliersPage() {
 
     // モーダル成功時の処理
     const handleSupplierModalSuccess = useCallback(() => {
-        fetchSuppliers(searchText);
-    }, [fetchSuppliers, searchText]);
+        const isOverseas = activeTab === 'overseas';
+        fetchSuppliers(searchText, isOverseas);
+    }, [fetchSuppliers, searchText, activeTab]);
 
     // 削除ダイアログを開く
     const handleOpenDeleteDialog = useCallback((supplier: Supplier) => {
@@ -123,40 +138,18 @@ export default function SuppliersPage() {
             toast.success('仕入先を削除しました');
             setDeleteDialogOpen(false);
             setSelectedSupplier(null);
-            fetchSuppliers(searchText);
+            const isOverseas = activeTab === 'overseas';
+            fetchSuppliers(searchText, isOverseas);
         } catch (error) {
             if (axios.isAxiosError(error)) {
                 const message = error.response?.data?.error || '仕入先の削除に失敗しました';
                 toast.error(message);
             }
         }
-    }, [selectedSupplier, fetchSuppliers, searchText]);
+    }, [selectedSupplier, fetchSuppliers, searchText, activeTab]);
 
-    // 海外サプライヤー判定関数
-    const isOverseasSupplier = useCallback((supplier: Supplier) => {
-        return supplier.notes?.includes('[OVERSEAS]') || false;
-    }, []);
-
-    // サプライヤーのフィルタリング
-    const filteredSuppliers = useMemo(() => {
-        return suppliers.filter((supplier) => {
-            const isOverseas = isOverseasSupplier(supplier);
-            if (activeTab === 'overseas') {
-                return isOverseas;
-            } else {
-                return !isOverseas;
-            }
-        });
-    }, [suppliers, activeTab, isOverseasSupplier]);
-
-    // 統計情報
-    const domesticCount = useMemo(() => {
-        return suppliers.filter(s => !isOverseasSupplier(s)).length;
-    }, [suppliers, isOverseasSupplier]);
-
-    const overseasCount = useMemo(() => {
-        return suppliers.filter(s => isOverseasSupplier(s)).length;
-    }, [suppliers, isOverseasSupplier]);
+    // タブラベル用の件数（現在表示されているデータの件数）
+    const currentTabCount = suppliers.length;
 
     // タブ切り替えハンドラー
     const handleTabChange = useCallback((_: React.SyntheticEvent, newValue: 'domestic' | 'overseas') => {
@@ -295,18 +288,18 @@ export default function SuppliersPage() {
                             sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
                         >
                             <Tab
-                                label={`国内 (${domesticCount})`}
+                                label={activeTab === 'domestic' ? `国内 (${currentTabCount})` : '国内'}
                                 value="domestic"
                             />
                             <Tab
-                                label={`海外 (${overseasCount})`}
+                                label={activeTab === 'overseas' ? `海外 (${currentTabCount})` : '海外'}
                                 value="overseas"
                             />
                         </Tabs>
 
                         {/* データグリッド */}
                         <DataGrid
-                            rows={filteredSuppliers}
+                            rows={suppliers}
                             columns={columns}
                             loading={loading}
                             pageSizeOptions={[10, 25, 50]}
