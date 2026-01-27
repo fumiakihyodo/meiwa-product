@@ -111,6 +111,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [selectedFileType, setSelectedFileType] = useState<ImportFileType>('invoice');
     const [uploadedFiles, setUploadedFiles] = useState<{ type: ImportFileType; file: File }[]>([]);
+    const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
 
     // フォームデータ
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
@@ -223,12 +224,41 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         }
     }, [existingInvoice, open, supplierBranches]);
 
+    // ファイルプレビューURLの生成と管理
+    useEffect(() => {
+        // 既存のURLをクリーンアップ
+        if (filePreviewUrl) {
+            URL.revokeObjectURL(filePreviewUrl);
+        }
+
+        // 新しいファイルが選択された場合、プレビューURLを生成
+        if (selectedFile) {
+            const url = URL.createObjectURL(selectedFile);
+            setFilePreviewUrl(url);
+        } else {
+            setFilePreviewUrl(null);
+        }
+
+        // クリーンアップ関数
+        return () => {
+            if (filePreviewUrl) {
+                URL.revokeObjectURL(filePreviewUrl);
+            }
+        };
+    }, [selectedFile]);
+
     // モーダルが閉じた時のリセット
     useEffect(() => {
         if (!open) {
+            // ファイルプレビューURLをクリーンアップ
+            if (filePreviewUrl) {
+                URL.revokeObjectURL(filePreviewUrl);
+            }
+
             setSelectedFile(null);
             setSelectedFileType('invoice');
             setUploadedFiles([]);
+            setFilePreviewUrl(null);
             setInvoiceNumber('');
             setSupplierBranchId(null);
             setInvoiceDate(new Date().toISOString().split('T')[0]);
@@ -243,7 +273,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             setRegisterAsSemiFinished(true);
             setSupplierMaterials([]);
         }
-    }, [open]);
+    }, [open, filePreviewUrl]);
 
     // ファイル選択ハンドラー
     const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -575,20 +605,73 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                             </Box>
 
                             {/* ファイルプレビュー */}
-                            <Box sx={{ flex: 1, p: 2, bgcolor: 'grey.50' }}>
-                                {selectedFile ? (
-                                    <Box>
-                                        <Typography variant="subtitle2" gutterBottom>
-                                            選択中: {selectedFile.name}
-                                        </Typography>
-                                        <Typography variant="caption" color="text.secondary">
-                                            サイズ: {(selectedFile.size / 1024).toFixed(2)} KB
-                                        </Typography>
-                                    </Box>
+                            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                {selectedFile && filePreviewUrl ? (
+                                    <>
+                                        {/* ファイル情報ヘッダー */}
+                                        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
+                                            <Typography variant="subtitle2" noWrap gutterBottom>
+                                                {selectedFile.name}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                サイズ: {(selectedFile.size / 1024).toFixed(2)} KB
+                                            </Typography>
+                                        </Box>
+
+                                        {/* PDFプレビュー */}
+                                        <Box sx={{ flex: 1, position: 'relative', bgcolor: 'grey.100' }}>
+                                            {selectedFile.name.toLowerCase().endsWith('.pdf') ? (
+                                                <iframe
+                                                    src={filePreviewUrl}
+                                                    style={{
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        border: 'none',
+                                                    }}
+                                                    title="PDFプレビュー"
+                                                />
+                                            ) : (
+                                                <Box
+                                                    sx={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        height: '100%',
+                                                        p: 3,
+                                                    }}
+                                                >
+                                                    <Alert severity="info" sx={{ maxWidth: '80%' }}>
+                                                        <Typography variant="body2" gutterBottom fontWeight="medium">
+                                                            このファイル形式はプレビューできません
+                                                        </Typography>
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            PDFファイルのみプレビュー表示が可能です。
+                                                            画像ファイル（JPG、PNG等）は保存後に確認できます。
+                                                        </Typography>
+                                                    </Alert>
+                                                </Box>
+                                            )}
+                                        </Box>
+                                    </>
                                 ) : (
-                                    <Typography variant="body2" color="text.secondary">
-                                        ファイルを選択してください
-                                    </Typography>
+                                    <Box
+                                        sx={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            height: '100%',
+                                            p: 3,
+                                        }}
+                                    >
+                                        <Box sx={{ textAlign: 'center' }}>
+                                            <Typography variant="body2" color="text.secondary" gutterBottom>
+                                                ファイルを選択してください
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                PDFファイルは選択後に自動的にプレビュー表示されます
+                                            </Typography>
+                                        </Box>
+                                    </Box>
                                 )}
                             </Box>
                         </Box>

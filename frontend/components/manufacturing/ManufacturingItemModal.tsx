@@ -47,6 +47,8 @@ import {
     ProductionType,
 } from '@/services/apiManufacturing';
 import { Product } from '@/types/product';
+import { SupplierBranch } from '@/types/supplier';
+import { supplierApi } from '@/services/apiSupplier';
 import toast from 'react-hot-toast';
 
 // 材料紐付けの型定義
@@ -73,6 +75,7 @@ interface FormData {
     domestic_stock: number;
     overseas_stock: number;
     text_notes: string;
+    overseas_supplier_branch?: number;
 }
 
 // モーダルのProps型定義
@@ -115,6 +118,7 @@ export default function ManufacturingItemModal({
         domestic_stock: 0,
         overseas_stock: 0,
         text_notes: '',
+        overseas_supplier_branch: undefined,
     }), []);
 
     const [formData, setFormData] = useState<FormData>(getInitialFormData());
@@ -123,8 +127,33 @@ export default function ManufacturingItemModal({
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
 
+    // 海外サプライヤー関連
+    const [overseasSuppliers, setOverseasSuppliers] = useState<SupplierBranch[]>([]);
+    const [selectedOverseasSupplier, setSelectedOverseasSupplier] = useState<SupplierBranch | null>(null);
+    const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+
     // Enterキー遷移用のref
     const inputRefs = useRef<(HTMLInputElement | HTMLTextAreaElement | null)[]>([]);
+
+    // 海外サプライヤーを読み込む
+    useEffect(() => {
+        const loadOverseasSuppliers = async () => {
+            if (!open) return;
+
+            try {
+                setLoadingSuppliers(true);
+                const suppliers = await supplierApi.getSupplierBranches({ is_overseas: 'true' });
+                setOverseasSuppliers(suppliers);
+            } catch (error) {
+                console.error('海外サプライヤーの読み込みに失敗:', error);
+                toast.error('海外サプライヤーの読み込みに失敗しました');
+            } finally {
+                setLoadingSuppliers(false);
+            }
+        };
+
+        loadOverseasSuppliers();
+    }, [open]);
 
     // 既存の材料構成を読み込む
     const loadExistingBom = useCallback(async (itemId: number) => {
@@ -160,15 +189,26 @@ export default function ManufacturingItemModal({
                 domestic_stock: item.domestic_stock || 0,
                 overseas_stock: item.overseas_stock || 0,
                 text_notes: item.text_notes || '',
+                overseas_supplier_branch: item.overseas_supplier_branch,
             });
+
+            // 海外サプライヤーが設定されている場合、選択状態を復元
+            if (item.overseas_supplier_branch) {
+                const supplier = overseasSuppliers.find(s => s.id === item.overseas_supplier_branch);
+                setSelectedOverseasSupplier(supplier || null);
+            } else {
+                setSelectedOverseasSupplier(null);
+            }
+
             loadExistingBom(item.id);
         } else {
             setFormData(getInitialFormData());
             setMaterialRequirements([]);
             setExistingBom([]);
+            setSelectedOverseasSupplier(null);
         }
         setErrors({});
-    }, [item, mode, open, loadExistingBom, getInitialFormData]);
+    }, [item, mode, open, loadExistingBom, getInitialFormData, overseasSuppliers]);
 
     // フィールド変更ハンドラー
     const handleChange = (field: keyof FormData, value: unknown) => {
@@ -281,6 +321,7 @@ export default function ManufacturingItemModal({
                 domestic_stock: formData.domestic_stock,
                 overseas_stock: formData.overseas_stock,
                 text_notes: formData.text_notes,
+                overseas_supplier_branch: formData.overseas_supplier_branch || undefined,
             };
 
             let itemId: number;
@@ -414,6 +455,39 @@ export default function ManufacturingItemModal({
                             </FormGroup>
                         </FormControl>
                     </Grid>
+
+                    {/* 海外サプライヤー選択（海外生産または両方の場合のみ表示） */}
+                    {(formData.production_type === 'overseas' || formData.production_type === 'both') && (
+                        <Grid item xs={12}>
+                            <Autocomplete
+                                options={overseasSuppliers}
+                                getOptionLabel={(option) =>
+                                    `${option.supplier_name || ''} - ${option.branch_name}`
+                                }
+                                value={selectedOverseasSupplier}
+                                onChange={(_, newValue) => {
+                                    setSelectedOverseasSupplier(newValue);
+                                    handleChange('overseas_supplier_branch', newValue?.id || undefined);
+                                }}
+                                renderInput={(params) => (
+                                    <TextField
+                                        {...params}
+                                        label="海外サプライヤー"
+                                        placeholder="サプライヤーを検索または選択"
+                                        helperText={
+                                            loadingSuppliers
+                                                ? 'サプライヤーを読み込み中...'
+                                                : '海外生産の場合、サプライヤーを選択できます'
+                                        }
+                                    />
+                                )}
+                                isOptionEqualToValue={(option, value) => option.id === value.id}
+                                disabled={isViewMode || loadingSuppliers}
+                                loading={loadingSuppliers}
+                                noOptionsText="海外サプライヤーが登録されていません"
+                            />
+                        </Grid>
+                    )}
 
                     {/* 拠点別在庫情報 */}
                     <Grid item xs={12}>

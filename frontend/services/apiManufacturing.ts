@@ -26,6 +26,9 @@ export interface ManufacturingItem {
     total_stock: number;
     text_notes?: string;
     production_plan_count?: number;
+    // 海外サプライヤー情報
+    overseas_supplier_branch?: number;
+    overseas_supplier_branch_name?: string;
     created_at: string;
     updated_at: string;
     created_by_name?: string;
@@ -44,6 +47,8 @@ export interface ManufacturingItemCreate {
     domestic_stock?: number;
     overseas_stock?: number;
     text_notes?: string;
+    // 海外サプライヤー情報
+    overseas_supplier_branch?: number;
 }
 
 export interface ProductionSchedule {

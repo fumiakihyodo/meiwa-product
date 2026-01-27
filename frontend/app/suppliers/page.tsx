@@ -16,6 +16,8 @@ import {
     DialogContentText,
     DialogTitle,
     TextField,
+    Tabs,
+    Tab,
 } from '@mui/material';
 import {
     DataGrid,
@@ -49,6 +51,7 @@ export default function SuppliersPage() {
 
     // フィルター状態
     const [searchText, setSearchText] = useState('');
+    const [activeTab, setActiveTab] = useState<'domestic' | 'overseas'>('domestic');
 
     // 削除ダイアログ状態
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -128,6 +131,21 @@ export default function SuppliersPage() {
             }
         }
     }, [selectedSupplier, fetchSuppliers, searchText]);
+
+    // サプライヤーのフィルタリング
+    const filteredSuppliers = suppliers.filter((supplier) => {
+        const isOverseas = supplier.notes?.includes('[OVERSEAS]') || false;
+        if (activeTab === 'overseas') {
+            return isOverseas;
+        } else {
+            return !isOverseas;
+        }
+    });
+
+    // タブ切り替えハンドラー
+    const handleTabChange = useCallback((_: React.SyntheticEvent, newValue: 'domestic' | 'overseas') => {
+        setActiveTab(newValue);
+    }, []);
 
     // グリッドカラム定義
     const columns: GridColDef[] = [
@@ -254,8 +272,25 @@ export default function SuppliersPage() {
                     </Box>
 
                     <Paper sx={{ width: '100%' }}>
+                        {/* タブ */}
+                        <Tabs
+                            value={activeTab}
+                            onChange={handleTabChange}
+                            sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
+                        >
+                            <Tab
+                                label={`国内 (${suppliers.filter(s => !s.notes?.includes('[OVERSEAS]')).length})`}
+                                value="domestic"
+                            />
+                            <Tab
+                                label={`海外 (${suppliers.filter(s => s.notes?.includes('[OVERSEAS]')).length})`}
+                                value="overseas"
+                            />
+                        </Tabs>
+
+                        {/* データグリッド */}
                         <DataGrid
-                            rows={suppliers}
+                            rows={filteredSuppliers}
                             columns={columns}
                             loading={loading}
                             pageSizeOptions={[10, 25, 50]}

@@ -39,6 +39,7 @@ export interface SupplierBranch {
     email?: string;
     notes?: string;
     is_active: boolean;
+    default_currency?: string;
     primary_contact?: {
         id: number;
         name: string;
@@ -143,6 +144,7 @@ export interface OverseasSupplierCreateData {
     postal_code?: string;
     phone_number?: string;
     email?: string;
+    default_currency?: string;
 
     // 担当者情報
     contact_name: string;
