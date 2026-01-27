@@ -35,6 +35,7 @@ import {
     Inventory as InventoryIcon,
     Visibility as VisibilityIcon,
     AttachMoney as MoneyIcon,
+    Public as PublicIcon,
 } from '@mui/icons-material';
 import { Part } from '@/types/purchases';
 import { PartModalType } from '@/types/business';
@@ -398,7 +399,7 @@ export default function SupplierDetailPage() {
                     {/* ヘッダー */}
                     <Box sx={{ mb: 3 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                 <IconButton
                                     onClick={() => router.push('/suppliers')}
                                     sx={{ mr: 1 }}
@@ -409,6 +410,18 @@ export default function SupplierDetailPage() {
                                 <Typography variant="h4" component="h1">
                                     {supplier.company_name}
                                 </Typography>
+                                {supplier.notes?.includes('[OVERSEAS]') && (
+                                    <Chip
+                                        icon={<PublicIcon />}
+                                        label="海外サプライヤー"
+                                        color="info"
+                                        sx={{
+                                            fontWeight: 'bold',
+                                            fontSize: '0.9rem',
+                                            px: 1,
+                                        }}
+                                    />
+                                )}
                             </Box>
                             <Box sx={{ display: 'flex', gap: 1 }}>
                                 <Button
@@ -430,7 +443,16 @@ export default function SupplierDetailPage() {
                         </Box>
 
                         {/* 仕入先情報カード */}
-                        <Paper sx={{ p: 3 }}>
+                        <Paper
+                            sx={{
+                                p: 3,
+                                ...(supplier.notes?.includes('[OVERSEAS]') && {
+                                    bgcolor: 'info.50',
+                                    borderLeft: 4,
+                                    borderColor: 'info.main',
+                                }),
+                            }}
+                        >
                             <Box sx={{
                                 display: 'grid',
                                 gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
@@ -489,7 +511,7 @@ export default function SupplierDetailPage() {
                                             備考
                                         </Typography>
                                         <Typography variant="body2">
-                                            {supplier.notes}
+                                            {supplier.notes.replace('[OVERSEAS]\n', '').replace('[OVERSEAS]', '')}
                                         </Typography>
                                     </Box>
                                 </>

@@ -1,7 +1,7 @@
 // app/suppliers/page.tsx
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
     Box,
@@ -132,15 +132,31 @@ export default function SuppliersPage() {
         }
     }, [selectedSupplier, fetchSuppliers, searchText]);
 
+    // 海外サプライヤー判定関数
+    const isOverseasSupplier = useCallback((supplier: Supplier) => {
+        return supplier.notes?.includes('[OVERSEAS]') || false;
+    }, []);
+
     // サプライヤーのフィルタリング
-    const filteredSuppliers = suppliers.filter((supplier) => {
-        const isOverseas = supplier.notes?.includes('[OVERSEAS]') || false;
-        if (activeTab === 'overseas') {
-            return isOverseas;
-        } else {
-            return !isOverseas;
-        }
-    });
+    const filteredSuppliers = useMemo(() => {
+        return suppliers.filter((supplier) => {
+            const isOverseas = isOverseasSupplier(supplier);
+            if (activeTab === 'overseas') {
+                return isOverseas;
+            } else {
+                return !isOverseas;
+            }
+        });
+    }, [suppliers, activeTab, isOverseasSupplier]);
+
+    // 統計情報
+    const domesticCount = useMemo(() => {
+        return suppliers.filter(s => !isOverseasSupplier(s)).length;
+    }, [suppliers, isOverseasSupplier]);
+
+    const overseasCount = useMemo(() => {
+        return suppliers.filter(s => isOverseasSupplier(s)).length;
+    }, [suppliers, isOverseasSupplier]);
 
     // タブ切り替えハンドラー
     const handleTabChange = useCallback((_: React.SyntheticEvent, newValue: 'domestic' | 'overseas') => {
@@ -279,11 +295,11 @@ export default function SuppliersPage() {
                             sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
                         >
                             <Tab
-                                label={`国内 (${suppliers.filter(s => !s.notes?.includes('[OVERSEAS]')).length})`}
+                                label={`国内 (${domesticCount})`}
                                 value="domestic"
                             />
                             <Tab
-                                label={`海外 (${suppliers.filter(s => s.notes?.includes('[OVERSEAS]')).length})`}
+                                label={`海外 (${overseasCount})`}
                                 value="overseas"
                             />
                         </Tabs>

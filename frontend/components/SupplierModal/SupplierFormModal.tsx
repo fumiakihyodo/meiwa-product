@@ -62,6 +62,8 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
 }) => {
     const router = useRouter();
     const [loading, setLoading] = useState<boolean>(false);
+    const [branchData, setBranchData] = useState<any>(null);
+    const [contactData, setContactData] = useState<any>(null);
 
     // モードの判定(メモ化)
     const isEditMode = useMemo(() => !!editData, [editData]);
@@ -98,11 +100,44 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
     // Watch supplier_type to toggle form
     const supplierType = watch('supplier_type');
 
+    // 編集モード時に海外サプライヤーの拠点・担当者情報を取得
+    useEffect(() => {
+        if (!open || !editData) return;
+
+        const isOverseas = editData.notes?.includes('[OVERSEAS]') || false;
+        if (!isOverseas) return;
+
+        // 海外サプライヤーの場合、拠点と担当者情報を取得
+        const fetchOverseasData = async () => {
+            try {
+                // 拠点情報を取得（海外サプライヤーは1拠点のみ）
+                const branches = await supplierApi.getSupplierBranches({ supplier: editData.id });
+                if (branches.length > 0) {
+                    const branch = branches[0];
+                    setBranchData(branch);
+
+                    // 担当者情報を取得（主担当者）
+                    const contacts = await supplierApi.getSupplierContacts({
+                        branch: branch.id,
+                        is_primary: 'true'
+                    });
+                    if (contacts.length > 0) {
+                        setContactData(contacts[0]);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch overseas supplier data:', error);
+            }
+        };
+
+        fetchOverseasData();
+    }, [open, editData]);
+
     // フォームのリセット処理
     useEffect(() => {
         if (!open) return
 
-        // 編集モード（編集時は国内のみ対応）
+        // 編集モード
         if (editData) {
             const isOverseas = editData.notes?.includes('[OVERSEAS]') || false;
             reset({
@@ -112,6 +147,17 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                 website: editData.website || '',
                 notes: editData.notes?.replace('[OVERSEAS]\n', '').replace('[OVERSEAS]', '') || '',
                 is_active: editData.is_active,
+                // 海外サプライヤーの場合、拠点・担当者情報もセット
+                address: branchData?.address || '',
+                postal_code: branchData?.postal_code || '',
+                phone_number: branchData?.phone_number || '',
+                email: branchData?.email || '',
+                default_currency: branchData?.default_currency || 'USD',
+                contact_name: contactData?.name || '',
+                contact_email: contactData?.email || '',
+                contact_phone: contactData?.phone_number || '',
+                contact_department: contactData?.department || '',
+                contact_position: contactData?.position || '',
             });
         } else if (duplicateFrom) {
             const isOverseas = duplicateFrom.notes?.includes('[OVERSEAS]') || false;
@@ -143,7 +189,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                 contact_position: '',
             });
         }
-    }, [open, editData, duplicateFrom, reset])
+    }, [open, editData, duplicateFrom, reset, branchData, contactData])
 
     // フォーム送信処理をメモ化
     const onSubmit = useCallback(async (data: SupplierFormData) => {
@@ -152,32 +198,65 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
         try {
             if (data.supplier_type === 'overseas') {
                 // 海外サプライヤーの場合
-                if (isEditMode) {
-                    toast.error('海外サプライヤーの編集は現在サポートされていません');
-                    setLoading(false);
-                    return;
+                if (isEditMode && editData) {
+                    // 編集モード：サプライヤー本体、拠点、担当者を個別に更新
+                    const supplierUpdateData: SupplierUpdateData = {
+                        supplier_code: data.supplier_code,
+                        company_name: data.company_name,
+                        website: data.website || undefined,
+                        notes: data.notes ? `[OVERSEAS]\n${data.notes}` : '[OVERSEAS]',
+                        is_active: data.is_active,
+                    };
+                    await supplierApi.updateSupplier(editData.id, supplierUpdateData);
+
+                    // 拠点情報を更新
+                    if (branchData) {
+                        const branchUpdateData = {
+                            address: data.address,
+                            postal_code: data.postal_code || undefined,
+                            phone_number: data.phone_number || undefined,
+                            email: data.email || undefined,
+                            default_currency: data.default_currency || 'USD',
+                        };
+                        await supplierApi.updateSupplierBranch(branchData.id, branchUpdateData);
+                    }
+
+                    // 担当者情報を更新
+                    if (contactData) {
+                        const contactUpdateData = {
+                            name: data.contact_name || '',
+                            email: data.contact_email || undefined,
+                            phone_number: data.contact_phone || undefined,
+                            department: data.contact_department || undefined,
+                            position: data.contact_position || undefined,
+                        };
+                        await supplierApi.updateSupplierContact(contactData.id, contactUpdateData);
+                    }
+
+                    toast.success('海外サプライヤー情報を更新しました');
+                } else {
+                    // 新規作成モード
+                    const overseasData: OverseasSupplierCreateData = {
+                        supplier_code: data.supplier_code,
+                        company_name: data.company_name,
+                        website: data.website || undefined,
+                        address: data.address!,
+                        postal_code: data.postal_code || undefined,
+                        phone_number: data.phone_number || undefined,
+                        email: data.email || undefined,
+                        default_currency: data.default_currency || 'USD',
+                        contact_name: data.contact_name!,
+                        contact_email: data.contact_email || undefined,
+                        contact_phone: data.contact_phone || undefined,
+                        contact_department: data.contact_department || undefined,
+                        contact_position: data.contact_position || undefined,
+                        notes: data.notes || undefined,
+                        is_active: data.is_active,
+                    };
+
+                    await supplierApi.createOverseasSupplier(overseasData);
+                    toast.success('海外サプライヤーを作成しました');
                 }
-
-                const overseasData: OverseasSupplierCreateData = {
-                    supplier_code: data.supplier_code,
-                    company_name: data.company_name,
-                    website: data.website || undefined,
-                    address: data.address!,
-                    postal_code: data.postal_code || undefined,
-                    phone_number: data.phone_number || undefined,
-                    email: data.email || undefined,
-                    default_currency: data.default_currency || 'USD',
-                    contact_name: data.contact_name!,
-                    contact_email: data.contact_email || undefined,
-                    contact_phone: data.contact_phone || undefined,
-                    contact_department: data.contact_department || undefined,
-                    contact_position: data.contact_position || undefined,
-                    notes: data.notes || undefined,
-                    is_active: data.is_active,
-                };
-
-                await supplierApi.createOverseasSupplier(overseasData);
-                toast.success('海外サプライヤーを作成しました');
             } else {
                 // 国内サプライヤーの場合
                 const submitData: SupplierCreateData | SupplierUpdateData = {
@@ -269,7 +348,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [isEditMode, editData, onSuccess, onClose, router])
+    }, [isEditMode, editData, onSuccess, onClose, router, branchData, contactData])
 
     // タイトルをメモ化
     const dialogTitle = useMemo(() => {
@@ -416,7 +495,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                         </Grid>
 
                         {/* 海外サプライヤー用の追加フィールド */}
-                        {supplierType === 'overseas' && !isEditMode && (
+                        {supplierType === 'overseas' && (
                             <>
                                 {/* 拠点情報セクション */}
                                 <Grid item xs={12}>
