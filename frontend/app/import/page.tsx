@@ -321,7 +321,7 @@ export default function ImportPage() {
                             輸入管理
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                            海外サプライヤーからのPO・インボイス管理、OCR登録
+                            海外サプライヤーからのPO・インボイス管理
                         </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', gap: 1 }}>
@@ -350,7 +350,7 @@ export default function ImportPage() {
                                 setInvoiceModalOpen(true);
                             }}
                         >
-                            インボイス登録 (OCR)
+                            インボイス登録
                         </Button>
                     </Box>
                 </Box>
@@ -472,7 +472,7 @@ export default function ImportPage() {
                             </Box>
                         ) : invoices.length === 0 ? (
                             <Alert severity="info" sx={{ mt: 2 }}>
-                                インボイスがありません。「インボイス登録 (OCR)」ボタンから登録してください。
+                                インボイスがありません。「インボイス登録」ボタンから登録してください。
                             </Alert>
                         ) : (
                             <TableContainer>

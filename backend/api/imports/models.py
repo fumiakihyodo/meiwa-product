@@ -381,6 +381,14 @@ class ImportInvoice(models.Model):
         blank=True,
         verbose_name="送料"
     )
+    transportation_fee = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="輸送費",
+        help_text="Transportation Fee"
+    )
     total_amount = models.DecimalField(
         max_digits=14,
         decimal_places=2,

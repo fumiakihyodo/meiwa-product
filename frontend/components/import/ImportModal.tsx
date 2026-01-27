@@ -1,6 +1,5 @@
 // components/import/ImportModal.tsx
-// OCR統合型Invoice登録モーダル
-// 既存PDFビューア機能を流用しOCRと統合
+// インボイス登録モーダル（手動入力版・OCR削除済み）
 
 'use client';
 
@@ -40,9 +39,6 @@ import {
     Delete as DeleteIcon,
     Save as SaveIcon,
     CloudUpload as CloudUploadIcon,
-    Scanner as ScannerIcon,
-    CheckCircle as CheckCircleIcon,
-    Warning as WarningIcon,
     Link as LinkIcon,
 } from '@mui/icons-material';
 import { SupplierBranch } from '@/types/supplier';
@@ -54,11 +50,9 @@ import {
     ImportPO,
     ImportFileType,
     ImportFileTypeLabels,
-    OCRFormRow,
-    OCRExtractedItem,
 } from '@/types/import';
+import { Material, materialApi } from '@/services/apiManufacturing';
 import { supplierApi } from '@/services/apiSupplier';
-import PDFViewerWithOCR from './PDFViewerWithOCR';
 import toast from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -71,28 +65,26 @@ interface ImportModalProps {
     onRefresh?: () => void;
 }
 
+// フォーム行の型定義（any禁止）
+interface InvoiceItemFormRow {
+    id: string;
+    part_number: string;
+    description: string;
+    quantity: number | '';
+    unit_price: number | '';
+    unit: string;
+    matched_material_id?: number;
+    matched_material?: Material;
+}
+
 // 空のフォーム行を生成
-const createEmptyRow = (): OCRFormRow => ({
+const createEmptyRow = (): InvoiceItemFormRow => ({
     id: uuidv4(),
     part_number: '',
     description: '',
     quantity: '',
     unit_price: '',
     unit: '個',
-    is_matched: false,
-});
-
-// OCR抽出結果をフォーム行に変換
-const ocrItemToFormRow = (item: OCRExtractedItem): OCRFormRow => ({
-    id: item.id,
-    part_number: item.part_number,
-    description: item.description,
-    quantity: item.quantity,
-    unit_price: item.unit_price || '',
-    unit: '個',
-    confidence: item.confidence,
-    is_matched: item.is_matched || false,
-    matched_material_id: item.matched_material_id,
 });
 
 interface TabPanelProps {
@@ -131,8 +123,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     );
     const [linkedPOIds, setLinkedPOIds] = useState<number[]>([]);
     const [currency, setCurrency] = useState<string>('USD');
+    const [transportationFee, setTransportationFee] = useState<string>('');
     const [notes, setNotes] = useState<string>('');
-    const [items, setItems] = useState<OCRFormRow[]>([createEmptyRow()]);
+    const [items, setItems] = useState<InvoiceItemFormRow[]>([createEmptyRow()]);
     const [registerAsSemiFinished, setRegisterAsSemiFinished] = useState<boolean>(true);
 
     // UI状態
@@ -141,7 +134,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     const [supplierBranches, setSupplierBranches] = useState<SupplierBranch[]>([]);
     const [selectedBranch, setSelectedBranch] = useState<SupplierBranch | null>(null);
     const [activeTab, setActiveTab] = useState(0);
-    const [ocrInProgress, setOcrInProgress] = useState(false);
+
+    // サプライヤー連動：マスター製品リスト
+    const [supplierMaterials, setSupplierMaterials] = useState<Material[]>([]);
+    const [loadingMaterials, setLoadingMaterials] = useState(false);
 
     // フォーカス管理用ref
     const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -168,6 +164,32 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         }
     }, [open]);
 
+    // サプライヤー選択時に紐付いた材料を読み込み
+    useEffect(() => {
+        const loadSupplierMaterials = async () => {
+            if (!supplierBranchId) {
+                setSupplierMaterials([]);
+                return;
+            }
+
+            try {
+                setLoadingMaterials(true);
+                const materials = await materialApi.getMaterials({
+                    supplier_branch: supplierBranchId,
+                    is_active: true,
+                });
+                setSupplierMaterials(materials);
+            } catch (error) {
+                console.error('Failed to load supplier materials:', error);
+                toast.error('製品マスターの読み込みに失敗しました');
+            } finally {
+                setLoadingMaterials(false);
+            }
+        };
+
+        loadSupplierMaterials();
+    }, [supplierBranchId]);
+
     // 既存インボイスの読み込み
     useEffect(() => {
         if (existingInvoice && open) {
@@ -176,6 +198,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             setInvoiceDate(existingInvoice.invoice_date);
             setReceivedDate(existingInvoice.received_date || '');
             setCurrency(existingInvoice.currency || 'USD');
+            setTransportationFee(existingInvoice.transportation_fee?.toString() || '');
             setNotes(existingInvoice.notes || '');
             setLinkedPOIds(existingInvoice.linked_po_ids || []);
 
@@ -188,7 +211,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         quantity: item.quantity,
                         unit_price: item.unit_price || '',
                         unit: item.unit,
-                        is_matched: !!item.material,
                         matched_material_id: item.material,
                     }))
                 );
@@ -213,11 +235,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             setReceivedDate(new Date().toISOString().split('T')[0]);
             setLinkedPOIds([]);
             setCurrency('USD');
+            setTransportationFee('');
             setNotes('');
             setItems([createEmptyRow()]);
             setSelectedBranch(null);
             setActiveTab(0);
             setRegisterAsSemiFinished(true);
+            setSupplierMaterials([]);
         }
     }, [open]);
 
@@ -243,15 +267,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         }
     }, [selectedFileType]);
 
-    // OCR完了時のハンドラー
-    const handleOCRItemsExtracted = useCallback((extractedItems: OCRExtractedItem[]) => {
-        if (extractedItems.length > 0) {
-            setItems(extractedItems.map(ocrItemToFormRow));
-            // フォームタブに切り替え
-            setActiveTab(1);
-        }
-    }, []);
-
     // 行の追加
     const handleAddRow = useCallback(() => {
         setItems((prev) => [...prev, createEmptyRow()]);
@@ -269,7 +284,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
     // 行の更新
     const handleUpdateRow = useCallback(
-        (rowId: string, field: keyof OCRFormRow, value: string | number | boolean) => {
+        (rowId: string, field: keyof InvoiceItemFormRow, value: string | number) => {
             setItems((prev) =>
                 prev.map((item) =>
                     item.id === rowId ? { ...item, [field]: value } : item
@@ -279,18 +294,46 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         []
     );
 
+    // マスター製品選択時の自動補完
+    const handleMaterialSelect = useCallback(
+        (rowId: string, material: Material | null) => {
+            if (!material) {
+                handleUpdateRow(rowId, 'matched_material_id', '');
+                return;
+            }
+
+            setItems((prev) =>
+                prev.map((item) => {
+                    if (item.id === rowId) {
+                        return {
+                            ...item,
+                            part_number: material.material_code,
+                            description: material.material_name,
+                            unit: material.unit,
+                            unit_price: material.unit_price || '',
+                            matched_material_id: material.id,
+                            matched_material: material,
+                        };
+                    }
+                    return item;
+                })
+            );
+        },
+        [handleUpdateRow]
+    );
+
     // Enterキーで次のフィールドにフォーカス移動
     const handleKeyDown = useCallback(
         (
             e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement | HTMLDivElement>,
             rowId: string,
-            field: keyof OCRFormRow,
+            field: keyof InvoiceItemFormRow,
             rowIndex: number
         ) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
 
-                const fields: (keyof OCRFormRow)[] = [
+                const fields: (keyof InvoiceItemFormRow)[] = [
                     'part_number',
                     'description',
                     'quantity',
@@ -313,7 +356,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     // 最後の行の最後のフィールドなら新しい行を追加
                     handleAddRow();
                     setTimeout(() => {
-                        const lastItem = items[items.length - 1];
+                        const newItems = [...items, createEmptyRow()];
+                        const lastItem = newItems[newItems.length - 1];
                         if (lastItem) {
                             const nextRef = inputRefs.current.get(`${lastItem.id}-part_number`);
                             nextRef?.focus();
@@ -366,6 +410,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 received_date: receivedDate || undefined,
                 linked_po_ids: linkedPOIds.length > 0 ? linkedPOIds : undefined,
                 currency,
+                transportation_fee: transportationFee ? parseFloat(transportationFee) : undefined,
                 notes: notes || undefined,
                 items: invoiceItems,
             };
@@ -404,17 +449,6 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         return sum + qty * price;
     }, 0);
 
-    // 信頼度に応じたアイコン
-    const getConfidenceIcon = (confidence?: number) => {
-        if (!confidence) return null;
-        if (confidence >= 0.7) {
-            return <CheckCircleIcon fontSize="small" color="success" />;
-        } else if (confidence >= 0.4) {
-            return <WarningIcon fontSize="small" color="warning" />;
-        }
-        return <WarningIcon fontSize="small" color="error" />;
-    };
-
     return (
         <Dialog
             open={open}
@@ -434,7 +468,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     }}
                 >
                     <Typography variant="h6">
-                        {existingInvoice ? 'インボイス編集' : 'OCR インボイス登録'}
+                        {existingInvoice ? 'インボイス編集' : 'インボイス登録'}
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {existingInvoice && (
@@ -466,10 +500,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     </Box>
                 ) : (
                     <Box sx={{ display: 'flex', height: '100%' }}>
-                        {/* 左側: PDFプレビュー */}
+                        {/* 左側: ファイルプレビュー */}
                         <Box
                             sx={{
-                                width: '50%',
+                                width: '35%',
                                 borderRight: 1,
                                 borderColor: 'divider',
                                 display: 'flex',
@@ -479,7 +513,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                             {/* ファイル選択 */}
                             <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
                                 <Grid container spacing={2} alignItems="center">
-                                    <Grid item xs={4}>
+                                    <Grid item xs={12}>
                                         <TextField
                                             select
                                             fullWidth
@@ -498,7 +532,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                             ))}
                                         </TextField>
                                     </Grid>
-                                    <Grid item xs={8}>
+                                    <Grid item xs={12}>
                                         <input
                                             type="file"
                                             accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp"
@@ -518,7 +552,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                 </Grid>
                                 {/* アップロード済みファイル一覧 */}
                                 {uploadedFiles.length > 0 && (
-                                    <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                    <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                                         {uploadedFiles.map((f, index) => (
                                             <Chip
                                                 key={index}
@@ -540,19 +574,27 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                 )}
                             </Box>
 
-                            {/* PDFビューア + OCR */}
-                            <Box sx={{ flex: 1 }}>
-                                <PDFViewerWithOCR
-                                    file={selectedFile}
-                                    onOCRItemsExtracted={handleOCRItemsExtracted}
-                                    showOCRButton={true}
-                                    height="100%"
-                                />
+                            {/* ファイルプレビュー */}
+                            <Box sx={{ flex: 1, p: 2, bgcolor: 'grey.50' }}>
+                                {selectedFile ? (
+                                    <Box>
+                                        <Typography variant="subtitle2" gutterBottom>
+                                            選択中: {selectedFile.name}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            サイズ: {(selectedFile.size / 1024).toFixed(2)} KB
+                                        </Typography>
+                                    </Box>
+                                ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                        ファイルを選択してください
+                                    </Typography>
+                                )}
                             </Box>
                         </Box>
 
                         {/* 右側: フォーム */}
-                        <Box sx={{ width: '50%', display: 'flex', flexDirection: 'column' }}>
+                        <Box sx={{ width: '65%', display: 'flex', flexDirection: 'column' }}>
                             <Tabs
                                 value={activeTab}
                                 onChange={(_, newValue) => setActiveTab(newValue)}
@@ -565,7 +607,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
                             {/* 基本情報タブ */}
                             <TabPanel value={activeTab} index={0}>
-                                <Box sx={{ p: 3 }}>
+                                <Box sx={{ p: 3, overflow: 'auto', height: '100%' }}>
                                     <Grid container spacing={2}>
                                         <Grid item xs={12}>
                                             <Autocomplete
@@ -642,12 +684,27 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                         <Grid item xs={12}>
                                             <TextField
                                                 fullWidth
+                                                label="輸送費 (Transportation Fee)"
+                                                type="number"
+                                                value={transportationFee}
+                                                onChange={(e) => setTransportationFee(e.target.value)}
+                                                size="small"
+                                                inputProps={{
+                                                    min: 0,
+                                                    step: 0.01,
+                                                }}
+                                                helperText="輸送費を入力（オプション）"
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12}>
+                                            <TextField
+                                                fullWidth
                                                 label="備考"
                                                 value={notes}
                                                 onChange={(e) => setNotes(e.target.value)}
                                                 size="small"
                                                 multiline
-                                                rows={2}
+                                                rows={3}
                                             />
                                         </Grid>
                                         <Grid item xs={12}>
@@ -676,7 +733,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                 <Box sx={{ p: 2, height: '100%', overflow: 'auto' }}>
                                     <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <Typography variant="subtitle2">
-                                            OCRで抽出した品目を確認・修正してください
+                                            品目を入力してください（サプライヤーマスターから選択または手動入力）
                                         </Typography>
                                         <Button
                                             variant="outlined"
@@ -687,12 +744,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                             行を追加
                                         </Button>
                                     </Box>
+                                    {loadingMaterials && (
+                                        <Alert severity="info" sx={{ mb: 2 }}>
+                                            製品マスターを読み込み中...
+                                        </Alert>
+                                    )}
                                     <TableContainer component={Paper} variant="outlined">
                                         <Table size="small" stickyHeader>
                                             <TableHead>
                                                 <TableRow>
-                                                    <TableCell sx={{ width: 30 }}></TableCell>
-                                                    <TableCell sx={{ width: 130 }}>品番 *</TableCell>
+                                                    <TableCell sx={{ width: 200 }}>品番 *</TableCell>
                                                     <TableCell sx={{ width: 180 }}>品名・説明</TableCell>
                                                     <TableCell sx={{ width: 80 }} align="right">
                                                         数量 *
@@ -708,46 +769,60 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                                 {items.map((item, index) => (
                                                     <TableRow key={item.id}>
                                                         <TableCell>
-                                                            <Tooltip
-                                                                title={
-                                                                    item.confidence
-                                                                        ? `OCR信頼度: ${Math.round(item.confidence * 100)}%`
-                                                                        : ''
+                                                            <Autocomplete
+                                                                freeSolo
+                                                                options={supplierMaterials}
+                                                                getOptionLabel={(option) =>
+                                                                    typeof option === 'string' ? option : option.material_code
                                                                 }
-                                                            >
-                                                                <Box>{getConfidenceIcon(item.confidence)}</Box>
-                                                            </Tooltip>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <TextField
-                                                                fullWidth
-                                                                value={item.part_number}
-                                                                onChange={(e) =>
-                                                                    handleUpdateRow(
-                                                                        item.id,
-                                                                        'part_number',
-                                                                        e.target.value
-                                                                    )
-                                                                }
-                                                                onKeyDown={(e) =>
-                                                                    handleKeyDown(
-                                                                        e,
-                                                                        item.id,
-                                                                        'part_number',
-                                                                        index
-                                                                    )
-                                                                }
-                                                                inputRef={(ref) => {
-                                                                    if (ref) {
-                                                                        inputRefs.current.set(
-                                                                            `${item.id}-part_number`,
-                                                                            ref
-                                                                        );
+                                                                value={item.matched_material || item.part_number}
+                                                                onChange={(_, newValue) => {
+                                                                    if (typeof newValue === 'string') {
+                                                                        handleUpdateRow(item.id, 'part_number', newValue);
+                                                                    } else if (newValue) {
+                                                                        handleMaterialSelect(item.id, newValue);
                                                                     }
                                                                 }}
-                                                                size="small"
-                                                                variant="standard"
-                                                                placeholder="品番を入力"
+                                                                onInputChange={(_, newInputValue) => {
+                                                                    handleUpdateRow(item.id, 'part_number', newInputValue);
+                                                                }}
+                                                                renderInput={(params) => (
+                                                                    <TextField
+                                                                        {...params}
+                                                                        variant="standard"
+                                                                        size="small"
+                                                                        placeholder="品番を入力"
+                                                                        onKeyDown={(e) =>
+                                                                            handleKeyDown(
+                                                                                e,
+                                                                                item.id,
+                                                                                'part_number',
+                                                                                index
+                                                                            )
+                                                                        }
+                                                                        inputRef={(ref) => {
+                                                                            if (ref) {
+                                                                                inputRefs.current.set(
+                                                                                    `${item.id}-part_number`,
+                                                                                    ref as HTMLInputElement
+                                                                                );
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                                renderOption={(props, option) => (
+                                                                    <li {...props} key={option.id}>
+                                                                        <Box>
+                                                                            <Typography variant="body2">
+                                                                                {option.material_code}
+                                                                            </Typography>
+                                                                            <Typography variant="caption" color="text.secondary">
+                                                                                {option.material_name}
+                                                                            </Typography>
+                                                                        </Box>
+                                                                    </li>
+                                                                )}
+                                                                fullWidth
                                                             />
                                                         </TableCell>
                                                         <TableCell>
@@ -903,9 +978,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                             </TableBody>
                                         </Table>
                                     </TableContainer>
-                                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Typography variant="caption" color="text.secondary">
+                                            サプライヤーを選択すると、マスター登録された製品を選択できます
+                                        </Typography>
                                         <Typography variant="subtitle1" fontWeight="medium">
-                                            合計金額: {currency}{' '}
+                                            小計: {currency}{' '}
                                             {totalAmount.toLocaleString(undefined, {
                                                 minimumFractionDigits: 2,
                                                 maximumFractionDigits: 2,

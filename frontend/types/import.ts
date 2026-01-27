@@ -147,6 +147,7 @@ export interface ImportInvoice {
     total_quantity?: number;
     total_amount?: number;
     currency?: string;
+    transportation_fee?: number;
     notes?: string;
     created_at: string;
     updated_at: string;
@@ -184,6 +185,7 @@ export interface ImportInvoiceCreateData {
     status?: ImportInvoiceStatus;
     linked_po_ids?: number[];
     currency?: string;
+    transportation_fee?: number;
     notes?: string;
     items?: ImportInvoiceItemCreateData[];
 }

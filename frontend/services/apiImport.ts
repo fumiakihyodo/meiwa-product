@@ -11,7 +11,6 @@ import {
     ImportInvoiceUpdateData,
     ImportFile,
     ImportFileType,
-    OCRExtractionResult,
     ImportInvoiceRegisterResponse,
     SemiFinishedInventoryCreateData,
 } from '@/types/import';
@@ -179,67 +178,7 @@ export const importInvoiceApi = {
     },
 };
 
-// ===== OCR API =====
-export const ocrApi = {
-    // ファイルからOCR抽出
-    extractFromFile: async (
-        file: File,
-        supplierBranchId?: number
-    ): Promise<OCRExtractionResult> => {
-        const formData = new FormData();
-        formData.append('file', file, file.name);
-        if (supplierBranchId) {
-            formData.append('supplier_branch_id', String(supplierBranchId));
-        }
-
-        const response = await apiClient.post<OCRExtractionResult>(
-            '/imports/ocr/extract/',
-            formData,
-            {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            }
-        );
-        return response.data;
-    },
-
-    // URLからOCR抽出（Blob URL対応）
-    extractFromUrl: async (
-        url: string,
-        supplierBranchId?: number
-    ): Promise<OCRExtractionResult> => {
-        const response = await apiClient.post<OCRExtractionResult>(
-            '/imports/ocr/extract-url/',
-            {
-                url,
-                supplier_branch_id: supplierBranchId,
-            }
-        );
-        return response.data;
-    },
-
-    // 品番マッチング
-    matchPartNumbers: async (
-        partNumbers: string[],
-        supplierBranchId?: number
-    ): Promise<Array<{
-        part_number: string;
-        matched: boolean;
-        material_id?: number;
-        material_code?: string;
-        material_name?: string;
-    }>> => {
-        const response = await apiClient.post(
-            '/imports/ocr/match-parts/',
-            {
-                part_numbers: partNumbers,
-                supplier_branch_id: supplierBranchId,
-            }
-        );
-        return response.data;
-    },
-};
+// OCR API removed - feature deprecated
 
 // ===== 半製品在庫 API =====
 export const semiFinishedInventoryApi = {
@@ -274,7 +213,6 @@ export const semiFinishedInventoryApi = {
 export const importApi = {
     po: importPOApi,
     invoice: importInvoiceApi,
-    ocr: ocrApi,
     semiFinished: semiFinishedInventoryApi,
 };
 
