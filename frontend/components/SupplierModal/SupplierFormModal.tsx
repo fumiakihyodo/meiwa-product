@@ -484,11 +484,11 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                         {/* 海外サプライヤー用の追加フィールド */}
                         {supplierType === 'overseas' && (
                             <>
-                                {/* 取り扱い部品セクション */}
+                                {/* 詳細情報 */}
                                 <Grid item xs={12}>
                                     <Box sx={{ mb: 2, mt: 2 }}>
                                         <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem', mb: 2 }}>
-                                            取り扱い部品（Handling Parts）
+                                            詳細情報
                                         </Box>
                                     </Box>
                                 </Grid>
