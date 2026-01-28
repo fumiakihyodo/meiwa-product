@@ -20,7 +20,7 @@ import {
     FormLabel,
 } from '@mui/material';
 import { useForm, Controller } from 'react-hook-form';
-import { Supplier, SupplierCreateData, SupplierUpdateData, OverseasSupplierCreateData } from '@/types/supplier';
+import { Supplier, SupplierCreateData, SupplierUpdateData, OverseasSupplierCreateData, SupplierBranch, SupplierContact } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
@@ -61,8 +61,8 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
 }) => {
     const router = useRouter();
     const [loading, setLoading] = useState<boolean>(false);
-    const [branchData, setBranchData] = useState<any>(null);
-    const [contactData, setContactData] = useState<any>(null);
+    const [branchData, setBranchData] = useState<SupplierBranch | null>(null);
+    const [contactData, setContactData] = useState<SupplierContact | null>(null);
 
     // モードの判定(メモ化)
     const isEditMode = useMemo(() => !!editData, [editData]);
@@ -426,18 +426,8 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                         {/* 基本情報 */}
                         <Grid item xs={12}>
                             <Box sx={{ mb: 2 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                    <Box
-                                        sx={{
-                                            width: 4,
-                                            height: 24,
-                                            bgcolor: 'primary.main',
-                                            borderRadius: 1,
-                                        }}
-                                    />
-                                    <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                                        基本情報
-                                    </Box>
+                                <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem', mb: 2 }}>
+                                    基本情報
                                 </Box>
                             </Box>
                         </Grid>
@@ -470,43 +460,35 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                             />
                         </Grid>
 
-                        {/* ウェブサイト */}
-                        <Grid item xs={12}>
-                            <TextField
-                                fullWidth
-                                label="ウェブサイト"
-                                type="url"
-                                placeholder="https://example.com"
-                                error={!!errors.website}
-                                helperText={errors.website?.message}
-                                {...register('website', {
-                                    pattern: {
-                                        value: /^https?:\/\/.+/,
-                                        message: '有効なURLを入力してください（http://またはhttps://で始まる）'
-                                    }
-                                })}
-                                onKeyDown={handleKeyDown}
-                            />
-                        </Grid>
+                        {/* ウェブサイト（国内サプライヤーのみ） */}
+                        {supplierType === 'domestic' && (
+                            <Grid item xs={12}>
+                                <TextField
+                                    fullWidth
+                                    label="ウェブサイト"
+                                    type="url"
+                                    placeholder="https://example.com"
+                                    error={!!errors.website}
+                                    helperText={errors.website?.message}
+                                    {...register('website', {
+                                        pattern: {
+                                            value: /^https?:\/\/.+/,
+                                            message: '有効なURLを入力してください（http://またはhttps://で始まる）'
+                                        }
+                                    })}
+                                    onKeyDown={handleKeyDown}
+                                />
+                            </Grid>
+                        )}
 
                         {/* 海外サプライヤー用の追加フィールド */}
                         {supplierType === 'overseas' && (
                             <>
-                                {/* 拠点情報セクション */}
+                                {/* 取り扱い部品セクション */}
                                 <Grid item xs={12}>
                                     <Box sx={{ mb: 2, mt: 2 }}>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                            <Box
-                                                sx={{
-                                                    width: 4,
-                                                    height: 24,
-                                                    bgcolor: 'primary.main',
-                                                    borderRadius: 1,
-                                                }}
-                                            />
-                                            <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                                                拠点情報（Main Office）
-                                            </Box>
+                                        <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem', mb: 2 }}>
+                                            取り扱い部品（Handling Parts）
                                         </Box>
                                     </Box>
                                 </Grid>
@@ -528,18 +510,6 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                     />
                                 </Grid>
 
-                                {/* 郵便番号 */}
-                                <Grid item xs={12} sm={6}>
-                                    <TextField
-                                        fullWidth
-                                        label="郵便番号"
-                                        placeholder="海外郵便番号"
-                                        InputLabelProps={{ shrink: true }}
-                                        {...register('postal_code')}
-                                        onKeyDown={handleKeyDown}
-                                    />
-                                </Grid>
-
                                 {/* 電話番号 */}
                                 <Grid item xs={12} sm={6}>
                                     <TextField
@@ -553,7 +523,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                 </Grid>
 
                                 {/* メールアドレス */}
-                                <Grid item xs={12}>
+                                <Grid item xs={12} sm={6}>
                                     <TextField
                                         fullWidth
                                         label="メールアドレス"
@@ -567,18 +537,8 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                 {/* 担当者情報セクション */}
                                 <Grid item xs={12}>
                                     <Box sx={{ mb: 2, mt: 2 }}>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                            <Box
-                                                sx={{
-                                                    width: 4,
-                                                    height: 24,
-                                                    bgcolor: 'primary.main',
-                                                    borderRadius: 1,
-                                                }}
-                                            />
-                                            <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                                                担当者情報
-                                            </Box>
+                                        <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem', mb: 2 }}>
+                                            担当者情報
                                         </Box>
                                     </Box>
                                 </Grid>
@@ -668,18 +628,8 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                         {/* 備考 */}
                         <Grid item xs={12}>
                             <Box sx={{ mb: 2, mt: 2 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                    <Box
-                                        sx={{
-                                            width: 4,
-                                            height: 24,
-                                            bgcolor: 'primary.main',
-                                            borderRadius: 1,
-                                        }}
-                                    />
-                                    <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                                        備考
-                                    </Box>
+                                <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem', mb: 2 }}>
+                                    備考
                                 </Box>
                             </Box>
                         </Grid>
