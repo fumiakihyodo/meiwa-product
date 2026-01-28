@@ -448,8 +448,6 @@ export default function SupplierDetailPage() {
                                 p: 3,
                                 ...(supplier.notes?.includes('[OVERSEAS]') && {
                                     bgcolor: 'info.50',
-                                    borderLeft: 4,
-                                    borderColor: 'info.main',
                                 }),
                             }}
                         >
@@ -466,23 +464,25 @@ export default function SupplierDetailPage() {
                                         {supplier.supplier_code}
                                     </Typography>
                                 </Box>
-                                <Box>
-                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-                                        ウェブサイト
-                                    </Typography>
-                                    {supplier.website ? (
-                                        <a
-                                            href={supplier.website}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{ color: '#1976d2', textDecoration: 'none' }}
-                                        >
-                                            {supplier.website}
-                                        </a>
-                                    ) : (
-                                        <Typography variant="body1" fontWeight="medium">-</Typography>
-                                    )}
-                                </Box>
+                                {!supplier.notes?.includes('[OVERSEAS]') && (
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                            ウェブサイト
+                                        </Typography>
+                                        {supplier.website ? (
+                                            <a
+                                                href={supplier.website}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ color: '#1976d2', textDecoration: 'none' }}
+                                            >
+                                                {supplier.website}
+                                            </a>
+                                        ) : (
+                                            <Typography variant="body1" fontWeight="medium">-</Typography>
+                                        )}
+                                    </Box>
+                                )}
                                 <Box>
                                     <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
                                         ステータス
@@ -493,14 +493,16 @@ export default function SupplierDetailPage() {
                                         color={supplier.is_active ? 'success' : 'default'}
                                     />
                                 </Box>
-                                <Box>
-                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-                                        拠点数
-                                    </Typography>
-                                    <Typography variant="body1" fontWeight="medium">
-                                        {branches.length}件 ({supplier.active_branches_count || 0}件有効)
-                                    </Typography>
-                                </Box>
+                                {!supplier.notes?.includes('[OVERSEAS]') && (
+                                    <Box>
+                                        <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                            拠点数
+                                        </Typography>
+                                        <Typography variant="body1" fontWeight="medium">
+                                            {branches.length}件 ({supplier.active_branches_count || 0}件有効)
+                                        </Typography>
+                                    </Box>
+                                )}
                             </Box>
 
                             {supplier.notes && (
@@ -519,140 +521,88 @@ export default function SupplierDetailPage() {
                         </Paper>
 
                         {/* 海外サプライヤー専用情報 */}
-                        {supplier.notes?.includes('[OVERSEAS]') && branches.length > 0 && (
+                        {supplier.notes?.includes('[OVERSEAS]') && (
                             <Paper
                                 sx={{
                                     p: 3,
                                     mt: 2,
                                     bgcolor: 'info.50',
-                                    borderLeft: 4,
-                                    borderColor: 'info.main',
                                 }}
                             >
                                 <Box sx={{ mb: 2 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                        <PublicIcon color="info" />
+                                        <InventoryIcon color="info" />
                                         <Typography variant="h6" fontWeight="bold">
-                                            Main Office 情報
+                                            取り扱い部品（Handling Parts）
                                         </Typography>
                                     </Box>
                                 </Box>
 
-                                {/* 拠点情報 */}
-                                <Box sx={{ mb: 3 }}>
-                                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                        拠点情報
-                                    </Typography>
+                                {/* 取り扱い部品サマリー */}
+                                {parts.length > 0 ? (
                                     <Box sx={{
                                         display: 'grid',
-                                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
                                         gap: 2,
-                                        mt: 1
                                     }}>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary" display="block">
-                                                住所
-                                            </Typography>
-                                            <Typography variant="body2">
-                                                {branches[0].address || '-'}
-                                            </Typography>
-                                        </Box>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary" display="block">
-                                                郵便番号
-                                            </Typography>
-                                            <Typography variant="body2">
-                                                {branches[0].postal_code || '-'}
-                                            </Typography>
-                                        </Box>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary" display="block">
-                                                電話番号
-                                            </Typography>
-                                            <Typography variant="body2">
-                                                {branches[0].phone_number ? (
-                                                    <a
-                                                        href={`tel:${branches[0].phone_number}`}
-                                                        style={{ color: '#1976d2', textDecoration: 'none' }}
-                                                    >
-                                                        📞 {branches[0].phone_number}
-                                                    </a>
-                                                ) : '-'}
-                                            </Typography>
-                                        </Box>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary" display="block">
-                                                メールアドレス
-                                            </Typography>
-                                            <Typography variant="body2">
-                                                {branches[0].email ? (
-                                                    <a
-                                                        href={`mailto:${branches[0].email}`}
-                                                        style={{ color: '#1976d2', textDecoration: 'none' }}
-                                                    >
-                                                        📧 {branches[0].email}
-                                                    </a>
-                                                ) : '-'}
-                                            </Typography>
-                                        </Box>
-                                    </Box>
-                                </Box>
-
-                                {/* 担当者情報 */}
-                                {branches[0].primary_contact && (
-                                    <>
-                                        <Divider sx={{ my: 2 }} />
-                                        <Box>
-                                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                                主担当者情報
-                                            </Typography>
-                                            <Box sx={{
-                                                display: 'grid',
-                                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
-                                                gap: 2,
-                                                mt: 1
-                                            }}>
-                                                <Box>
-                                                    <Typography variant="caption" color="text.secondary" display="block">
-                                                        担当者名
+                                        {parts.slice(0, 6).map((part) => (
+                                            <Box
+                                                key={part.id}
+                                                sx={{
+                                                    p: 2,
+                                                    bgcolor: 'white',
+                                                    borderRadius: 1,
+                                                    border: '1px solid',
+                                                    borderColor: 'divider',
+                                                    '&:hover': {
+                                                        boxShadow: 1,
+                                                        borderColor: 'info.main',
+                                                        cursor: 'pointer',
+                                                    },
+                                                }}
+                                                onClick={() => handleOpenPartDetailModal(part.id, 'detail')}
+                                            >
+                                                <Typography variant="body2" fontWeight="bold" color="primary" gutterBottom>
+                                                    {part.part_number}
+                                                </Typography>
+                                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                                    {part.part_name}
+                                                </Typography>
+                                                {part.current_price && (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        単価: ¥{Number(part.current_price).toLocaleString()}
                                                     </Typography>
-                                                    <Typography variant="body2" fontWeight="medium">
-                                                        {branches[0].primary_contact.name}
-                                                    </Typography>
-                                                </Box>
-                                                <Box>
-                                                    <Typography variant="caption" color="text.secondary" display="block">
-                                                        電話番号
-                                                    </Typography>
-                                                    <Typography variant="body2">
-                                                        {branches[0].primary_contact.phone_number ? (
-                                                            <a
-                                                                href={`tel:${branches[0].primary_contact.phone_number}`}
-                                                                style={{ color: '#1976d2', textDecoration: 'none' }}
-                                                            >
-                                                                📞 {branches[0].primary_contact.phone_number}
-                                                            </a>
-                                                        ) : '-'}
-                                                    </Typography>
-                                                </Box>
-                                                <Box>
-                                                    <Typography variant="caption" color="text.secondary" display="block">
-                                                        メールアドレス
-                                                    </Typography>
-                                                    <Typography variant="body2">
-                                                        {branches[0].primary_contact.email ? (
-                                                            <a
-                                                                href={`mailto:${branches[0].primary_contact.email}`}
-                                                                style={{ color: '#1976d2', textDecoration: 'none' }}
-                                                            >
-                                                                📧 {branches[0].primary_contact.email}
-                                                            </a>
-                                                        ) : '-'}
-                                                    </Typography>
-                                                </Box>
+                                                )}
                                             </Box>
-                                        </Box>
-                                    </>
+                                        ))}
+                                    </Box>
+                                ) : (
+                                    <Box sx={{ textAlign: 'center', py: 4 }}>
+                                        <Typography color="text.secondary" variant="body2">
+                                            取り扱い部品が登録されていません
+                                        </Typography>
+                                        <Button
+                                            variant="outlined"
+                                            size="small"
+                                            startIcon={<AddIcon />}
+                                            onClick={handleOpenPartCreateModal}
+                                            sx={{ mt: 2 }}
+                                        >
+                                            部品を追加
+                                        </Button>
+                                    </Box>
+                                )}
+
+                                {parts.length > 6 && (
+                                    <Box sx={{ mt: 2, textAlign: 'center' }}>
+                                        <Button
+                                            variant="text"
+                                            size="small"
+                                            onClick={() => setTabValue(1)}
+                                        >
+                                            すべての部品を見る ({parts.length}件)
+                                        </Button>
+                                    </Box>
                                 )}
                             </Paper>
                         )}
@@ -661,12 +611,18 @@ export default function SupplierDetailPage() {
                     {/* タブ */}
                     <Paper>
                         <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
-                            <Tab icon={<BusinessIcon />} label={`拠点 (${branches.length})`} />
-                            <Tab icon={<InventoryIcon />} label={`取扱部品 (${parts.length})`} />
+                            {!supplier.notes?.includes('[OVERSEAS]') && (
+                                <Tab icon={<BusinessIcon />} label={`拠点 (${branches.length})`} />
+                            )}
+                            <Tab
+                                icon={<InventoryIcon />}
+                                label={`取扱部品 (${parts.length})`}
+                            />
                         </Tabs>
 
-                        {/* 拠点タブ */}
-                        <TabPanel value={tabValue} index={0}>
+                        {/* 拠点タブ（国内サプライヤーのみ） */}
+                        {!supplier.notes?.includes('[OVERSEAS]') && (
+                            <TabPanel value={tabValue} index={0}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                                 <Typography variant="h6">拠点一覧</Typography>
                                 <Button
@@ -843,10 +799,14 @@ export default function SupplierDetailPage() {
                                     </Button>
                                 </Box>
                             )}
-                        </TabPanel>
+                            </TabPanel>
+                        )}
 
                         {/* 部品タブ */}
-                        <TabPanel value={tabValue} index={1}>
+                        <TabPanel
+                            value={tabValue}
+                            index={supplier.notes?.includes('[OVERSEAS]') ? 0 : 1}
+                        >
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                                 <Typography variant="h6">取扱部品一覧</Typography>
                                 <Button
