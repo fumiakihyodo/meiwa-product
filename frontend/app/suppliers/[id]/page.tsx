@@ -40,8 +40,10 @@ import {
 import { Part } from '@/types/purchases';
 import { PartModalType } from '@/types/business';
 import { Supplier, SupplierBranch, BranchType } from '@/types/supplier';
+import { Material } from '@/services/apiManufacturing';
 import { supplierApi } from '@/services/apiSupplier';
 import { purchasesApi } from '@/services/apiPurchases';
+import { materialApi } from '@/services/apiManufacturing';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Sidebar } from '@/components/Sidebar';
 import { BranchModalManager } from '@/components/SupplierModal/BranchModalManager';
@@ -79,6 +81,7 @@ export default function SupplierDetailPage() {
     const [supplier, setSupplier] = useState<Supplier | null>(null);
     const [branches, setBranches] = useState<SupplierBranch[]>([]);
     const [parts, setParts] = useState<Part[]>([]);
+    const [materials, setMaterials] = useState<Material[]>([]);
     const [loading, setLoading] = useState(true);
     const [tabValue, setTabValue] = useState(0);
 
@@ -147,6 +150,21 @@ export default function SupplierDetailPage() {
         }
     }, [params.id]);
 
+    // 材料一覧取得（海外サプライヤーのみ）
+    const fetchMaterials = useCallback(async () => {
+        try {
+            // 海外サプライヤーの場合、全ての拠点の材料を取得
+            const allMaterials: Material[] = [];
+            for (const branch of branches) {
+                const data = await materialApi.getMaterials({ supplier_branch: branch.id });
+                allMaterials.push(...data);
+            }
+            setMaterials(allMaterials);
+        } catch (error) {
+            console.error(error);
+        }
+    }, [branches]);
+
     // 初回データ取得
     React.useEffect(() => {
         if (params?.id) {
@@ -155,6 +173,13 @@ export default function SupplierDetailPage() {
             fetchParts();
         }
     }, [params?.id, fetchSupplierDetail, fetchBranches, fetchParts]);
+
+    // 海外サプライヤーの場合、拠点データ取得後に材料を取得
+    React.useEffect(() => {
+        if (supplier?.notes?.includes('[OVERSEAS]') && branches.length > 0) {
+            fetchMaterials();
+        }
+    }, [supplier, branches, fetchMaterials]);
 
     // ========================================
     // 仕入先関連ハンドラー
@@ -521,7 +546,7 @@ export default function SupplierDetailPage() {
                         </Paper>
 
                         {/* 海外サプライヤー専用情報 */}
-                        {supplier.notes?.includes('[OVERSEAS]') && (
+                        {supplier.notes?.includes('[OVERSEAS]') && branches.length > 0 && (
                             <Paper
                                 sx={{
                                     p: 3,
@@ -531,78 +556,120 @@ export default function SupplierDetailPage() {
                             >
                                 <Box sx={{ mb: 2 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                        <InventoryIcon color="info" />
+                                        <PublicIcon color="info" />
                                         <Typography variant="h6" fontWeight="bold">
-                                            取り扱い部品（Handling Parts）
+                                            Main Office 情報
                                         </Typography>
                                     </Box>
                                 </Box>
 
-                                {/* 取り扱い部品サマリー */}
-                                {parts.length > 0 ? (
+                                {/* 拠点情報 */}
+                                <Box sx={{ mb: 3 }}>
+                                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                        拠点情報
+                                    </Typography>
                                     <Box sx={{
                                         display: 'grid',
-                                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+                                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
                                         gap: 2,
+                                        mt: 1
                                     }}>
-                                        {parts.slice(0, 6).map((part) => (
-                                            <Box
-                                                key={part.id}
-                                                sx={{
-                                                    p: 2,
-                                                    bgcolor: 'white',
-                                                    borderRadius: 1,
-                                                    border: '1px solid',
-                                                    borderColor: 'divider',
-                                                    '&:hover': {
-                                                        boxShadow: 1,
-                                                        borderColor: 'info.main',
-                                                        cursor: 'pointer',
-                                                    },
-                                                }}
-                                                onClick={() => handleOpenPartDetailModal(part.id, 'detail')}
-                                            >
-                                                <Typography variant="body2" fontWeight="bold" color="primary" gutterBottom>
-                                                    {part.part_number}
-                                                </Typography>
-                                                <Typography variant="body2" sx={{ mb: 1 }}>
-                                                    {part.part_name}
-                                                </Typography>
-                                                {part.current_price && (
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        単価: ¥{Number(part.current_price).toLocaleString()}
-                                                    </Typography>
-                                                )}
-                                            </Box>
-                                        ))}
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary" display="block">
+                                                住所
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                {branches[0].address || '-'}
+                                            </Typography>
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary" display="block">
+                                                電話番号
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                {branches[0].phone_number ? (
+                                                    <a
+                                                        href={`tel:${branches[0].phone_number}`}
+                                                        style={{ color: '#1976d2', textDecoration: 'none' }}
+                                                    >
+                                                        📞 {branches[0].phone_number}
+                                                    </a>
+                                                ) : '-'}
+                                            </Typography>
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary" display="block">
+                                                メールアドレス
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                {branches[0].email ? (
+                                                    <a
+                                                        href={`mailto:${branches[0].email}`}
+                                                        style={{ color: '#1976d2', textDecoration: 'none' }}
+                                                    >
+                                                        📧 {branches[0].email}
+                                                    </a>
+                                                ) : '-'}
+                                            </Typography>
+                                        </Box>
                                     </Box>
-                                ) : (
-                                    <Box sx={{ textAlign: 'center', py: 4 }}>
-                                        <Typography color="text.secondary" variant="body2">
-                                            取り扱い部品が登録されていません
-                                        </Typography>
-                                        <Button
-                                            variant="outlined"
-                                            size="small"
-                                            startIcon={<AddIcon />}
-                                            onClick={handleOpenPartCreateModal}
-                                            sx={{ mt: 2 }}
-                                        >
-                                            部品を追加
-                                        </Button>
-                                    </Box>
-                                )}
+                                </Box>
 
-                                {parts.length > 6 && (
-                                    <Box sx={{ mt: 2, textAlign: 'center' }}>
-                                        <Button
-                                            variant="text"
-                                            size="small"
-                                            onClick={() => setTabValue(1)}
-                                        >
-                                            すべての部品を見る ({parts.length}件)
-                                        </Button>
-                                    </Box>
+                                {/* 担当者情報 */}
+                                {branches[0].primary_contact && (
+                                    <>
+                                        <Divider sx={{ my: 2 }} />
+                                        <Box>
+                                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                                主担当者情報
+                                            </Typography>
+                                            <Box sx={{
+                                                display: 'grid',
+                                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                                                gap: 2,
+                                                mt: 1
+                                            }}>
+                                                <Box>
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        担当者名
+                                                    </Typography>
+                                                    <Typography variant="body2" fontWeight="medium">
+                                                        {branches[0].primary_contact.name}
+                                                    </Typography>
+                                                </Box>
+                                                <Box>
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        電話番号
+                                                    </Typography>
+                                                    <Typography variant="body2">
+                                                        {branches[0].primary_contact.phone_number ? (
+                                                            <a
+                                                                href={`tel:${branches[0].primary_contact.phone_number}`}
+                                                                style={{ color: '#1976d2', textDecoration: 'none' }}
+                                                            >
+                                                                📞 {branches[0].primary_contact.phone_number}
+                                                            </a>
+                                                        ) : '-'}
+                                                    </Typography>
+                                                </Box>
+                                                <Box>
+                                                    <Typography variant="caption" color="text.secondary" display="block">
+                                                        メールアドレス
+                                                    </Typography>
+                                                    <Typography variant="body2">
+                                                        {branches[0].primary_contact.email ? (
+                                                            <a
+                                                                href={`mailto:${branches[0].primary_contact.email}`}
+                                                                style={{ color: '#1976d2', textDecoration: 'none' }}
+                                                            >
+                                                                📧 {branches[0].primary_contact.email}
+                                                            </a>
+                                                        ) : '-'}
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+                                        </Box>
+                                    </>
                                 )}
                             </Paper>
                         )}
@@ -618,6 +685,12 @@ export default function SupplierDetailPage() {
                                 icon={<InventoryIcon />}
                                 label={`取扱部品 (${parts.length})`}
                             />
+                            {supplier.notes?.includes('[OVERSEAS]') && (
+                                <Tab
+                                    icon={<InventoryIcon />}
+                                    label={`材料 (${materials.length})`}
+                                />
+                            )}
                         </Tabs>
 
                         {/* 拠点タブ（国内サプライヤーのみ） */}
@@ -915,6 +988,88 @@ export default function SupplierDetailPage() {
                                 </Box>
                             )}
                         </TabPanel>
+
+                        {/* 材料タブ（海外サプライヤーのみ） */}
+                        {supplier.notes?.includes('[OVERSEAS]') && (
+                            <TabPanel value={tabValue} index={1}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                                    <Typography variant="h6">材料一覧</Typography>
+                                </Box>
+                                {materials.length > 0 ? (
+                                    <TableContainer>
+                                        <Table>
+                                            <TableHead>
+                                                <TableRow>
+                                                    <TableCell>材料品番</TableCell>
+                                                    <TableCell>材料名</TableCell>
+                                                    <TableCell>カテゴリ</TableCell>
+                                                    <TableCell>形式</TableCell>
+                                                    <TableCell align="right">単価</TableCell>
+                                                    <TableCell align="center">在庫数量</TableCell>
+                                                    <TableCell align="center">リードタイム</TableCell>
+                                                    <TableCell align="center">ステータス</TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {materials.map((material) => (
+                                                    <TableRow key={material.id} hover>
+                                                        <TableCell>
+                                                            <Typography variant="body2" fontWeight="medium">
+                                                                {material.material_code}
+                                                            </Typography>
+                                                        </TableCell>
+                                                        <TableCell>{material.material_name}</TableCell>
+                                                        <TableCell>
+                                                            <Chip
+                                                                label={material.category_display || material.category}
+                                                                size="small"
+                                                                color="default"
+                                                            />
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Typography variant="body2">
+                                                                {material.material_type || '-'}
+                                                            </Typography>
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                            {material.unit_price ? (
+                                                                <Typography variant="body2" fontWeight="bold" color="primary">
+                                                                    ¥{Number(material.unit_price).toLocaleString()}
+                                                                </Typography>
+                                                            ) : '-'}
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Typography
+                                                                variant="body2"
+                                                                color={material.is_low_stock ? 'error' : 'text.primary'}
+                                                            >
+                                                                {material.stock_quantity} {material.unit}
+                                                            </Typography>
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            {material.lead_time_days ? `${material.lead_time_days}日` : '-'}
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip
+                                                                label={material.is_active ? '有効' : '無効'}
+                                                                color={material.is_active ? 'success' : 'default'}
+                                                                size="small"
+                                                            />
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>
+                                ) : (
+                                    <Box sx={{ textAlign: 'center', py: 6 }}>
+                                        <Typography color="text.secondary" variant="body1" gutterBottom>
+                                            材料が登録されていません
+                                        </Typography>
+                                    </Box>
+                                )}
+                            </TabPanel>
+                        )}
                     </Paper>
 
                     {/* ========================================
