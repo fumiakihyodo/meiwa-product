@@ -90,6 +90,7 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
     domestic_stock = serializers.IntegerField(read_only=True, default=0)
     overseas_stock = serializers.IntegerField(read_only=True, default=0)
     total_stock = serializers.IntegerField(read_only=True, default=0)
+    current_inventory = serializers.IntegerField(read_only=True, default=0)
     text_notes = serializers.CharField(read_only=True, default='')
 
     class Meta:
@@ -101,7 +102,8 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
             'unit', 'standard_production_time', 'is_active',
             'production_plan_count',
             'overseas_supplier_branch', 'overseas_supplier_branch_name',
-            'domestic_stock', 'overseas_stock', 'total_stock', 'text_notes',
+            'domestic_stock', 'overseas_stock', 'total_stock', 'current_inventory', 'text_notes',
+            'specification',
             'created_at', 'updated_at', 'created_by_name'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -113,6 +115,7 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
         ret['domestic_stock'] = stock_info['domestic_stock']
         ret['overseas_stock'] = stock_info['overseas_stock']
         ret['total_stock'] = stock_info['total_stock']
+        ret['current_inventory'] = stock_info['total_stock']  # current_inventoryはtotal_stockのエイリアス
         ret['text_notes'] = stock_info['text_notes']
         return ret
 
