@@ -149,7 +149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                             path: '/inventory/purchased-item-inventory',
                         },
                         {
-                            text: '製作品在庫管理',
+                            text: '製造品在庫管理',
                             icon: <ManufacturingIcon />,
                             path: '/inventory/finished-goods-inventory',
                         },
@@ -179,7 +179,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ children }) => {
                             path: '/master/supplied-items',
                         },
                         {
-                            text: '制作品管理',
+                            text: '製造品管理',
                             icon: <ManufacturingIcon />,
                             path: '/master/manufacturing',
                         },

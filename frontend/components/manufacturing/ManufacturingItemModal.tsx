@@ -89,7 +89,7 @@ interface ManufacturingItemModalProps {
     materials: Material[];
 }
 
-// 制作拠点のオプション
+// 製造拠点のオプション
 const PRODUCTION_TYPE_OPTIONS = [
     { value: 'domestic' as ProductionType, label: '国内生産' },
     { value: 'overseas' as ProductionType, label: '海外生産' },
@@ -289,7 +289,7 @@ export default function ManufacturingItemModal({
             newErrors.manufacturing_number = '品番は必須です';
         }
         if (!formData.manufacturing_name.trim()) {
-            newErrors.manufacturing_name = '制作品名は必須です';
+            newErrors.manufacturing_name = '製造品名は必須です';
         }
 
         // 材料のバリデーション
@@ -329,11 +329,11 @@ export default function ManufacturingItemModal({
             if (mode === 'create') {
                 const createdItem = await manufacturingItemApi.createItem(submitData);
                 itemId = createdItem.id;
-                toast.success('制作品を登録しました');
+                toast.success('製造品を登録しました');
             } else if (mode === 'edit' && item) {
                 await manufacturingItemApi.updateItem(item.id, submitData);
                 itemId = item.id;
-                toast.success('制作品を更新しました');
+                toast.success('製造品を更新しました');
             } else {
                 return;
             }
@@ -367,14 +367,14 @@ export default function ManufacturingItemModal({
                 });
                 setErrors(serverErrors);
             }
-            toast.error(mode === 'create' ? '制作品の登録に失敗しました' : '制作品の更新に失敗しました');
+            toast.error(mode === 'create' ? '製造品の登録に失敗しました' : '製造品の更新に失敗しました');
         } finally {
             setLoading(false);
         }
     };
 
     const isViewMode = mode === 'view';
-    const title = mode === 'create' ? '新規制作品登録' : mode === 'edit' ? '制作品編集' : '制作品詳細';
+    const title = mode === 'create' ? '新規製造品登録' : mode === 'edit' ? '製造品編集' : '製造品詳細';
 
     // 選択可能な材料のリスト
     const getAvailableMaterials = (currentIndex: number) => {
@@ -415,7 +415,7 @@ export default function ManufacturingItemModal({
                     </Grid>
                     <Grid item xs={12} sm={6}>
                         <TextField
-                            label="制作品名"
+                            label="製造品名"
                             value={formData.manufacturing_name}
                             onChange={(e) => handleChange('manufacturing_name', e.target.value)}
                             onKeyDown={(e) => handleKeyDown(e, 1)}
@@ -428,16 +428,16 @@ export default function ManufacturingItemModal({
                         />
                     </Grid>
 
-                    {/* 制作拠点選択 */}
+                    {/* 製造拠点選択 */}
                     <Grid item xs={12}>
                         <Divider sx={{ my: 1 }} />
                         <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                            制作拠点
+                            製造拠点
                         </Typography>
                     </Grid>
                     <Grid item xs={12}>
                         <FormControl component="fieldset" disabled={isViewMode}>
-                            <FormLabel component="legend">制作拠点を選択してください</FormLabel>
+                            <FormLabel component="legend">製造拠点を選択してください</FormLabel>
                             <FormGroup row>
                                 {PRODUCTION_TYPE_OPTIONS.map((option) => (
                                     <FormControlLabel
@@ -648,7 +648,7 @@ export default function ManufacturingItemModal({
                             )}
                         </Box>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                            この制作品を製造するために必要な材料を登録できます（任意）
+                            この製造品を製造するために必要な材料を登録できます（任意）
                         </Typography>
 
                         {materialRequirements.length > 0 ? (

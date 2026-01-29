@@ -69,17 +69,17 @@ export default function ManufacturingPage() {
     // Search params types
     type ItemSearchParams = { search?: string; production_type?: ProductionType };
 
-    // Data fetching - 制作品一覧のみ初期ロード
+    // Data fetching - 製造品一覧のみ初期ロード
     const {
         data: manufacturingItems,
         loading: itemsLoading,
         fetch: fetchItems,
     } = useFetchData<ManufacturingItem[], ItemSearchParams>({
         fetchFn: useCallback((params?: ItemSearchParams) => manufacturingItemApi.getItems(params), []),
-        errorMessage: '制作品一覧の取得に失敗しました',
+        errorMessage: '製造品一覧の取得に失敗しました',
     });
 
-    // 初期データフェッチ（制作品一覧のみ）
+    // 初期データフェッチ（製造品一覧のみ）
     useEffect(() => {
         fetchItems();
     }, [fetchItems]);
@@ -154,13 +154,13 @@ export default function ManufacturingPage() {
         if (!selectedItem) return;
         try {
             await manufacturingItemApi.deleteItem(selectedItem.id);
-            toast.success('制作品を削除しました');
+            toast.success('製造品を削除しました');
             setDeleteItemDialogOpen(false);
             setSelectedItem(null);
             fetchItems();
         } catch (error) {
             console.error('削除エラー:', error);
-            toast.error('制作品の削除に失敗しました');
+            toast.error('製造品の削除に失敗しました');
         }
     }, [selectedItem, fetchItems]);
 
@@ -181,7 +181,7 @@ export default function ManufacturingPage() {
         fetchItems(params);
     }, [itemSearchText, fetchItems]);
 
-    // 制作拠点の表示名を取得
+    // 製造拠点の表示名を取得
     const getProductionTypeLabel = useCallback((type: ProductionType): string => {
         switch (type) {
             case 'domestic':
@@ -195,7 +195,7 @@ export default function ManufacturingPage() {
         }
     }, []);
 
-    // 制作拠点の色を取得
+    // 製造拠点の色を取得
     const getProductionTypeColor = useCallback((type: ProductionType): 'primary' | 'secondary' | 'success' => {
         switch (type) {
             case 'domestic':
@@ -213,10 +213,10 @@ export default function ManufacturingPage() {
     const itemColumns = useMemo((): GridColDef[] => {
         const baseColumns: GridColDef[] = [
             { field: 'manufacturing_number', headerName: '品番', width: 130 },
-            { field: 'manufacturing_name', headerName: '制作品名', width: 200 },
+            { field: 'manufacturing_name', headerName: '製造品名', width: 200 },
             {
                 field: 'production_type',
-                headerName: '制作拠点',
+                headerName: '製造拠点',
                 width: 100,
                 renderCell: (params: GridRenderCellParams<ManufacturingItem>) => (
                     <Chip
@@ -326,7 +326,7 @@ export default function ManufacturingPage() {
             <Sidebar>
                 <Box sx={{ width: '100%' }}>
                     <Typography variant="h4" component="h1" sx={{ mb: 3 }}>
-                        制作品管理
+                        製造品管理
                     </Typography>
 
                     <Paper sx={{ width: '100%', p: 2 }}>
@@ -335,7 +335,7 @@ export default function ManufacturingPage() {
                             <Tabs
                                 value={activeTab}
                                 onChange={handleTabChange}
-                                aria-label="制作品タブ"
+                                aria-label="製造品タブ"
                             >
                                 <Tab label="すべて" value="all" />
                                 <Tab label="国内生産品" value="domestic" />
@@ -366,7 +366,7 @@ export default function ManufacturingPage() {
                                     <RefreshIcon />
                                 </IconButton>
                                 <Button variant="contained" startIcon={<AddIcon />} onClick={handleNewItem}>
-                                    新規制作品
+                                    新規製造品
                                 </Button>
                             </Box>
                         </Box>
@@ -386,7 +386,7 @@ export default function ManufacturingPage() {
                         />
                     </Paper>
 
-                    {/* 制作品モーダル */}
+                    {/* 製造品モーダル */}
                     <ManufacturingItemModal
                         open={itemModalOpen}
                         onClose={handleItemModalClose}
@@ -397,19 +397,19 @@ export default function ManufacturingPage() {
                         materials={materials}
                     />
 
-                    {/* 制作品削除確認ダイアログ */}
+                    {/* 製造品削除確認ダイアログ */}
                     <Dialog open={deleteItemDialogOpen} onClose={() => setDeleteItemDialogOpen(false)}>
-                        <DialogTitle>制作品の削除</DialogTitle>
+                        <DialogTitle>製造品の削除</DialogTitle>
                         <DialogContent>
                             <DialogContentText>
-                                以下の制作品を削除してもよろしいですか?
+                                以下の製造品を削除してもよろしいですか?
                             </DialogContentText>
                             <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
                                 <Typography variant="body2" color="text.secondary">品番</Typography>
                                 <Typography variant="body1">{selectedItem?.manufacturing_number}</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>制作品名</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>製造品名</Typography>
                                 <Typography variant="body1">{selectedItem?.manufacturing_name}</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>制作拠点</Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>製造拠点</Typography>
                                 <Typography variant="body1">
                                     {selectedItem?.production_type ? getProductionTypeLabel(selectedItem.production_type) : '-'}
                                 </Typography>

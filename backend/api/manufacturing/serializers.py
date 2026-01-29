@@ -80,6 +80,12 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
         source='get_production_type_display',
         read_only=True
     )
+    # 海外サプライヤー情報
+    overseas_supplier_branch_name = serializers.CharField(
+        source='overseas_supplier_branch.branch_name',
+        read_only=True,
+        default=None
+    )
     # 拠点別在庫情報（to_representationで一括設定）
     domestic_stock = serializers.IntegerField(read_only=True, default=0)
     overseas_stock = serializers.IntegerField(read_only=True, default=0)
@@ -94,6 +100,7 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
             'product', 'product_number', 'product_name',
             'unit', 'standard_production_time', 'is_active',
             'production_plan_count',
+            'overseas_supplier_branch', 'overseas_supplier_branch_name',
             'domestic_stock', 'overseas_stock', 'total_stock', 'text_notes',
             'created_at', 'updated_at', 'created_by_name'
         ]
@@ -131,6 +138,12 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
         source='get_production_type_display',
         read_only=True
     )
+    # 海外サプライヤー情報
+    overseas_supplier_branch_name = serializers.CharField(
+        source='overseas_supplier_branch.branch_name',
+        read_only=True,
+        default=None
+    )
     production_plans = serializers.SerializerMethodField()
     material_requirements = serializers.SerializerMethodField()
     # 拠点別在庫情報（to_representationで一括設定）
@@ -147,6 +160,7 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
             'product', 'product_number', 'product_name',
             'specification', 'unit', 'standard_production_time',
             'is_active', 'notes',
+            'overseas_supplier_branch', 'overseas_supplier_branch_name',
             'domestic_stock', 'overseas_stock', 'total_stock', 'text_notes',
             'production_plans', 'material_requirements',
             'created_at', 'updated_at', 'created_by', 'created_by_name'
@@ -186,6 +200,7 @@ class ManufacturingItemCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'manufacturing_number', 'manufacturing_name',
             'production_type',
+            'overseas_supplier_branch',
             'product', 'specification', 'unit',
             'standard_production_time', 'is_active', 'notes',
             'domestic_stock', 'overseas_stock', 'text_notes'
@@ -193,6 +208,7 @@ class ManufacturingItemCreateUpdateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'manufacturing_number': {'required': True},
             'manufacturing_name': {'required': True},
+            'overseas_supplier_branch': {'required': False, 'allow_null': True},
             'notes': {'required': False, 'read_only': True},
         }
 

@@ -50,7 +50,12 @@ class ManufacturingItemViewSet(viewsets.ModelViewSet):
             production_plan_count=Count('production_plans')
         )
         # 関連データを事前ロード
-        queryset = queryset.select_related('product', 'created_by')
+        queryset = queryset.select_related(
+            'product',
+            'created_by',
+            'overseas_supplier_branch',
+            'overseas_supplier_branch__supplier'
+        )
 
         # フィルタリング
         product = self.request.query_params.get('product', None)

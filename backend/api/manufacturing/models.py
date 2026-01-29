@@ -47,6 +47,17 @@ class ManufacturingItem(models.Model):
         help_text="国内生産または海外生産"
     )
 
+    # 海外サプライヤー支店（海外生産の場合）
+    overseas_supplier_branch = models.ForeignKey(
+        'supplier.SupplierBranch',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='overseas_manufacturing_items',
+        verbose_name="海外サプライヤー支店",
+        help_text="海外生産の場合のサプライヤー支店"
+    )
+
     # 仕様情報
     specification = models.TextField(
         blank=True,
@@ -113,6 +124,7 @@ class ManufacturingItem(models.Model):
             models.Index(fields=['is_active']),
             models.Index(fields=['production_type']),
             models.Index(fields=['production_type', 'is_active']),
+            models.Index(fields=['overseas_supplier_branch']),
             models.Index(fields=['created_at']),
         ]
 
