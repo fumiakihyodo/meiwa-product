@@ -325,3 +325,37 @@ export interface FileDownloadParams {
     invoice_id: number;
     file_id: number;
 }
+
+// ===== PO Matching & Validation =====
+
+// PO明細の残数情報
+export interface POItemRemaining {
+    po_item_id: number;
+    part_number: string;
+    description: string;
+    ordered_quantity: number;
+    received_quantity: number;
+    remaining_quantity: number;
+    unit_price?: number;
+    unit: string;
+}
+
+// インボイス明細とPO明細のマッチング結果
+export interface InvoiceItemPOMatch {
+    invoice_item: ImportInvoiceItem | ImportInvoiceItemCreateData;
+    matched_po_item?: POItemRemaining;
+    is_valid: boolean;
+    validation_errors: string[];
+}
+
+// インボイス全体のPO整合性チェック結果
+export interface InvoicePOValidationResult {
+    is_all_valid: boolean;
+    matched_items: InvoiceItemPOMatch[];
+    summary: {
+        total_items: number;
+        valid_items: number;
+        invalid_items: number;
+        unmatched_items: number;
+    };
+}

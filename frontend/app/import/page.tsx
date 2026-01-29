@@ -49,6 +49,9 @@ import {
     ImportPOStatusLabels,
     ImportInvoiceStatusLabels,
 } from '@/types/import';
+import { SupplierBranch } from '@/types/supplier';
+import { supplierApi } from '@/services/apiSupplier';
+import { validateInvoiceAgainstPOs, getInvoicePOValidationStatus } from '@/utils/poValidation';
 import toast from 'react-hot-toast';
 
 // タブパネルコンポーネント
@@ -96,6 +99,7 @@ export default function ImportPage() {
     // データ
     const [purchaseOrders, setPurchaseOrders] = useState<ImportPO[]>([]);
     const [invoices, setInvoices] = useState<ImportInvoice[]>([]);
+    const [supplierBranches, setSupplierBranches] = useState<SupplierBranch[]>([]);
 
     // モーダル状態
     const [poModalOpen, setPoModalOpen] = useState(false);
@@ -111,6 +115,10 @@ export default function ImportPage() {
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
+            // サプライヤー支店を読み込み
+            const branches = await supplierApi.getSupplierBranches({ is_overseas: 'true' });
+            setSupplierBranches(branches);
+
             // 実際のAPIが実装されたらここを置き換える
             // const [posData, invoicesData] = await Promise.all([
             //     importApi.po.getImportPOs({ search: searchQuery }),
@@ -227,17 +235,35 @@ export default function ImportPage() {
             //     await importApi.invoice.registerSemiFinishedInventory(invoice.id);
             // }
 
+            // サプライヤー情報を取得
+            const supplierBranch = supplierBranches.find(b => b.id === data.supplier_branch);
+
             // モック処理
             const newInvoice: ImportInvoice = {
                 id: Date.now(),
                 invoice_number: data.invoice_number || `INV-${Date.now()}`,
                 supplier_branch: data.supplier_branch,
+                supplier_name: supplierBranch?.supplier_name || '',
+                supplier_branch_name: supplierBranch?.branch_name || '',
                 invoice_date: data.invoice_date,
                 received_date: data.received_date,
                 status: 'completed',
                 linked_po_ids: data.linked_po_ids,
+                items: data.items?.map((item, index) => ({
+                    id: Date.now() + index,
+                    import_invoice: Date.now(),
+                    part_number: item.part_number,
+                    description: item.description,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price,
+                    unit: item.unit || '個',
+                    material: item.material,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                })),
                 total_items: data.items?.length || 0,
                 total_quantity: data.items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
+                total_amount: data.items?.reduce((sum, item) => sum + (item.quantity * (item.unit_price || 0)), 0) || 0,
                 currency: data.currency,
                 notes: data.notes,
                 created_at: new Date().toISOString(),
@@ -379,6 +405,8 @@ export default function ImportPage() {
                         value={activeTab}
                         onChange={(_, newValue) => setActiveTab(newValue)}
                         sx={{ borderBottom: 1, borderColor: 'divider' }}
+                        variant="scrollable"
+                        scrollButtons="auto"
                     >
                         <Tab
                             label={`輸入PO (${purchaseOrders.length})`}
@@ -387,6 +415,16 @@ export default function ImportPage() {
                         />
                         <Tab
                             label={`インボイス (${invoices.length})`}
+                            icon={<ReceiptIcon />}
+                            iconPosition="start"
+                        />
+                        <Tab
+                            label="Waybill"
+                            icon={<ReceiptIcon />}
+                            iconPosition="start"
+                        />
+                        <Tab
+                            label="請求書 (Billing)"
                             icon={<ReceiptIcon />}
                             iconPosition="start"
                         />
@@ -486,64 +524,98 @@ export default function ImportPage() {
                                             <TableCell align="right">品目数</TableCell>
                                             <TableCell align="right">金額</TableCell>
                                             <TableCell>紐付けPO</TableCell>
+                                            <TableCell>PO整合性</TableCell>
                                             <TableCell>ステータス</TableCell>
                                             <TableCell></TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {invoices.map((invoice) => (
-                                            <TableRow key={invoice.id} hover>
-                                                <TableCell>
-                                                    <Typography variant="body2" fontWeight="medium">
-                                                        {invoice.invoice_number}
-                                                    </Typography>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {invoice.supplier_name}
-                                                    {invoice.supplier_branch_name && (
-                                                        <Typography variant="caption" display="block" color="text.secondary">
-                                                            {invoice.supplier_branch_name}
+                                        {invoices.map((invoice) => {
+                                            // PO整合性チェック（簡易版）
+                                            // 実際のAPIでは、invoice.itemsとlinked_posを使ってバリデーションを行う
+                                            const hasLinkedPOs = invoice.linked_po_ids && invoice.linked_po_ids.length > 0;
+                                            const hasItems = invoice.items && invoice.items.length > 0;
+
+                                            // 簡易チェック: POが紐付いていて品目がある場合はOK
+                                            const validationStatus = hasLinkedPOs && hasItems ? 'success' : hasLinkedPOs ? 'warning' : 'default';
+                                            const validationLabel = hasLinkedPOs && hasItems ? 'OK' : hasLinkedPOs ? '確認中' : 'PO未指定';
+
+                                            return (
+                                                <TableRow key={invoice.id} hover>
+                                                    <TableCell>
+                                                        <Typography variant="body2" fontWeight="medium">
+                                                            {invoice.invoice_number}
                                                         </Typography>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>{invoice.invoice_date}</TableCell>
-                                                <TableCell>{invoice.received_date || '-'}</TableCell>
-                                                <TableCell align="right">{invoice.total_items || 0}</TableCell>
-                                                <TableCell align="right">
-                                                    {invoice.currency} {(invoice.total_amount || 0).toLocaleString()}
-                                                </TableCell>
-                                                <TableCell>
-                                                    {invoice.linked_po_ids && invoice.linked_po_ids.length > 0 ? (
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {invoice.supplier_name}
+                                                        {invoice.supplier_branch_name && (
+                                                            <Typography variant="caption" display="block" color="text.secondary">
+                                                                {invoice.supplier_branch_name}
+                                                            </Typography>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>{invoice.invoice_date}</TableCell>
+                                                    <TableCell>{invoice.received_date || '-'}</TableCell>
+                                                    <TableCell align="right">{invoice.total_items || 0}</TableCell>
+                                                    <TableCell align="right">
+                                                        {invoice.currency} {(invoice.total_amount || 0).toLocaleString()}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {hasLinkedPOs ? (
+                                                            <Chip
+                                                                label={`${invoice.linked_po_ids!.length}件`}
+                                                                size="small"
+                                                                variant="outlined"
+                                                            />
+                                                        ) : (
+                                                            '-'
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>
                                                         <Chip
-                                                            label={`${invoice.linked_po_ids.length}件`}
+                                                            label={validationLabel}
                                                             size="small"
-                                                            variant="outlined"
+                                                            color={validationStatus}
+                                                            variant={validationStatus === 'success' ? 'filled' : 'outlined'}
                                                         />
-                                                    ) : (
-                                                        '-'
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Chip
-                                                        label={ImportInvoiceStatusLabels[invoice.status]}
-                                                        size="small"
-                                                        color={getStatusColor(invoice.status)}
-                                                    />
-                                                </TableCell>
-                                                <TableCell>
-                                                    <IconButton
-                                                        size="small"
-                                                        onClick={(e) => handleMenuOpen(e, 'invoice', invoice)}
-                                                    >
-                                                        <MoreVertIcon />
-                                                    </IconButton>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Chip
+                                                            label={ImportInvoiceStatusLabels[invoice.status]}
+                                                            size="small"
+                                                            color={getStatusColor(invoice.status)}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={(e) => handleMenuOpen(e, 'invoice', invoice)}
+                                                        >
+                                                            <MoreVertIcon />
+                                                        </IconButton>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                     </TableBody>
                                 </Table>
                             </TableContainer>
                         )}
+                    </TabPanel>
+
+                    {/* Waybillタブ */}
+                    <TabPanel value={activeTab} index={2}>
+                        <Alert severity="info" sx={{ mt: 2 }}>
+                            Waybill管理機能は今後実装予定です。現在はインボイスモーダルからWaybillファイルをアップロードできます。
+                        </Alert>
+                    </TabPanel>
+
+                    {/* 請求書（Billing）タブ */}
+                    <TabPanel value={activeTab} index={3}>
+                        <Alert severity="info" sx={{ mt: 2 }}>
+                            請求書（Billing）管理機能は今後実装予定です。現在はインボイスモーダルから請求書ファイルをアップロードできます。
+                        </Alert>
                     </TabPanel>
                 </Paper>
 
