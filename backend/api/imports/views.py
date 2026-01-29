@@ -67,7 +67,7 @@ class ImportPurchaseOrderViewSet(viewsets.ModelViewSet):
             return ImportPurchaseOrderCreateSerializer
         return ImportPurchaseOrderDetailSerializer
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='update-status')
     def update_status(self, request, pk=None):
         """ステータス更新"""
         po = self.get_object()
@@ -128,7 +128,7 @@ class ImportInvoiceViewSet(viewsets.ModelViewSet):
             return ImportInvoiceCreateSerializer
         return ImportInvoiceDetailSerializer
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='link-pos')
     def link_pos(self, request, pk=None):
         """PO紐付け"""
         invoice = self.get_object()
@@ -140,7 +140,7 @@ class ImportInvoiceViewSet(viewsets.ModelViewSet):
         serializer = ImportInvoiceDetailSerializer(invoice)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    @action(detail=True, methods=['post'], url_path='upload-file', parser_classes=[MultiPartParser, FormParser])
     def upload_file(self, request, pk=None):
         """ファイルアップロード"""
         invoice = self.get_object()
@@ -203,7 +203,7 @@ class ImportInvoiceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='register-inventory')
     def register_inventory(self, request, pk=None):
         """半製品在庫登録"""
         invoice = self.get_object()
