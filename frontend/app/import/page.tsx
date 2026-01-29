@@ -51,6 +51,7 @@ import {
 } from '@/types/import';
 import { SupplierBranch } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
+import { importApi } from '@/services/apiImport';
 import { validateInvoiceAgainstPOs, getInvoicePOValidationStatus } from '@/utils/poValidation';
 import toast from 'react-hot-toast';
 
@@ -111,7 +112,7 @@ export default function ImportPage() {
     const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
     const [menuTarget, setMenuTarget] = useState<{ type: 'po' | 'invoice'; data: ImportPO | ImportInvoice } | null>(null);
 
-    // データ読み込み（モック）
+    // データ読み込み
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
@@ -119,14 +120,18 @@ export default function ImportPage() {
             const branches = await supplierApi.getSupplierBranches({ is_overseas: 'true' });
             setSupplierBranches(branches);
 
-            // 実際のAPIが実装されたらここを置き換える
-            // const [posData, invoicesData] = await Promise.all([
-            //     importApi.po.getImportPOs({ search: searchQuery }),
-            //     importApi.invoice.getImportInvoices({ search: searchQuery }),
-            // ]);
+            // 実際のAPIを使用
+            const [posData, invoicesData] = await Promise.all([
+                importApi.po.getImportPOs({ search: searchQuery }),
+                importApi.invoice.getImportInvoices({ search: searchQuery }),
+            ]);
 
-            // モックデータ
-            const mockPOs: ImportPO[] = [
+            setPurchaseOrders(posData);
+            setInvoices(invoicesData);
+
+            // 以下はモックデータ（実際のデータがない場合のフォールバック）
+            if (posData.length === 0 && invoicesData.length === 0) {
+                const mockPOs: ImportPO[] = [
                 {
                     id: 1,
                     po_number: 'IPO-20260124-0001',
@@ -166,8 +171,9 @@ export default function ImportPage() {
                 },
             ];
 
-            setPurchaseOrders(mockPOs);
-            setInvoices(mockInvoices);
+                setPurchaseOrders(mockPOs);
+                setInvoices(mockInvoices);
+            }
         } catch (error) {
             console.error('Failed to load data:', error);
             toast.error('データの読み込みに失敗しました');
@@ -184,33 +190,21 @@ export default function ImportPage() {
     const handleSavePO = async (data: ImportPOCreateData) => {
         try {
             // 実際のAPI呼び出し
-            // if (selectedPO) {
-            //     await importApi.po.updateImportPO(selectedPO.id, data);
-            // } else {
-            //     await importApi.po.createImportPO(data);
-            // }
+            if (selectedPO) {
+                await importApi.po.updateImportPO(selectedPO.id, data);
+                toast.success('POを更新しました');
+            } else {
+                await importApi.po.createImportPO(data);
+                toast.success('POを作成しました');
+            }
 
-            // モック処理
-            const newPO: ImportPO = {
-                id: Date.now(),
-                po_number: `IPO-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(purchaseOrders.length + 1).padStart(4, '0')}`,
-                supplier_branch: data.supplier_branch,
-                order_date: data.order_date || new Date().toISOString().split('T')[0],
-                expected_ship_date: data.expected_ship_date,
-                expected_arrival_date: data.expected_arrival_date,
-                status: 'draft',
-                total_items: data.items?.length || 0,
-                total_quantity: data.items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
-                currency: data.currency,
-                notes: data.notes,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-            };
-
-            setPurchaseOrders((prev) => [...prev, newPO]);
+            // データを再読み込み
+            await loadData();
             setPoModalOpen(false);
             setSelectedPO(null);
         } catch (error) {
+            console.error('Failed to save PO:', error);
+            toast.error('POの保存に失敗しました');
             throw error;
         }
     };
@@ -218,62 +212,28 @@ export default function ImportPage() {
     // Invoice保存処理
     const handleSaveInvoice = async (
         data: ImportInvoiceCreateData,
+        files: { type: ImportFileType; file: File }[]
     ) => {
         try {
             // 実際のAPI呼び出し
-            // const invoice = selectedInvoice
-            //     ? await importApi.invoice.updateImportInvoice(selectedInvoice.id, data)
-            //     : await importApi.invoice.createImportInvoice(data);
-            //
-            // // ファイルアップロード
-            // for (const { type, file } of files) {
-            //     await importApi.invoice.uploadFile(invoice.id, type, file);
-            // }
-            //
-            // // 半製品在庫登録
-            // if (registerAsSemiFinished) {
-            //     await importApi.invoice.registerSemiFinishedInventory(invoice.id);
-            // }
+            const invoice = selectedInvoice
+                ? await importApi.invoice.updateImportInvoice(selectedInvoice.id, data)
+                : await importApi.invoice.createImportInvoice(data);
 
-            // サプライヤー情報を取得
-            const supplierBranch = supplierBranches.find(b => b.id === data.supplier_branch);
+            // ファイルアップロード
+            for (const { type, file } of files) {
+                await importApi.invoice.uploadFile(invoice.id, type, file);
+            }
 
-            // モック処理
-            const newInvoice: ImportInvoice = {
-                id: Date.now(),
-                invoice_number: data.invoice_number || `INV-${Date.now()}`,
-                supplier_branch: data.supplier_branch,
-                supplier_name: supplierBranch?.supplier_name || '',
-                supplier_branch_name: supplierBranch?.branch_name || '',
-                invoice_date: data.invoice_date,
-                received_date: data.received_date,
-                status: 'completed',
-                linked_po_ids: data.linked_po_ids,
-                items: data.items?.map((item, index) => ({
-                    id: Date.now() + index,
-                    import_invoice: Date.now(),
-                    part_number: item.part_number,
-                    description: item.description,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    unit: item.unit || '個',
-                    material: item.material,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                })),
-                total_items: data.items?.length || 0,
-                total_quantity: data.items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
-                total_amount: data.items?.reduce((sum, item) => sum + (item.quantity * (item.unit_price || 0)), 0) || 0,
-                currency: data.currency,
-                notes: data.notes,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-            };
+            // データを再読み込み
+            await loadData();
 
-            setInvoices((prev) => [...prev, newInvoice]);
+            toast.success(selectedInvoice ? 'インボイスを更新しました' : 'インボイスを登録しました');
             setInvoiceModalOpen(false);
             setSelectedInvoice(null);
         } catch (error) {
+            console.error('Failed to save invoice:', error);
+            toast.error('インボイスの保存に失敗しました');
             throw error;
         }
     };
@@ -315,14 +275,13 @@ export default function ImportPage() {
 
         try {
             if (menuTarget.type === 'po') {
-                // await importApi.po.deleteImportPO(menuTarget.data.id);
-                setPurchaseOrders((prev) => prev.filter((p) => p.id !== menuTarget.data.id));
+                await importApi.po.deleteImportPO(menuTarget.data.id);
                 toast.success('POを削除しました');
             } else {
-                // await importApi.invoice.deleteImportInvoice(menuTarget.data.id);
-                setInvoices((prev) => prev.filter((i) => i.id !== menuTarget.data.id));
+                await importApi.invoice.deleteImportInvoice(menuTarget.data.id);
                 toast.success('インボイスを削除しました');
             }
+            await loadData();
         } catch (error) {
             console.error('Delete failed:', error);
             toast.error('削除に失敗しました');
