@@ -60,6 +60,10 @@ export default function ProductDetailPage() {
     const [suppliedItemsLoading, setSuppliedItemsLoading] = useState(false);
     const [manufacturingItemsLoading, setManufacturingItemsLoading] = useState(false);
     const [currentTab, setCurrentTab] = useState(0);
+    const [partsLoaded, setPartsLoaded] = useState(false);
+    const [suppliedItemsLoaded, setSuppliedItemsLoaded] = useState(false);
+    const [manufacturingItemsLoaded, setManufacturingItemsLoaded] = useState(false);
+    const [initialTabSet, setInitialTabSet] = useState(false);
 
     // モーダル制御用の状態（部品）
     const [partModalOpen, setPartModalOpen] = useState(false);
@@ -103,6 +107,7 @@ export default function ProductDetailPage() {
         try {
             const data = await purchasesApi.getParts({ product: productId });
             setParts(data);
+            setPartsLoaded(true);
         } catch (error) {
             console.error('部品取得エラー:', error);
             toast.error('部品一覧の取得に失敗しました');
@@ -120,6 +125,7 @@ export default function ProductDetailPage() {
         try {
             const data = await purchasesApi.getSuppliedItems({ product: productId });
             setSuppliedItems(data);
+            setSuppliedItemsLoaded(true);
         } catch (error) {
             console.error('支給品取得エラー:', error);
             toast.error('支給品一覧の取得に失敗しました');
@@ -137,6 +143,7 @@ export default function ProductDetailPage() {
         try {
             const data = await manufacturingItemApi.getItems({ product: productId });
             setManufacturingItems(data);
+            setManufacturingItemsLoaded(true);
         } catch (error) {
             console.error('製造品取得エラー:', error);
             toast.error('製造品一覧の取得に失敗しました');
@@ -145,27 +152,38 @@ export default function ProductDetailPage() {
         }
     }, [productId]);
 
-    // useEffectで初期データ取得
+    // useEffectで初期データ取得（製品情報のみ）
     useEffect(() => {
         if (productId && !isNaN(productId)) {
             fetchProduct();
-            fetchParts();
-            fetchSuppliedItems();
-            fetchManufacturingItems();
         }
-    }, [productId, fetchProduct, fetchParts, fetchSuppliedItems, fetchManufacturingItems]);
+    }, [productId, fetchProduct]);
 
-    // 製品タイプに基づくデフォルトタブの設定
+    // 製品タイプに基づくデフォルトタブの設定（初回のみ）
     useEffect(() => {
-        if (product) {
+        if (product && !initialTabSet) {
             // 部品加工のみの場合は製造品タブをデフォルトに
             if (product.is_parts_processing && !product.is_assembly) {
                 setCurrentTab(2); // 製造品タブ
             } else {
                 setCurrentTab(0); // 購入品タブ
             }
+            setInitialTabSet(true);
         }
-    }, [product]);
+    }, [product, initialTabSet]);
+
+    // タブ選択時にデータを遅延ロード
+    useEffect(() => {
+        if (!product) return;
+
+        if (currentTab === 0 && !partsLoaded) {
+            fetchParts();
+        } else if (currentTab === 1 && !suppliedItemsLoaded) {
+            fetchSuppliedItems();
+        } else if (currentTab === 2 && !manufacturingItemsLoaded) {
+            fetchManufacturingItems();
+        }
+    }, [currentTab, product, partsLoaded, suppliedItemsLoaded, manufacturingItemsLoaded, fetchParts, fetchSuppliedItems, fetchManufacturingItems]);
 
     // 詳細表示
     const handleViewDetail = useCallback((partId: number) => {
@@ -512,12 +530,18 @@ export default function ProductDetailPage() {
             flex: 1,
         },
         {
-            field: 'standard_production_time',
-            headerName: '標準製造時間',
-            width: 130,
+            field: 'current_inventory',
+            headerName: '現在在庫数',
+            width: 120,
+            align: 'right',
+            headerAlign: 'right',
             renderCell: (params) => {
-                if (!params.value) return '-';
-                return `${params.value}時間`;
+                const value = params.value ?? 0;
+                return (
+                    <Typography variant="body2" fontWeight="medium">
+                        {Number(value).toLocaleString()}
+                    </Typography>
+                );
             },
         },
         {
