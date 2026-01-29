@@ -160,6 +160,7 @@ class ImportPurchaseOrderCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ImportPurchaseOrder
         fields = [
+            'id',
             'supplier_branch',
             'order_date',
             'expected_ship_date',
@@ -172,6 +173,7 @@ class ImportPurchaseOrderCreateSerializer(serializers.ModelSerializer):
             'notes',
             'items',
         ]
+        read_only_fields = ['id']
 
     @transaction.atomic
     def create(self, validated_data):
@@ -422,6 +424,7 @@ class ImportInvoiceCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ImportInvoice
         fields = [
+            'id',
             'invoice_number',
             'supplier_branch',
             'invoice_date',
@@ -437,6 +440,7 @@ class ImportInvoiceCreateSerializer(serializers.ModelSerializer):
             'items',
             'linked_po_ids',
         ]
+        read_only_fields = ['id']
 
     @transaction.atomic
     def create(self, validated_data):
