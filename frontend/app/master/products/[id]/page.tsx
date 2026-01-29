@@ -34,6 +34,7 @@ import {
 import { PartModalType } from '@/types/business';
 import { Product } from '@/types/product'
 import { Part, SuppliedItem } from '@/types/purchases'
+import { ManufacturingItem, manufacturingItemApi } from '@/services/apiManufacturing';
 import { productApi } from '@/services/apiProduct';
 import { purchasesApi } from '@/services/apiPurchases';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -53,9 +54,11 @@ export default function ProductDetailPage() {
     const [product, setProduct] = useState<Product | null>(null);
     const [parts, setParts] = useState<Part[]>([]);
     const [suppliedItems, setSuppliedItems] = useState<SuppliedItem[]>([]);
+    const [manufacturingItems, setManufacturingItems] = useState<ManufacturingItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [partsLoading, setPartsLoading] = useState(false);
     const [suppliedItemsLoading, setSuppliedItemsLoading] = useState(false);
+    const [manufacturingItemsLoading, setManufacturingItemsLoading] = useState(false);
     const [currentTab, setCurrentTab] = useState(0);
 
     // モーダル制御用の状態（部品）
@@ -125,14 +128,44 @@ export default function ProductDetailPage() {
         }
     }, [productId]);
 
+    const fetchManufacturingItems = useCallback(async () => {
+        if (!productId || isNaN(productId)) {
+            return;
+        }
+
+        setManufacturingItemsLoading(true);
+        try {
+            const data = await manufacturingItemApi.getItems({ product: productId });
+            setManufacturingItems(data);
+        } catch (error) {
+            console.error('製造品取得エラー:', error);
+            toast.error('製造品一覧の取得に失敗しました');
+        } finally {
+            setManufacturingItemsLoading(false);
+        }
+    }, [productId]);
+
     // useEffectで初期データ取得
     useEffect(() => {
         if (productId && !isNaN(productId)) {
             fetchProduct();
             fetchParts();
             fetchSuppliedItems();
+            fetchManufacturingItems();
         }
-    }, [productId, fetchProduct, fetchParts, fetchSuppliedItems]);
+    }, [productId, fetchProduct, fetchParts, fetchSuppliedItems, fetchManufacturingItems]);
+
+    // 製品タイプに基づくデフォルトタブの設定
+    useEffect(() => {
+        if (product) {
+            // 部品加工のみの場合は製造品タブをデフォルトに
+            if (product.is_parts_processing && !product.is_assembly) {
+                setCurrentTab(2); // 製造品タブ
+            } else {
+                setCurrentTab(0); // 購入品タブ
+            }
+        }
+    }, [product]);
 
     // 詳細表示
     const handleViewDetail = useCallback((partId: number) => {
@@ -454,6 +487,58 @@ export default function ProductDetailPage() {
         },
     ];
 
+    const manufacturingItemColumns: GridColDef[] = [
+        {
+            field: 'manufacturing_number',
+            headerName: '品番',
+            width: 150,
+            flex: 1,
+        },
+        {
+            field: 'manufacturing_name',
+            headerName: '製造品名',
+            width: 200,
+            flex: 1,
+        },
+        {
+            field: 'production_type_display',
+            headerName: '生産タイプ',
+            width: 120,
+        },
+        {
+            field: 'specification',
+            headerName: '仕様',
+            width: 180,
+            flex: 1,
+        },
+        {
+            field: 'standard_production_time',
+            headerName: '標準製造時間',
+            width: 130,
+            renderCell: (params) => {
+                if (!params.value) return '-';
+                return `${params.value}時間`;
+            },
+        },
+        {
+            field: 'unit',
+            headerName: '単位',
+            width: 80,
+        },
+        {
+            field: 'is_active',
+            headerName: 'ステータス',
+            width: 100,
+            renderCell: (params: GridRenderCellParams) => (
+                <Chip
+                    label={params.value ? '有効' : '無効'}
+                    color={params.value ? 'success' : 'default'}
+                    size="small"
+                />
+            ),
+        },
+    ];
+
     if (loading) {
         return (
             <AuthGuard>
@@ -558,7 +643,7 @@ export default function ProductDetailPage() {
                             <Divider sx={{ my: 2 }} />
                             <Box sx={{
                                 display: 'grid',
-                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                                gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
                                 gap: 3
                             }}>
                                 <Box>
@@ -575,6 +660,14 @@ export default function ProductDetailPage() {
                                     </Typography>
                                     <Typography variant="body1" fontWeight="medium">
                                         {suppliedItems.length}件
+                                    </Typography>
+                                </Box>
+                                <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                                        製造品数
+                                    </Typography>
+                                    <Typography variant="body1" fontWeight="medium">
+                                        {manufacturingItems.length}件
                                     </Typography>
                                 </Box>
                             </Box>
@@ -600,6 +693,7 @@ export default function ProductDetailPage() {
                         <Tabs value={currentTab} onChange={(_, newValue) => setCurrentTab(newValue)}>
                             <Tab label="購入品（部品）" />
                             <Tab label="支給品" />
+                            <Tab label="製造品" />
                         </Tabs>
                     </Box>
 
@@ -756,6 +850,59 @@ export default function ProductDetailPage() {
                         onSuccess={handleNewSuppliedItemSuccess}
                         productId={productId}
                     />
+
+                    {/* 製造品タブ */}
+                    {currentTab === 2 && (
+                        <>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                <Typography variant="h6">
+                                    製造品一覧
+                                </Typography>
+                                <Box>
+                                    <IconButton
+                                        onClick={fetchManufacturingItems}
+                                        sx={{ mr: 1 }}
+                                        disabled={manufacturingItemsLoading}
+                                        aria-label="更新"
+                                    >
+                                        <RefreshIcon />
+                                    </IconButton>
+                                </Box>
+                            </Box>
+
+                            <Paper sx={{ width: '100%' }}>
+                                <DataGrid
+                                    rows={manufacturingItems}
+                                    columns={manufacturingItemColumns}
+                                    loading={manufacturingItemsLoading}
+                                    pageSizeOptions={[10, 25, 50]}
+                                    initialState={{
+                                        pagination: {
+                                            paginationModel: { pageSize: 10, page: 0 },
+                                        },
+                                    }}
+                                    disableRowSelectionOnClick
+                                    autoHeight
+                                    sx={{
+                                        '& .MuiDataGrid-cell:focus': {
+                                            outline: 'none',
+                                        },
+                                        '& .MuiDataGrid-cell:focus-within': {
+                                            outline: 'none',
+                                        },
+                                    }}
+                                    localeText={{
+                                        noRowsLabel: '製造品がありません',
+                                        MuiTablePagination: {
+                                            labelDisplayedRows: ({ from, to, count }) =>
+                                                `${count}件中 ${from}～${to}件`,
+                                            labelRowsPerPage: '表示件数:',
+                                        },
+                                    }}
+                                />
+                            </Paper>
+                        </>
+                    )}
                 </Box>
             </Sidebar>
         </AuthGuard>

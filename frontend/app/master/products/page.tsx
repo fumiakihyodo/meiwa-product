@@ -22,6 +22,8 @@ import {
     Select,
     MenuItem,
     Grid,
+    FormControlLabel,
+    Checkbox,
 } from '@mui/material';
 import {
     DataGrid,
@@ -60,6 +62,7 @@ export default function ProductsPage() {
     // フィルター状態
     const [searchText, setSearchText] = useState('');
     const [selectedStatus, setSelectedStatus] = useState<string>('');
+    const [includeDiscontinued, setIncludeDiscontinued] = useState(false);
 
     const router = useRouter();
 
@@ -67,7 +70,7 @@ export default function ProductsPage() {
         fetchProducts();
     }, []);
 
-    const fetchProducts = async (params?: { status?: string; search?: string }) => {
+    const fetchProducts = async (params?: { status?: string; search?: string; include_discontinued?: boolean }) => {
         setLoading(true);
         try {
             const data = await productApi.getProducts(params);
@@ -101,16 +104,18 @@ export default function ProductsPage() {
 
 
     const handleSearch = (() => {
-        const params: ProductSearchParms = {};
+        const params: any = {};
         if (searchText) params.search = searchText;
         if (selectedStatus) params.status = selectedStatus;
+        params.include_discontinued = includeDiscontinued;
         fetchProducts(params);
     });
 
     const handleClearFilters = useCallback(() => {
         setSearchText('');
         setSelectedStatus('');
-        fetchProducts();
+        setIncludeDiscontinued(false);
+        fetchProducts({ include_discontinued: false });
     }, []);
 
     const getStatusChip = (status: ProductStatus) => {
@@ -182,6 +187,19 @@ export default function ProductsPage() {
             field: 'parts_count',
             headerName: '部品数',
             width: 80,
+            type: 'number',
+            align: 'center',
+            headerAlign: 'center',
+            renderCell: (params) => (
+                <Typography variant="body2" fontWeight="medium">
+                    {params.value || 0}
+                </Typography>
+            ),
+        },
+        {
+            field: 'manufacturing_items_count',
+            headerName: '製造品数',
+            width: 90,
             type: 'number',
             align: 'center',
             headerAlign: 'center',
@@ -318,6 +336,24 @@ export default function ProductsPage() {
                                         クリア
                                     </Button>
                                 </Box>
+                            </Grid>
+                            <Grid item xs={12}>
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={includeDiscontinued}
+                                            onChange={(e) => {
+                                                setIncludeDiscontinued(e.target.checked);
+                                                const params: any = {};
+                                                if (searchText) params.search = searchText;
+                                                if (selectedStatus) params.status = selectedStatus;
+                                                params.include_discontinued = e.target.checked;
+                                                fetchProducts(params);
+                                            }}
+                                        />
+                                    }
+                                    label="廃盤を表示する"
+                                />
                             </Grid>
                         </Grid>
                     </Paper>

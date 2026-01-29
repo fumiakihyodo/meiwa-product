@@ -37,31 +37,40 @@ class ProductListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        """クエリセットを取得（部品数も含む）"""
+        """クエリセットを取得（部品数・製造品数も含む）"""
         queryset = Product.objects.annotate(
-            parts_count=Count('parts', filter=Q(parts__is_active=True))
+            parts_count=Count('parts', filter=Q(parts__is_active=True)),
+            manufacturing_items_count=Count('manufacturing_items', filter=Q(manufacturing_items__is_active=True))
         ).select_related('created_by', 'customer_branch__customer')
-        
+
         # ステータスフィルタリング
+        # デフォルトでは ACTIVE と DEVELOPMENT のみ表示
         status_filter = self.request.query_params.get('status', None)
+        include_discontinued = self.request.query_params.get('include_discontinued', 'false').lower() == 'true'
+
         if status_filter:
+            # 明示的にステータスが指定された場合はそれを使用
             queryset = queryset.filter(status=status_filter)
-        
+        elif not include_discontinued:
+            # 廃盤を含めない場合（デフォルト）
+            queryset = queryset.filter(status__in=['ACTIVE', 'DEVELOPMENT'])
+        # include_discontinued=true の場合は何もフィルタしない（全て表示）
+
         # CustomerBranchフィルタリング
         customer_branch_id = self.request.query_params.get('customer_branch', None)
         if customer_branch_id:
             queryset = queryset.filter(customer_branch_id=customer_branch_id)
-        
+
         # Customerフィルタリング（顧客単位での検索）
         customer_id = self.request.query_params.get('customer', None)
         if customer_id:
             queryset = queryset.filter(customer_branch__customer_id=customer_id)
-        
+
         # Branch typeフィルタリング
         branch_type = self.request.query_params.get('branch_type', None)
         if branch_type:
             queryset = queryset.filter(customer_branch__branch_type=branch_type)
-        
+
         # 検索
         search = self.request.query_params.get('search', None)
         if search:
@@ -72,7 +81,7 @@ class ProductListCreateView(generics.ListCreateAPIView):
                 Q(customer_branch__customer__company_name__icontains=search) |
                 Q(customer_branch__branch_name__icontains=search)
             )
-        
+
         return queryset.order_by('-created_at')
 
     def get_serializer_class(self):
@@ -93,11 +102,13 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         """クエリセットを取得"""
         return Product.objects.annotate(
-            parts_count=Count('parts', filter=Q(parts__is_active=True))
+            parts_count=Count('parts', filter=Q(parts__is_active=True)),
+            manufacturing_items_count=Count('manufacturing_items', filter=Q(manufacturing_items__is_active=True))
         ).select_related(
             'created_by', 'customer_branch__customer'
         ).prefetch_related(
-            'parts__supplier_branch__supplier'
+            'parts__supplier_branch__supplier',
+            'manufacturing_items'
         )
 
     def get_serializer_class(self):

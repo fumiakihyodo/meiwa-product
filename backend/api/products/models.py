@@ -49,6 +49,18 @@ class Product(models.Model):
         help_text='製品詳細説明'
     )
 
+    # 製品種別
+    is_assembly = models.BooleanField(
+        default=False,
+        verbose_name='組立',
+        help_text='組立製品かどうか'
+    )
+    is_parts_processing = models.BooleanField(
+        default=False,
+        verbose_name='部品加工',
+        help_text='部品加工製品かどうか'
+    )
+
     # ステータス
     class StatusChoices(models.TextChoices):
         ACTIVE = 'ACTIVE', '有効'
@@ -87,6 +99,8 @@ class Product(models.Model):
             models.Index(fields=['created_at']),
             models.Index(fields=['customer_branch']),
             models.Index(fields=['model_info']),
+            models.Index(fields=['is_assembly']),
+            models.Index(fields=['is_parts_processing']),
         ]
 
     def __str__(self):

@@ -15,7 +15,10 @@ export interface Product {
     model_info?: string;
     description?: string;
     status: ProductStatus;
+    is_assembly?: boolean;
+    is_parts_processing?: boolean;
     parts_count?: number;
+    manufacturing_items_count?: number;
     parts?: Part[];
     customer: string;
     customer_branch?: number;
@@ -35,6 +38,8 @@ export interface ProductCreateData {
     model_info?: string;
     description?: string;
     status?: ProductStatus;
+    is_assembly?: boolean;
+    is_parts_processing?: boolean;
     customer?: string;
     customer_branch?: number;
 }

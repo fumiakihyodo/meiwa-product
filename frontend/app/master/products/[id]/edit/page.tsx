@@ -21,6 +21,8 @@ import {
     RadioGroup,
     FormControlLabel,
     FormLabel,
+    Checkbox,
+    FormGroup,
 } from '@mui/material';
 import {
     ArrowBack as ArrowBackIcon,
@@ -74,6 +76,8 @@ export default function ProductFormPage() {
             product_name: '',
             description: '',
             status: ProductStatus.ACTIVE,
+            is_assembly: false,
+            is_parts_processing: false,
             customer: undefined,
             customer_branch: undefined,
         },
@@ -155,6 +159,8 @@ export default function ProductFormPage() {
                 product_name: data.product_name,
                 description: data.description || '',
                 status: data.status,
+                is_assembly: data.is_assembly || false,
+                is_parts_processing: data.is_parts_processing || false,
                 customer: data.customer || undefined,
                 customer_branch: data.customer_branch || undefined,
             });
@@ -334,6 +340,15 @@ export default function ProductFormPage() {
                                         {...register('product_number', {
                                             required: '製品品番は必須です',
                                         })}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                const nextInput = document.querySelector('input[name="product_name"]');
+                                                if (nextInput) {
+                                                    (nextInput as HTMLElement).focus();
+                                                }
+                                            }
+                                        }}
                                     />
                                 </Grid>
 
@@ -346,6 +361,15 @@ export default function ProductFormPage() {
                                         {...register('product_name', {
                                             required: '製品名は必須です',
                                         })}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                const nextInput = document.querySelector('textarea[name="description"]');
+                                                if (nextInput) {
+                                                    (nextInput as HTMLElement).focus();
+                                                }
+                                            }
+                                        }}
                                     />
                                 </Grid>
 
@@ -356,7 +380,75 @@ export default function ProductFormPage() {
                                         rows={4}
                                         label="説明"
                                         {...register('description')}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                // Focus the first checkbox
+                                                const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+                                                if (checkboxes.length > 0) {
+                                                    (checkboxes[0] as HTMLElement).focus();
+                                                }
+                                            }
+                                        }}
                                     />
+                                </Grid>
+
+                                <Grid item xs={12}>
+                                    <FormControl component="fieldset">
+                                        <FormLabel component="legend">製品種別</FormLabel>
+                                        <FormGroup row>
+                                            <Controller
+                                                name="is_assembly"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <FormControlLabel
+                                                        control={
+                                                            <Checkbox
+                                                                {...field}
+                                                                checked={field.value || false}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter') {
+                                                                        e.preventDefault();
+                                                                        // Focus the next checkbox
+                                                                        const nextCheckbox = document.querySelector('input[name="is_parts_processing"]');
+                                                                        if (nextCheckbox) {
+                                                                            (nextCheckbox as HTMLElement).focus();
+                                                                        }
+                                                                    }
+                                                                }}
+                                                            />
+                                                        }
+                                                        label="組立（Assembly）"
+                                                    />
+                                                )}
+                                            />
+                                            <Controller
+                                                name="is_parts_processing"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <FormControlLabel
+                                                        control={
+                                                            <Checkbox
+                                                                {...field}
+                                                                checked={field.value || false}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter') {
+                                                                        e.preventDefault();
+                                                                        // Focus the customer autocomplete
+                                                                        const customerInput = document.querySelector('input[placeholder*="カスタマー"]');
+                                                                        if (customerInput) {
+                                                                            (customerInput as HTMLElement).focus();
+                                                                        }
+                                                                    }
+                                                                }}
+                                                            />
+                                                        }
+                                                        label="部品加工（Parts Processing）"
+                                                    />
+                                                )}
+                                            />
+                                        </FormGroup>
+                                    </FormControl>
                                 </Grid>
 
                                 <Grid item xs={12} sm={6}>
