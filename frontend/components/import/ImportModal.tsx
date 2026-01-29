@@ -622,7 +622,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                         <Box sx={{ flex: 1, position: 'relative', bgcolor: 'grey.100' }}>
                                             {selectedFile.name.toLowerCase().endsWith('.pdf') ? (
                                                 <iframe
-                                                    src={filePreviewUrl}
+                                                    src={`${filePreviewUrl}#toolbar=0&navpanes=0&scrollbar=0`}
                                                     style={{
                                                         width: '100%',
                                                         height: '100%',

@@ -344,6 +344,7 @@ class ImportInvoiceListSerializer(serializers.ModelSerializer):
             'status',
             'status_display',
             'currency',
+            'transportation_fee',
             'total_amount',
             'total_items',
             'total_quantity',
@@ -392,6 +393,7 @@ class ImportInvoiceDetailSerializer(serializers.ModelSerializer):
             'subtotal',
             'tax_amount',
             'shipping_cost',
+            'transportation_fee',
             'total_amount',
             'items',
             'files',
@@ -429,6 +431,7 @@ class ImportInvoiceCreateSerializer(serializers.ModelSerializer):
             'subtotal',
             'tax_amount',
             'shipping_cost',
+            'transportation_fee',
             'total_amount',
             'notes',
             'items',
@@ -493,7 +496,12 @@ class ImportInvoiceCreateSerializer(serializers.ModelSerializer):
         subtotal = invoice.items.aggregate(total=Sum('amount'))['total'] or 0
         invoice.subtotal = subtotal
         if invoice.total_amount is None:
-            invoice.total_amount = subtotal + (invoice.tax_amount or 0) + (invoice.shipping_cost or 0)
+            invoice.total_amount = (
+                subtotal +
+                (invoice.tax_amount or 0) +
+                (invoice.shipping_cost or 0) +
+                (invoice.transportation_fee or 0)
+            )
         invoice.save(update_fields=['subtotal', 'total_amount'])
 
 
