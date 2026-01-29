@@ -530,10 +530,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     </Box>
                 ) : (
                     <Box sx={{ display: 'flex', height: '100%' }}>
-                        {/* 左側: ファイルプレビュー */}
+                        {/* 左側: ファイルプレビュー（拡大モード） */}
                         <Box
                             sx={{
-                                width: '35%',
+                                width: '55%',
                                 borderRight: 1,
                                 borderColor: 'divider',
                                 display: 'flex',
@@ -677,7 +677,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         </Box>
 
                         {/* 右側: フォーム */}
-                        <Box sx={{ width: '65%', display: 'flex', flexDirection: 'column' }}>
+                        <Box sx={{ width: '45%', display: 'flex', flexDirection: 'column' }}>
                             <Tabs
                                 value={activeTab}
                                 onChange={(_, newValue) => setActiveTab(newValue)}
