@@ -39,7 +39,7 @@ import {
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { ImportModal, ImportPOModal } from '@/components/import';
+import { ImportModal, ImportPOModal, InvoiceDetailModal, InvoiceTable } from '@/components/import';
 import {
     ImportPO,
     ImportInvoice,
@@ -105,8 +105,10 @@ export default function ImportPage() {
     // モーダル状態
     const [poModalOpen, setPoModalOpen] = useState(false);
     const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+    const [invoiceDetailModalOpen, setInvoiceDetailModalOpen] = useState(false);
     const [selectedPO, setSelectedPO] = useState<ImportPO | null>(null);
     const [selectedInvoice, setSelectedInvoice] = useState<ImportInvoice | null>(null);
+    const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
 
     // メニュー状態
     const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -472,94 +474,14 @@ export default function ImportPage() {
                                 インボイスがありません。「インボイス登録」ボタンから登録してください。
                             </Alert>
                         ) : (
-                            <TableContainer>
-                                <Table>
-                                    <TableHead>
-                                        <TableRow>
-                                            <TableCell>インボイス番号</TableCell>
-                                            <TableCell>サプライヤー</TableCell>
-                                            <TableCell>インボイス日</TableCell>
-                                            <TableCell>受領日</TableCell>
-                                            <TableCell align="right">品目数</TableCell>
-                                            <TableCell align="right">金額</TableCell>
-                                            <TableCell>紐付けPO</TableCell>
-                                            <TableCell>PO整合性</TableCell>
-                                            <TableCell>ステータス</TableCell>
-                                            <TableCell></TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {invoices.map((invoice) => {
-                                            // PO整合性チェック（簡易版）
-                                            // 実際のAPIでは、invoice.itemsとlinked_posを使ってバリデーションを行う
-                                            const hasLinkedPOs = invoice.linked_po_ids && invoice.linked_po_ids.length > 0;
-                                            const hasItems = invoice.items && invoice.items.length > 0;
-
-                                            // 簡易チェック: POが紐付いていて品目がある場合はOK
-                                            const validationStatus = hasLinkedPOs && hasItems ? 'success' : hasLinkedPOs ? 'warning' : 'default';
-                                            const validationLabel = hasLinkedPOs && hasItems ? 'OK' : hasLinkedPOs ? '確認中' : 'PO未指定';
-
-                                            return (
-                                                <TableRow key={invoice.id} hover>
-                                                    <TableCell>
-                                                        <Typography variant="body2" fontWeight="medium">
-                                                            {invoice.invoice_number}
-                                                        </Typography>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {invoice.supplier_name}
-                                                        {invoice.supplier_branch_name && (
-                                                            <Typography variant="caption" display="block" color="text.secondary">
-                                                                {invoice.supplier_branch_name}
-                                                            </Typography>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>{invoice.invoice_date}</TableCell>
-                                                    <TableCell>{invoice.received_date || '-'}</TableCell>
-                                                    <TableCell align="right">{invoice.total_items || 0}</TableCell>
-                                                    <TableCell align="right">
-                                                        {invoice.currency} {(invoice.total_amount || 0).toLocaleString()}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {hasLinkedPOs ? (
-                                                            <Chip
-                                                                label={`${invoice.linked_po_ids!.length}件`}
-                                                                size="small"
-                                                                variant="outlined"
-                                                            />
-                                                        ) : (
-                                                            '-'
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Chip
-                                                            label={validationLabel}
-                                                            size="small"
-                                                            color={validationStatus}
-                                                            variant={validationStatus === 'success' ? 'filled' : 'outlined'}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Chip
-                                                            label={ImportInvoiceStatusLabels[invoice.status]}
-                                                            size="small"
-                                                            color={getStatusColor(invoice.status)}
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <IconButton
-                                                            size="small"
-                                                            onClick={(e) => handleMenuOpen(e, 'invoice', invoice)}
-                                                        >
-                                                            <MoreVertIcon />
-                                                        </IconButton>
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
+                            <InvoiceTable
+                                invoices={invoices}
+                                onRowClick={(invoice) => {
+                                    setSelectedInvoiceId(invoice.id);
+                                    setInvoiceDetailModalOpen(true);
+                                }}
+                                onMenuClick={handleMenuOpen ? (e, invoice) => handleMenuOpen(e, 'invoice', invoice) : undefined}
+                            />
                         )}
                     </TabPanel>
 
@@ -620,6 +542,17 @@ export default function ImportPage() {
                     existingInvoice={selectedInvoice}
                     availablePOs={purchaseOrders}
                     onRefresh={handleRefresh}
+                />
+
+                {/* インボイス詳細モーダル */}
+                <InvoiceDetailModal
+                    open={invoiceDetailModalOpen}
+                    onClose={() => {
+                        setInvoiceDetailModalOpen(false);
+                        setSelectedInvoiceId(null);
+                    }}
+                    invoiceId={selectedInvoiceId}
+                    onUpdate={loadData}
                 />
             </Box>
         </MainLayout>

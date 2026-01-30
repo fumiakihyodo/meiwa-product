@@ -332,6 +332,10 @@ class ImportInvoiceListSerializer(serializers.ModelSerializer):
     total_quantity = serializers.IntegerField(read_only=True)
     linked_po_ids = serializers.ListField(read_only=True)
     linked_po_count = serializers.SerializerMethodField()
+    has_waybill = serializers.SerializerMethodField()
+    has_invoice_file = serializers.SerializerMethodField()
+    has_bill_file = serializers.SerializerMethodField()
+    file_counts = serializers.SerializerMethodField()
 
     class Meta:
         model = ImportInvoice
@@ -352,6 +356,10 @@ class ImportInvoiceListSerializer(serializers.ModelSerializer):
             'total_quantity',
             'linked_po_ids',
             'linked_po_count',
+            'has_waybill',
+            'has_invoice_file',
+            'has_bill_file',
+            'file_counts',
             'registered_as_semi_finished',
             'notes',
             'created_at',
@@ -360,6 +368,28 @@ class ImportInvoiceListSerializer(serializers.ModelSerializer):
 
     def get_linked_po_count(self, obj):
         return obj.linked_pos.count()
+
+    def get_has_waybill(self, obj):
+        """Waybillファイルが登録されているかチェック"""
+        return obj.files.filter(file_type='waybill').exists()
+
+    def get_has_invoice_file(self, obj):
+        """Invoiceファイルが登録されているかチェック"""
+        return obj.files.filter(file_type='invoice').exists()
+
+    def get_has_bill_file(self, obj):
+        """請求書ファイルが登録されているかチェック"""
+        return obj.files.filter(file_type='bill').exists()
+
+    def get_file_counts(self, obj):
+        """各ファイルタイプの登録数を返す"""
+        files = obj.files.all()
+        return {
+            'waybill': files.filter(file_type='waybill').count(),
+            'invoice': files.filter(file_type='invoice').count(),
+            'bill': files.filter(file_type='bill').count(),
+            'total': files.count(),
+        }
 
 
 class ImportInvoiceDetailSerializer(serializers.ModelSerializer):

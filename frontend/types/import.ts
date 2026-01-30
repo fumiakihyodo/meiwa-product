@@ -128,6 +128,14 @@ export interface ImportFile {
     uploaded_by_name?: string;
 }
 
+// ファイル登録数の情報
+export interface FileCountInfo {
+    waybill: number;
+    invoice: number;
+    bill: number;
+    total: number;
+}
+
 // インボイス
 export interface ImportInvoice {
     id: number;
@@ -141,6 +149,7 @@ export interface ImportInvoice {
     status_display?: string;
     linked_pos?: ImportPO[];
     linked_po_ids?: number[];
+    linked_po_count?: number;
     files?: ImportFile[];
     items?: ImportInvoiceItem[];
     total_items?: number;
@@ -153,6 +162,11 @@ export interface ImportInvoice {
     updated_at: string;
     created_by?: number;
     created_by_name?: string;
+    // ファイル登録有無
+    has_waybill?: boolean;
+    has_invoice_file?: boolean;
+    has_bill_file?: boolean;
+    file_counts?: FileCountInfo;
 }
 
 // インボイス明細

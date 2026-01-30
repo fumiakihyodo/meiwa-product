@@ -3,3 +3,5 @@
 
 export { ImportPOModal } from './ImportPOModal';
 export { ImportModal } from './ImportModal';
+export { InvoiceDetailModal } from './InvoiceDetailModal';
+export { InvoiceTable } from './InvoiceTable';
