@@ -10,10 +10,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name="supplier",
-            name="notes",
-        ),
         migrations.AddField(
             model_name="supplier",
             name="currency",
