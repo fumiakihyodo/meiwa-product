@@ -102,6 +102,25 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
 
     // Watch supplier_type to toggle form
     const supplierType = watch('supplier_type');
+    const currentCurrency = watch('currency');
+
+    // supplier_typeが変更されたときに通貨のデフォルト値を設定
+    useEffect(() => {
+        if (!isEditMode && !isDuplicateMode) {
+            // 新規作成モードのみ
+            if (supplierType === 'overseas' && currentCurrency === Currency.JPY) {
+                reset((formValues) => ({
+                    ...formValues,
+                    currency: Currency.USD,
+                }));
+            } else if (supplierType === 'domestic' && currentCurrency !== Currency.JPY) {
+                reset((formValues) => ({
+                    ...formValues,
+                    currency: Currency.JPY,
+                }));
+            }
+        }
+    }, [supplierType, currentCurrency, isEditMode, isDuplicateMode, reset]);
 
     // 編集モード時に海外サプライヤーの拠点・担当者情報を取得
     useEffect(() => {

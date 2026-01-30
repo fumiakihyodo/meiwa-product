@@ -49,7 +49,13 @@ class Supplier(models.Model):
         verbose_name='取引通貨',
         help_text='このサプライヤーとの取引で使用する通貨'
     )
- 
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name='備考'
+    )
 
     is_active = models.BooleanField(
         default=True,
