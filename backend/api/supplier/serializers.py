@@ -6,9 +6,11 @@ from api.supplier.models import Supplier, SupplierBranch, SupplierContact
 
 class SupplierContactListSerializer(serializers.ModelSerializer):
     """サプライヤー担当者一覧用のシリアライザー"""
-    branch_name = serializers.CharField(source='branch.branch_name', read_only=True)
-    supplier_name = serializers.CharField(source='branch.supplier.company_name', read_only=True)
-    
+    branch_name = serializers.CharField(
+        source='branch.branch_name', read_only=True)
+    supplier_name = serializers.CharField(
+        source='branch.supplier.company_name', read_only=True)
+
     class Meta:
         model = SupplierContact
         fields = [
@@ -21,8 +23,10 @@ class SupplierContactListSerializer(serializers.ModelSerializer):
 
 class SupplierContactDetailSerializer(serializers.ModelSerializer):
     """サプライヤー担当者詳細用のシリアライザー"""
-    branch_name = serializers.CharField(source='branch.branch_name', read_only=True)
-    supplier_name = serializers.CharField(source='branch.supplier.company_name', read_only=True)
+    branch_name = serializers.CharField(
+        source='branch.branch_name', read_only=True)
+    supplier_name = serializers.CharField(
+        source='branch.supplier.company_name', read_only=True)
     display_name_with_company = serializers.CharField(read_only=True)
 
     class Meta:
@@ -56,26 +60,28 @@ class SupplierContactCreateUpdateSerializer(serializers.ModelSerializer):
         email = attrs.get('email')
         phone = attrs.get('phone_number')
         mobile = attrs.get('mobile_number')
-        
+
         if not email and not phone and not mobile:
             raise serializers.ValidationError(
                 "メールアドレスまたは電話番号のいずれかは必須です"
             )
-        
+
         return attrs
 
 
 class SupplierBranchListSerializer(serializers.ModelSerializer):
     """サプライヤー拠点一覧用のシリアライザー"""
-    supplier_name = serializers.CharField(source='supplier.company_name', read_only=True)
+    supplier_name = serializers.CharField(
+        source='supplier.company_name', read_only=True)
+    supplier_currency = serializers.CharField(source='supplier.currency', read_only=True)
     display_name = serializers.CharField(read_only=True)
     primary_contact = serializers.SerializerMethodField()
-
+ 
     class Meta:
         model = SupplierBranch
         fields = [
             'id', 'branch_code', 'branch_name', 'branch_type',
-            'supplier', 'supplier_name', 'display_name',
+            'supplier', 'supplier_name', 'supplier_currency', 'display_name',
             'phone_number', 'email', 'address',
             'is_active', 'primary_contact'
         ]
@@ -95,20 +101,22 @@ class SupplierBranchListSerializer(serializers.ModelSerializer):
 
 class SupplierBranchDetailSerializer(serializers.ModelSerializer):
     """サプライヤー拠点詳細用のシリアライザー（担当者・部品情報を含む）"""
-    supplier_name = serializers.CharField(source='supplier.company_name', read_only=True)
+    supplier_name = serializers.CharField(
+        source='supplier.company_name', read_only=True)
+    supplier_currency = serializers.CharField(source='supplier.currency', read_only=True)
     display_name = serializers.CharField(read_only=True)
     full_address = serializers.CharField(read_only=True)
-    
+ 
     # 紐づく担当者一覧
     contacts = SupplierContactListSerializer(many=True, read_only=True)
-    
+ 
     # 紐づく部品情報
     parts = serializers.SerializerMethodField()
-
+ 
     class Meta:
         model = SupplierBranch
         fields = [
-            'id', 'supplier', 'supplier_name', 'branch_code',
+            'id', 'supplier', 'supplier_name', 'supplier_currency', 'branch_code',
             'branch_name', 'branch_type', 'display_name',
             'postal_code', 'address', 'full_address',
             'phone_number', 'fax_number', 'email',
@@ -160,7 +168,7 @@ class SupplierListSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = [
             'id', 'supplier_code', 'company_name', 'website',
-            'is_active', 'active_branches_count',
+            'currency', 'is_active', 'active_branches_count',
             'created_at', 'updated_at'
         ]
 
@@ -168,7 +176,7 @@ class SupplierListSerializer(serializers.ModelSerializer):
 class SupplierDetailSerializer(serializers.ModelSerializer):
     """サプライヤー詳細用のシリアライザー（拠点情報を含む）"""
     active_branches_count = serializers.IntegerField(read_only=True)
-    
+
     # 紐づく拠点一覧
     branches = SupplierBranchListSerializer(many=True, read_only=True)
 
@@ -176,7 +184,7 @@ class SupplierDetailSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = [
             'id', 'supplier_code', 'company_name', 'website',
-            'notes', 'is_active', 'active_branches_count',
+            'currency', 'notes', 'is_active', 'active_branches_count',
             'branches', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -189,7 +197,7 @@ class SupplierCreateUpdateSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = [
             'supplier_code', 'company_name', 'website',
-            'notes', 'is_active'
+            'currency', 'notes', 'is_active'
         ]
         extra_kwargs = {
             'supplier_code': {'required': True},
@@ -226,19 +234,29 @@ class OverseasSupplierCreateSerializer(serializers.Serializer):
     supplier_code = serializers.CharField(max_length=50, required=True)
     company_name = serializers.CharField(max_length=200, required=True)
     website = serializers.URLField(required=False, allow_blank=True)
+    currency = serializers.ChoiceField(
+        choices=Supplier.Currency.choices,
+        default=Supplier.Currency.USD,
+        required=False
+    )
 
     # 拠点情報（海外は1拠点のみ "Main Office"）
     address = serializers.CharField(required=True, allow_blank=False)
-    postal_code = serializers.CharField(max_length=10, required=False, allow_blank=True)
-    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    postal_code = serializers.CharField(
+        max_length=10, required=False, allow_blank=True)
+    phone_number = serializers.CharField(
+        max_length=20, required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
 
     # 担当者情報
     contact_name = serializers.CharField(max_length=100, required=True)
     contact_email = serializers.EmailField(required=False, allow_blank=True)
-    contact_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    contact_department = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    contact_position = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    contact_phone = serializers.CharField(
+        max_length=20, required=False, allow_blank=True)
+    contact_department = serializers.CharField(
+        max_length=100, required=False, allow_blank=True)
+    contact_position = serializers.CharField(
+        max_length=100, required=False, allow_blank=True)
 
     # その他
     notes = serializers.CharField(required=False, allow_blank=True)

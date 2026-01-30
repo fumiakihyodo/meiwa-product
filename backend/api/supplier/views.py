@@ -307,6 +307,7 @@ class OverseasSupplierCreateView(APIView):
                         company_name=data['company_name'],
                         website=data.get('website') or None,
                         notes=overseas_notes,
+                        currency=data.get('currency', Supplier.Currency.USD),
                         is_active=data.get('is_active', True)
                     )
                 except Exception as e:

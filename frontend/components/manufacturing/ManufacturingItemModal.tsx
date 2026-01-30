@@ -47,7 +47,7 @@ import {
     ProductionType,
 } from '@/services/apiManufacturing';
 import { Product } from '@/types/product';
-import { SupplierBranch } from '@/types/supplier';
+import { SupplierBranch, CurrencyLabels } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
 import toast from 'react-hot-toast';
 
@@ -71,6 +71,7 @@ interface FormData {
     specification: string;
     unit: string;
     standard_production_time?: number;
+    purchase_price?: number;
     is_active: boolean;
     domestic_stock: number;
     overseas_stock: number;
@@ -114,6 +115,7 @@ export default function ManufacturingItemModal({
         specification: '',
         unit: '個',
         standard_production_time: undefined,
+        purchase_price: undefined,
         is_active: true,
         domestic_stock: 0,
         overseas_stock: 0,
@@ -185,6 +187,7 @@ export default function ManufacturingItemModal({
                 specification: item.specification || '',
                 unit: item.unit,
                 standard_production_time: item.standard_production_time,
+                purchase_price: item.purchase_price,
                 is_active: item.is_active,
                 domestic_stock: item.domestic_stock || 0,
                 overseas_stock: item.overseas_stock || 0,
@@ -317,6 +320,7 @@ export default function ManufacturingItemModal({
                 specification: formData.specification,
                 unit: formData.unit,
                 standard_production_time: formData.standard_production_time,
+                purchase_price: formData.purchase_price,
                 is_active: formData.is_active,
                 domestic_stock: formData.domestic_stock,
                 overseas_stock: formData.overseas_stock,
@@ -594,6 +598,25 @@ export default function ManufacturingItemModal({
                             inputProps={{ min: 0, step: 0.5 }}
                         />
                     </Grid>
+
+
+                    {/* 仕入れ単価（海外生産または両方の場合のみ表示） */}
+                    {(formData.production_type === 'overseas' || formData.production_type === 'both') && (
+                        <Grid item xs={12} sm={6}>
+                            <TextField
+                                label={`仕入れ単価${selectedOverseasSupplier?.supplier_currency ? ` (${CurrencyLabels[selectedOverseasSupplier.supplier_currency]})` : ''}`}
+                                type="number"
+                                value={formData.purchase_price ?? ''}
+                                onChange={(e) => handleChange('purchase_price', e.target.value ? Number(e.target.value) : undefined)}
+                                onKeyDown={(e) => handleKeyDown(e, 6)}
+                                inputRef={setInputRef(6)}
+                                fullWidth
+                                disabled={isViewMode}
+                                inputProps={{ min: 0, step: 0.01 }}
+                                helperText={selectedOverseasSupplier ? `海外サプライヤー: ${selectedOverseasSupplier.supplier_name}` : '海外サプライヤーを選択してください'}
+                            />
+                        </Grid>
+                    )}
                     <Grid item xs={12} sm={6}>
                         <FormControlLabel
                             control={

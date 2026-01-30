@@ -18,6 +18,7 @@ export interface ManufacturingItem {
     specification?: string;
     unit: string;
     standard_production_time?: number;
+    purchase_price?: number;
     is_active: boolean;
     notes?: string;
     // 拠点別在庫情報
@@ -42,6 +43,7 @@ export interface ManufacturingItemCreate {
     specification?: string;
     unit?: string;
     standard_production_time?: number;
+    purchase_price?: number;
     is_active?: boolean;
     // 拠点別在庫情報
     domestic_stock?: number;

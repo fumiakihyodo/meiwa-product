@@ -18,9 +18,12 @@ import {
     RadioGroup,
     FormControl,
     FormLabel,
+    MenuItem,
+    Select,
+    InputLabel,
 } from '@mui/material';
 import { useForm, Controller } from 'react-hook-form';
-import { Supplier, SupplierCreateData, SupplierUpdateData, OverseasSupplierCreateData, SupplierBranch, SupplierContact } from '@/types/supplier';
+import { Supplier, SupplierCreateData, SupplierUpdateData, OverseasSupplierCreateData, SupplierBranch, SupplierContact, Currency, CurrencyLabels } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
@@ -38,6 +41,7 @@ interface SupplierFormData {
     supplier_code: string;
     company_name: string;
     website?: string;
+    currency: Currency;
     notes?: string;
     is_active: boolean;
     // 海外サプライヤー用フィールド
@@ -81,6 +85,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
             supplier_code: '',
             company_name: '',
             website: '',
+            currency: Currency.JPY,
             notes: '',
             is_active: true,
             address: '',
@@ -143,6 +148,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                 supplier_code: editData.supplier_code,
                 company_name: editData.company_name,
                 website: editData.website || '',
+                currency: editData.currency || Currency.JPY,
                 notes: editData.notes?.replace('[OVERSEAS]\n', '').replace('[OVERSEAS]', '') || '',
                 is_active: editData.is_active,
                 // 海外サプライヤーの場合、拠点・担当者情報もセット
@@ -163,6 +169,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                 supplier_code: '',
                 company_name: duplicateFrom.company_name,
                 website: duplicateFrom.website || '',
+                currency: duplicateFrom.currency || Currency.JPY,
                 notes: duplicateFrom.notes?.replace('[OVERSEAS]\n', '').replace('[OVERSEAS]', '') || '',
                 is_active: true,
             });
@@ -173,6 +180,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                 supplier_code: '',
                 company_name: '',
                 website: '',
+                currency: Currency.JPY,
                 notes: '',
                 is_active: true,
                 address: '',
@@ -201,6 +209,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                         supplier_code: data.supplier_code,
                         company_name: data.company_name,
                         website: data.website || undefined,
+                        currency: data.currency,
                         notes: data.notes ? `[OVERSEAS]\n${data.notes}` : '[OVERSEAS]',
                         is_active: data.is_active,
                     };
@@ -236,6 +245,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                         supplier_code: data.supplier_code,
                         company_name: data.company_name,
                         website: data.website || undefined,
+                        currency: data.currency,
                         address: data.address!,
                         postal_code: data.postal_code || undefined,
                         phone_number: data.phone_number || undefined,
@@ -258,6 +268,7 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                     supplier_code: data.supplier_code,
                     company_name: data.company_name,
                     website: data.website || undefined,
+                    currency: data.currency,
                     notes: data.notes || undefined,
                     is_active: data.is_active,
                 };
@@ -300,8 +311,8 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                         }
                         // バリデーションエラーの場合（フィールドごとのエラー）
                         else if (errorData.supplier_code || errorData.company_name || errorData.address ||
-                                 errorData.contact_name || errorData.contact_email || errorData.contact_phone ||
-                                 errorData.non_field_errors) {
+                            errorData.contact_name || errorData.contact_email || errorData.contact_phone ||
+                            errorData.non_field_errors) {
                             const errors = [];
 
                             // 各フィールドのエラーを収集
@@ -389,11 +400,11 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                     borderColor: 'divider',
                     pb: 2,
                 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1}}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {dialogTitle}
                     </Box>
                 </DialogTitle>
-            <DialogContent sx={{ pt: 3, mt: 3 }}>
+                <DialogContent sx={{ pt: 3, mt: 3 }}>
                     <Grid container spacing={3}>
                         {/* モード説明 */}
                         {isDuplicateMode && (
@@ -458,6 +469,32 @@ const SupplierFormModalComponent: React.FC<SupplierFormModalProps> = ({
                                 })}
                                 onKeyDown={handleKeyDown}
                             />
+                        </Grid>
+
+                                                {/* 取引通貨 */}
+                        <Grid item xs={12} sm={6}>
+                            <FormControl fullWidth>
+                                <InputLabel id="currency-label">取引通貨 *</InputLabel>
+                                <Controller
+                                    name="currency"
+                                    control={control}
+                                    rules={{ required: '取引通貨は必須です' }}
+                                    render={({ field }) => (
+                                        <Select
+                                            {...field}
+                                            labelId="currency-label"
+                                            label="取引通貨 *"
+                                            error={!!errors.currency}
+                                        >
+                                            {Object.entries(CurrencyLabels).map(([key, label]) => (
+                                                <MenuItem key={key} value={key}>
+                                                    {label}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    )}
+                                />
+                            </FormControl>
                         </Grid>
 
                         {/* ウェブサイト（国内サプライヤーのみ） */}

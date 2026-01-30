@@ -47,12 +47,6 @@ import { Sidebar } from '@/components/Sidebar';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 
-//製品検索のパラメーター型を定義
-type ProductSearchParms = {
-    search?: string;
-    status?: string;
-}
-
 export default function ProductsPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);

@@ -1,15 +1,37 @@
 import { Part } from './purchases'
 
 // Supplier related types
+export enum Currency {
+    JPY = 'JPY',
+    USD = 'USD',
+    EUR = 'EUR',
+    CNY = 'CNY',
+    KRW = 'KRW',
+    TWD = 'TWD',
+    THB = 'THB',
+    VND = 'VND',
+}
+
+export const CurrencyLabels: Record<Currency, string> = {
+    [Currency.JPY]: '日本円 (¥)',
+    [Currency.USD]: '米ドル ($)',
+    [Currency.EUR]: 'ユーロ (€)',
+    [Currency.CNY]: '中国元 (¥)',
+    [Currency.KRW]: '韓国ウォン (₩)',
+    [Currency.TWD]: '台湾ドル (NT$)',
+    [Currency.THB]: 'タイバーツ (฿)',
+    [Currency.VND]: 'ベトナムドン (₫)',
+};
+
+// Supplier related types
 export interface Supplier {
     id: number;
     supplier_code: string;
     company_name: string;
     website?: string;
+    currency: Currency;
     notes?: string;
     is_active: boolean;
-    active_branches_count?: number;
-    branches?: SupplierBranch[];
     created_at: string;
     updated_at: string;
 }
@@ -27,6 +49,7 @@ export interface SupplierBranch {
     id: number;
     supplier: number;
     supplier_name?: string;
+    supplier_currency?: Currency;
     branch_code: string;
     branch_name: string;
     branch_type: BranchType;
@@ -91,6 +114,7 @@ export interface SupplierCreateData {
     supplier_code: string;
     company_name: string;
     website?: string;
+    currency?: Currency;
     notes?: string;
     is_active?: boolean;
 }
@@ -138,6 +162,7 @@ export interface OverseasSupplierCreateData {
     supplier_code: string;
     company_name: string;
     website?: string;
+    currency?: Currency;
 
     // 拠点情報（海外は1拠点のみ "Main Office"）
     address: string;

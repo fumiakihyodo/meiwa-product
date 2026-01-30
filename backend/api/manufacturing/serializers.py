@@ -99,7 +99,7 @@ class ManufacturingItemListSerializer(serializers.ModelSerializer):
             'id', 'manufacturing_number', 'manufacturing_name',
             'production_type', 'production_type_display',
             'product', 'product_number', 'product_name',
-            'unit', 'standard_production_time', 'is_active',
+            'unit', 'standard_production_time', 'purchase_price', 'is_active',
             'production_plan_count',
             'overseas_supplier_branch', 'overseas_supplier_branch_name',
             'domestic_stock', 'overseas_stock', 'total_stock', 'current_inventory', 'text_notes',
@@ -161,7 +161,7 @@ class ManufacturingItemDetailSerializer(serializers.ModelSerializer):
             'id', 'manufacturing_number', 'manufacturing_name',
             'production_type', 'production_type_display',
             'product', 'product_number', 'product_name',
-            'specification', 'unit', 'standard_production_time',
+            'specification', 'unit', 'standard_production_time', 'purchase_price',
             'is_active', 'notes',
             'overseas_supplier_branch', 'overseas_supplier_branch_name',
             'domestic_stock', 'overseas_stock', 'total_stock', 'text_notes',
@@ -205,13 +205,14 @@ class ManufacturingItemCreateUpdateSerializer(serializers.ModelSerializer):
             'production_type',
             'overseas_supplier_branch',
             'product', 'specification', 'unit',
-            'standard_production_time', 'is_active', 'notes',
+            'standard_production_time', 'purchase_price', 'is_active', 'notes',
             'domestic_stock', 'overseas_stock', 'text_notes'
         ]
         extra_kwargs = {
             'manufacturing_number': {'required': True},
             'manufacturing_name': {'required': True},
             'overseas_supplier_branch': {'required': False, 'allow_null': True},
+            'purchase_price': {'required': False, 'allow_null': True},
             'notes': {'required': False, 'read_only': True},
         }
 

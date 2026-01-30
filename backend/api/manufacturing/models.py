@@ -81,6 +81,17 @@ class ManufacturingItem(models.Model):
         verbose_name="標準製造時間（時間）",
         help_text="1個あたりの標準製造時間"
     )
+     
+    # 仕入れ単価（海外生産または国内・海外両方の場合）
+    purchase_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        verbose_name="仕入れ単価",
+        help_text="海外サプライヤーからの仕入れ単価（海外生産の場合）"
+    )
 
     # ステータス
     is_active = models.BooleanField(

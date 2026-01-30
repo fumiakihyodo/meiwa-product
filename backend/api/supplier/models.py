@@ -9,6 +9,16 @@ from django.core.exceptions import ValidationError
 class Supplier(models.Model):
     """サプライヤーモデル(最上位)"""
 
+    class Currency(models.TextChoices):
+        JPY = 'JPY', '日本円 (¥)'
+        USD = 'USD', '米ドル ($)'
+        EUR = 'EUR', 'ユーロ (€)'
+        CNY = 'CNY', '中国元 (¥)'
+        KRW = 'KRW', '韓国ウォン (₩)'
+        TWD = 'TWD', '台湾ドル (NT$)'
+        THB = 'THB', 'タイバーツ (฿)'
+        VND = 'VND', 'ベトナムドン (₫)'
+ 
     # 識別情報
     supplier_code = models.CharField(
         max_length=50,
@@ -16,7 +26,7 @@ class Supplier(models.Model):
         verbose_name='サプライヤーコード',
         help_text='例: SUP001',
     )
-
+ 
     # 企業情報
     company_name = models.CharField(
         max_length=200,
@@ -30,11 +40,16 @@ class Supplier(models.Model):
         null=True,
         verbose_name='ウェブサイト',
     )
-    notes = models.TextField(
-        blank=True,
-        null=True,
-        verbose_name='備考'
+ 
+    # 取引通貨（海外サプライヤー用）
+    currency = models.CharField(
+        max_length=3,
+        choices=Currency.choices,
+        default=Currency.JPY,
+        verbose_name='取引通貨',
+        help_text='このサプライヤーとの取引で使用する通貨'
     )
+ 
 
     is_active = models.BooleanField(
         default=True,
