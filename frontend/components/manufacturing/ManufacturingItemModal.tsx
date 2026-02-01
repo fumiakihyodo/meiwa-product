@@ -832,7 +832,7 @@ export default function ManufacturingItemModal({
             <DialogActions>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
                     <Box>
-                        {manufacturingItem && (
+                        {item && (
                             <Button
                                 startIcon={<HistoryIcon />}
                                 onClick={handleOpenPriceList}
@@ -859,11 +859,11 @@ export default function ManufacturingItemModal({
             </Dialog>
 
             {/* 価格履歴モーダル */}
-            {manufacturingItem && (
+            {item && (
                 <ManufacturingItemPriceListModal
                     open={priceListOpen}
                     onClose={handleClosePriceList}
-                    manufacturingItem={manufacturingItem}
+                    manufacturingItem={item}
                     onSuccess={onSuccess}
                 />
             )}
