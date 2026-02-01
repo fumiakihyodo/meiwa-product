@@ -212,7 +212,8 @@ export default function MaterialModal({
     const title = mode === 'create' ? '新規材料登録' : mode === 'edit' ? '材料編集' : '材料詳細';
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <>
+            <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
             <DialogTitle>{title}</DialogTitle>
             <DialogContent dividers>
                 <Grid container spacing={2}>
@@ -462,16 +463,17 @@ export default function MaterialModal({
                     </Box>
                 </Box>
             </DialogActions>
-        </Dialog>
+            </Dialog>
 
-        {/* 価格履歴モーダル */}
-        {material && (
-            <MaterialPriceListModal
-                open={priceListOpen}
-                onClose={handleClosePriceList}
-                material={material}
-                onSuccess={onSuccess}
-            />
-        )}
+            {/* 価格履歴モーダル */}
+            {material && (
+                <MaterialPriceListModal
+                    open={priceListOpen}
+                    onClose={handleClosePriceList}
+                    material={material}
+                    onSuccess={onSuccess}
+                />
+            )}
+        </>
     );
 }

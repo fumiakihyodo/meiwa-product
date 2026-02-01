@@ -406,7 +406,8 @@ export default function ManufacturingItemModal({
     const showOverseasStock = formData.production_type === 'overseas' || formData.production_type === 'both';
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+        <>
+            <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
             <DialogTitle>{title}</DialogTitle>
             <DialogContent dividers>
                 <Grid container spacing={2}>
@@ -855,16 +856,17 @@ export default function ManufacturingItemModal({
                     </Box>
                 </Box>
             </DialogActions>
-        </Dialog>
+            </Dialog>
 
-        {/* 価格履歴モーダル */}
-        {manufacturingItem && (
-            <ManufacturingItemPriceListModal
-                open={priceListOpen}
-                onClose={handleClosePriceList}
-                manufacturingItem={manufacturingItem}
-                onSuccess={onSuccess}
-            />
-        )}
+            {/* 価格履歴モーダル */}
+            {manufacturingItem && (
+                <ManufacturingItemPriceListModal
+                    open={priceListOpen}
+                    onClose={handleClosePriceList}
+                    manufacturingItem={manufacturingItem}
+                    onSuccess={onSuccess}
+                />
+            )}
+        </>
     );
 }
