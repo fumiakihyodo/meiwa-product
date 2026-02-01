@@ -36,6 +36,7 @@ import {
 import {
     Add as AddIcon,
     Delete as DeleteIcon,
+    History as HistoryIcon,
 } from '@mui/icons-material';
 import {
     manufacturingItemApi,
@@ -49,6 +50,7 @@ import {
 import { Product } from '@/types/product';
 import { SupplierBranch, CurrencyLabels } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
+import { ManufacturingItemPriceListModal } from './ManufacturingItemPriceListModal';
 import toast from 'react-hot-toast';
 
 // 材料紐付けの型定義
@@ -128,6 +130,7 @@ export default function ManufacturingItemModal({
     const [existingBom, setExistingBom] = useState<ManufacturingMaterial[]>([]);
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [priceListOpen, setPriceListOpen] = useState(false);
 
     // 海外サプライヤー関連
     const [overseasSuppliers, setOverseasSuppliers] = useState<SupplierBranch[]>([]);
@@ -304,6 +307,16 @@ export default function ManufacturingItemModal({
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
+    };
+
+    // 価格履歴モーダルを開く
+    const handleOpenPriceList = () => {
+        setPriceListOpen(true);
+    };
+
+    // 価格履歴モーダルを閉じる
+    const handleClosePriceList = () => {
+        setPriceListOpen(false);
     };
 
     // 送信ハンドラー
@@ -816,18 +829,42 @@ export default function ManufacturingItemModal({
                 </Grid>
             </DialogContent>
             <DialogActions>
-                <Button onClick={onClose}>閉じる</Button>
-                {!isViewMode && (
-                    <Button
-                        onClick={handleSubmit}
-                        variant="contained"
-                        disabled={loading}
-                        startIcon={loading ? <CircularProgress size={16} /> : null}
-                    >
-                        {mode === 'create' ? '登録' : '更新'}
-                    </Button>
-                )}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                    <Box>
+                        {manufacturingItem && (
+                            <Button
+                                startIcon={<HistoryIcon />}
+                                onClick={handleOpenPriceList}
+                            >
+                                価格履歴
+                            </Button>
+                        )}
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button onClick={onClose}>閉じる</Button>
+                        {!isViewMode && (
+                            <Button
+                                onClick={handleSubmit}
+                                variant="contained"
+                                disabled={loading}
+                                startIcon={loading ? <CircularProgress size={16} /> : null}
+                            >
+                                {mode === 'create' ? '登録' : '更新'}
+                            </Button>
+                        )}
+                    </Box>
+                </Box>
             </DialogActions>
         </Dialog>
+
+        {/* 価格履歴モーダル */}
+        {manufacturingItem && (
+            <ManufacturingItemPriceListModal
+                open={priceListOpen}
+                onClose={handleClosePriceList}
+                manufacturingItem={manufacturingItem}
+                onSuccess={onSuccess}
+            />
+        )}
     );
 }
