@@ -19,11 +19,15 @@ import {
     Typography,
     Grid,
     CircularProgress,
-    Divider,
     Chip,
+    Paper,
+    Stack,
 } from '@mui/material';
 import {
     History as HistoryIcon,
+    Edit as EditIcon,
+    Inventory as InventoryIcon,
+    Info as InfoIcon,
 } from '@mui/icons-material';
 import {
     materialApi,
@@ -33,6 +37,8 @@ import {
 import { supplierApi } from '@/services/apiSupplier';
 import { SupplierBranch } from '@/types/supplier';
 import { MaterialPriceListModal } from './MaterialPriceListModal';
+import { InfoRow } from '@/components/common/display/InfoRow';
+import { SectionCard } from '@/components/common/display/SectionCard';
 import toast from 'react-hot-toast';
 
 interface MaterialModalProps {
@@ -79,7 +85,7 @@ export default function MaterialModal({
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [priceListOpen, setPriceListOpen] = useState(false);
 
-    // Fetch supplier branches
+    // 仕入先支店を取得
     const fetchSupplierBranches = useCallback(async () => {
         try {
             const branches = await supplierApi.getSupplierBranches();
@@ -95,7 +101,7 @@ export default function MaterialModal({
         }
     }, [open, fetchSupplierBranches]);
 
-    // Initialize form data
+    // フォームデータを初期化
     useEffect(() => {
         if (material && (mode === 'edit' || mode === 'view')) {
             setFormData({
@@ -211,258 +217,414 @@ export default function MaterialModal({
     const isViewMode = mode === 'view';
     const title = mode === 'create' ? '新規材料登録' : mode === 'edit' ? '材料編集' : '材料詳細';
 
+    // カテゴリー表示名を取得
+    const getCategoryLabel = (value: string) => {
+        const option = categoryOptions.find(opt => opt.value === value);
+        return option ? option.label : value;
+    };
+
+    // 仕入先支店表示名を取得
+    const getSupplierBranchName = (id: number | undefined) => {
+        if (!id) return '-';
+        const branch = supplierBranches.find(b => b.id === id);
+        return branch ? `${branch.supplier_name} - ${branch.branch_name}` : '-';
+    };
+
     return (
         <>
             <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-            <DialogTitle>{title}</DialogTitle>
-            <DialogContent dividers>
-                <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
-                        <TextField
-                            label="品番"
-                            value={formData.material_code}
-                            onChange={(e) => handleChange('material_code', e.target.value)}
-                            fullWidth
-                            required
-                            disabled={isViewMode || mode === 'edit'}
-                            error={!!errors.material_code}
-                            helperText={errors.material_code}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <TextField
-                            label="材料名"
-                            value={formData.material_name}
-                            onChange={(e) => handleChange('material_name', e.target.value)}
-                            fullWidth
-                            required
-                            disabled={isViewMode}
-                            error={!!errors.material_name}
-                            helperText={errors.material_name}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <TextField
-                            label="形式"
-                            value={formData.material_type}
-                            onChange={(e) => handleChange('material_type', e.target.value)}
-                            fullWidth
-                            disabled={isViewMode}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <FormControl fullWidth disabled={isViewMode}>
-                            <InputLabel>カテゴリ</InputLabel>
-                            <Select
-                                value={formData.category}
-                                onChange={(e) => handleChange('category', e.target.value)}
-                                label="カテゴリ"
-                            >
-                                {categoryOptions.map((option) => (
-                                    <MenuItem key={option.value} value={option.value}>
-                                        {option.label}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                        <TextField
-                            label="単位"
-                            value={formData.unit}
-                            onChange={(e) => handleChange('unit', e.target.value)}
-                            fullWidth
-                            disabled={isViewMode}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                        <TextField
-                            label="在庫数量"
-                            type="number"
-                            value={formData.stock_quantity}
-                            onChange={(e) => handleChange('stock_quantity', Number(e.target.value))}
-                            fullWidth
-                            disabled={isViewMode}
-                            inputProps={{ min: 0 }}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                        <TextField
-                            label="最小在庫数"
-                            type="number"
-                            value={formData.minimum_stock}
-                            onChange={(e) => handleChange('minimum_stock', Number(e.target.value))}
-                            fullWidth
-                            disabled={isViewMode}
-                            inputProps={{ min: 0 }}
-                            helperText="在庫警告のしきい値"
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                        <TextField
-                            label="最大在庫数"
-                            type="number"
-                            value={formData.maximum_stock ?? ''}
-                            onChange={(e) => handleChange('maximum_stock', e.target.value ? Number(e.target.value) : undefined)}
-                            fullWidth
-                            disabled={isViewMode}
-                            inputProps={{ min: 0 }}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                        <TextField
-                            label="単価"
-                            type="number"
-                            value={formData.unit_price ?? ''}
-                            onChange={(e) => handleChange('unit_price', e.target.value ? Number(e.target.value) : undefined)}
-                            fullWidth
-                            disabled={isViewMode}
-                            inputProps={{ min: 0, step: 0.01 }}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                        <TextField
-                            label="リードタイム（日）"
-                            type="number"
-                            value={formData.lead_time_days ?? ''}
-                            onChange={(e) => handleChange('lead_time_days', e.target.value ? Number(e.target.value) : undefined)}
-                            fullWidth
-                            disabled={isViewMode}
-                            inputProps={{ min: 0 }}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <FormControl fullWidth disabled={isViewMode}>
-                            <InputLabel>仕入先支店</InputLabel>
-                            <Select
-                                value={formData.supplier_branch || ''}
-                                onChange={(e) => handleChange('supplier_branch', e.target.value || undefined)}
-                                label="仕入先支店"
-                            >
-                                <MenuItem value="">選択なし</MenuItem>
-                                {supplierBranches.map((branch) => (
-                                    <MenuItem key={branch.id} value={branch.id}>
-                                        {branch.supplier_name} - {branch.branch_name}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={formData.is_active}
-                                    onChange={(e) => handleChange('is_active', e.target.checked)}
-                                    disabled={isViewMode}
-                                />
-                            }
-                            label="有効"
-                        />
-                    </Grid>
-                    <Grid item xs={12}>
-                        <TextField
-                            label="仕様"
-                            value={formData.specification}
-                            onChange={(e) => handleChange('specification', e.target.value)}
-                            fullWidth
-                            multiline
-                            rows={2}
-                            disabled={isViewMode}
-                        />
-                    </Grid>
-                    <Grid item xs={12}>
-                        <TextField
-                            label="備考"
-                            value={formData.notes}
-                            onChange={(e) => handleChange('notes', e.target.value)}
-                            fullWidth
-                            multiline
-                            rows={2}
-                            disabled={isViewMode}
-                        />
-                    </Grid>
-
-                    {/* 在庫状態表示（表示モード時のみ） */}
-                    {isViewMode && material && (
-                        <>
-                            <Grid item xs={12}>
-                                <Divider sx={{ my: 1 }} />
-                                <Typography variant="subtitle2" gutterBottom>
-                                    在庫状態
-                                </Typography>
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Typography variant="body2" color="text.secondary">在庫状態:</Typography>
-                                    <Chip
-                                        label={material.is_low_stock ? '要補充' : '正常'}
-                                        color={material.is_low_stock ? 'error' : 'success'}
-                                        size="small"
-                                    />
-                                </Box>
-                            </Grid>
-                        </>
+                <DialogTitle sx={{
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    pb: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Typography variant="h6" fontWeight="bold">
+                            {title}
+                        </Typography>
+                        {material && (
+                            <Chip
+                                label={material.is_active ? '有効' : '無効'}
+                                color={material.is_active ? 'success' : 'default'}
+                                size="small"
+                            />
+                        )}
+                    </Box>
+                    {isViewMode && (
+                        <Button
+                            variant="outlined"
+                            startIcon={<EditIcon />}
+                            onClick={() => {
+                                // 編集モードに切り替え（親コンポーネントで処理）
+                                onClose();
+                                // 注: 実際の編集モード切り替えは親コンポーネントで行う必要があります
+                            }}
+                            size="small"
+                        >
+                            編集
+                        </Button>
                     )}
+                </DialogTitle>
 
-                    {/* システム情報表示（表示モード時のみ） */}
-                    {isViewMode && material && (
-                        <>
-                            <Grid item xs={12}>
-                                <Divider sx={{ my: 1 }} />
-                                <Typography variant="subtitle2" color="text.secondary">
+                <DialogContent sx={{ pt: 3 }}>
+                    {isViewMode && material ? (
+                        // ビューモード: InfoRowとSectionCardを使用
+                        <Box>
+                            {/* 基本情報 */}
+                            <SectionCard isEditMode={false} icon={<InfoIcon />} title="基本情報">
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={6}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="品番"
+                                            value={material.material_code}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="材料名"
+                                            value={material.material_name}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="形式"
+                                            value={material.material_type || '-'}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="カテゴリ"
+                                            value={getCategoryLabel(material.category)}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="仕様"
+                                            value={material.specification || '-'}
+                                        />
+                                    </Grid>
+                                </Grid>
+                            </SectionCard>
+
+                            {/* 在庫情報 */}
+                            <SectionCard isEditMode={false} icon={<InventoryIcon />} title="在庫情報">
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={4}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="単位"
+                                            value={material.unit}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="在庫数量"
+                                            value={`${material.stock_quantity.toLocaleString()} ${material.unit}`}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="在庫状態"
+                                            value={
+                                                <Chip
+                                                    label={material.is_low_stock ? '要補充' : '正常'}
+                                                    color={material.is_low_stock ? 'error' : 'success'}
+                                                    size="small"
+                                                />
+                                            }
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="最小在庫数"
+                                            value={`${material.minimum_stock.toLocaleString()} ${material.unit}`}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="最大在庫数"
+                                            value={material.maximum_stock ? `${material.maximum_stock.toLocaleString()} ${material.unit}` : '未設定'}
+                                        />
+                                    </Grid>
+                                </Grid>
+                            </SectionCard>
+
+                            {/* 仕入先・価格情報 */}
+                            <SectionCard isEditMode={false} icon={<InfoIcon />} title="仕入先・価格情報">
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={6}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="仕入先支店"
+                                            value={getSupplierBranchName(material.supplier_branch)}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="単価"
+                                            value={material.unit_price ? `¥${Number(material.unit_price).toLocaleString()}` : '-'}
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12} sm={6}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="リードタイム"
+                                            value={material.lead_time_days ? `${material.lead_time_days}日` : '-'}
+                                        />
+                                    </Grid>
+                                </Grid>
+                            </SectionCard>
+
+                            {/* その他 */}
+                            <SectionCard isEditMode={false} icon={<InfoIcon />} title="その他">
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12}>
+                                        <InfoRow
+                                            isEditMode={false}
+                                            label="備考"
+                                            value={material.notes || '-'}
+                                        />
+                                    </Grid>
+                                </Grid>
+                            </SectionCard>
+
+                            {/* システム情報 */}
+                            <Paper
+                                elevation={0}
+                                sx={{
+                                    p: 2,
+                                    borderRadius: 1,
+                                    border: '1px solid',
+                                    borderColor: 'divider',
+                                    bgcolor: 'grey.50',
+                                }}
+                            >
+                                <Typography variant="caption" color="text.secondary" gutterBottom display="block">
                                     システム情報
                                 </Typography>
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                                <Typography variant="body2" color="text.secondary">作成日時</Typography>
-                                <Typography variant="body1">
-                                    {new Date(material.created_at).toLocaleString('ja-JP')}
-                                </Typography>
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                                <Typography variant="body2" color="text.secondary">更新日時</Typography>
-                                <Typography variant="body1">
-                                    {new Date(material.updated_at).toLocaleString('ja-JP')}
-                                </Typography>
-                            </Grid>
-                            {material.created_by_name && (
-                                <Grid item xs={12} sm={6}>
-                                    <Typography variant="body2" color="text.secondary">作成者</Typography>
-                                    <Typography variant="body1">{material.created_by_name}</Typography>
+                                <Grid container spacing={2} sx={{ mt: 0.5 }}>
+                                    <Grid item xs={12} sm={4}>
+                                        <Typography variant="caption" color="text.secondary">作成日時</Typography>
+                                        <Typography variant="body2">
+                                            {new Date(material.created_at).toLocaleString('ja-JP')}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={4}>
+                                        <Typography variant="caption" color="text.secondary">更新日時</Typography>
+                                        <Typography variant="body2">
+                                            {new Date(material.updated_at).toLocaleString('ja-JP')}
+                                        </Typography>
+                                    </Grid>
+                                    {material.created_by_name && (
+                                        <Grid item xs={12} sm={4}>
+                                            <Typography variant="caption" color="text.secondary">作成者</Typography>
+                                            <Typography variant="body2">{material.created_by_name}</Typography>
+                                        </Grid>
+                                    )}
                                 </Grid>
-                            )}
-                        </>
+                            </Paper>
+                        </Box>
+                    ) : (
+                        // 編集/作成モード: TextFieldを使用
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} sm={6}>
+                                <TextField
+                                    label="品番"
+                                    value={formData.material_code}
+                                    onChange={(e) => handleChange('material_code', e.target.value)}
+                                    fullWidth
+                                    required
+                                    disabled={mode === 'edit'}
+                                    error={!!errors.material_code}
+                                    helperText={errors.material_code}
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                                <TextField
+                                    label="材料名"
+                                    value={formData.material_name}
+                                    onChange={(e) => handleChange('material_name', e.target.value)}
+                                    fullWidth
+                                    required
+                                    error={!!errors.material_name}
+                                    helperText={errors.material_name}
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                                <TextField
+                                    label="形式"
+                                    value={formData.material_type}
+                                    onChange={(e) => handleChange('material_type', e.target.value)}
+                                    fullWidth
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                                <FormControl fullWidth>
+                                    <InputLabel>カテゴリ</InputLabel>
+                                    <Select
+                                        value={formData.category}
+                                        onChange={(e) => handleChange('category', e.target.value)}
+                                        label="カテゴリ"
+                                    >
+                                        {categoryOptions.map((option) => (
+                                            <MenuItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} sm={4}>
+                                <TextField
+                                    label="単位"
+                                    value={formData.unit}
+                                    onChange={(e) => handleChange('unit', e.target.value)}
+                                    fullWidth
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={4}>
+                                <TextField
+                                    label="在庫数量"
+                                    type="number"
+                                    value={formData.stock_quantity}
+                                    onChange={(e) => handleChange('stock_quantity', Number(e.target.value))}
+                                    fullWidth
+                                    inputProps={{ min: 0 }}
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={4}>
+                                <TextField
+                                    label="最小在庫数"
+                                    type="number"
+                                    value={formData.minimum_stock}
+                                    onChange={(e) => handleChange('minimum_stock', Number(e.target.value))}
+                                    fullWidth
+                                    inputProps={{ min: 0 }}
+                                    helperText="在庫警告のしきい値"
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={4}>
+                                <TextField
+                                    label="最大在庫数"
+                                    type="number"
+                                    value={formData.maximum_stock ?? ''}
+                                    onChange={(e) => handleChange('maximum_stock', e.target.value ? Number(e.target.value) : undefined)}
+                                    fullWidth
+                                    inputProps={{ min: 0 }}
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={4}>
+                                <TextField
+                                    label="単価"
+                                    type="number"
+                                    value={formData.unit_price ?? ''}
+                                    onChange={(e) => handleChange('unit_price', e.target.value ? Number(e.target.value) : undefined)}
+                                    fullWidth
+                                    inputProps={{ min: 0, step: 0.01 }}
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={4}>
+                                <TextField
+                                    label="リードタイム（日）"
+                                    type="number"
+                                    value={formData.lead_time_days ?? ''}
+                                    onChange={(e) => handleChange('lead_time_days', e.target.value ? Number(e.target.value) : undefined)}
+                                    fullWidth
+                                    inputProps={{ min: 0 }}
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                                <FormControl fullWidth>
+                                    <InputLabel>仕入先支店</InputLabel>
+                                    <Select
+                                        value={formData.supplier_branch || ''}
+                                        onChange={(e) => handleChange('supplier_branch', e.target.value || undefined)}
+                                        label="仕入先支店"
+                                    >
+                                        <MenuItem value="">選択なし</MenuItem>
+                                        {supplierBranches.map((branch) => (
+                                            <MenuItem key={branch.id} value={branch.id}>
+                                                {branch.supplier_name} - {branch.branch_name}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={formData.is_active}
+                                            onChange={(e) => handleChange('is_active', e.target.checked)}
+                                        />
+                                    }
+                                    label="有効"
+                                />
+                            </Grid>
+                            <Grid item xs={12}>
+                                <TextField
+                                    label="仕様"
+                                    value={formData.specification}
+                                    onChange={(e) => handleChange('specification', e.target.value)}
+                                    fullWidth
+                                    multiline
+                                    rows={2}
+                                />
+                            </Grid>
+                            <Grid item xs={12}>
+                                <TextField
+                                    label="備考"
+                                    value={formData.notes}
+                                    onChange={(e) => handleChange('notes', e.target.value)}
+                                    fullWidth
+                                    multiline
+                                    rows={2}
+                                />
+                            </Grid>
+                        </Grid>
                     )}
-                </Grid>
-            </DialogContent>
-            <DialogActions>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                    <Box>
-                        {material && (
-                            <Button
-                                startIcon={<HistoryIcon />}
-                                onClick={handleOpenPriceList}
-                            >
-                                価格履歴
-                            </Button>
-                        )}
+                </DialogContent>
+
+                <DialogActions>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                        <Box>
+                            {material && (
+                                <Button
+                                    startIcon={<HistoryIcon />}
+                                    onClick={handleOpenPriceList}
+                                >
+                                    価格履歴
+                                </Button>
+                            )}
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button onClick={onClose}>閉じる</Button>
+                            {!isViewMode && (
+                                <Button
+                                    onClick={handleSubmit}
+                                    variant="contained"
+                                    disabled={loading}
+                                    startIcon={loading ? <CircularProgress size={16} /> : null}
+                                >
+                                    {mode === 'create' ? '登録' : '更新'}
+                                </Button>
+                            )}
+                        </Box>
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button onClick={onClose}>閉じる</Button>
-                        {!isViewMode && (
-                            <Button
-                                onClick={handleSubmit}
-                                variant="contained"
-                                disabled={loading}
-                                startIcon={loading ? <CircularProgress size={16} /> : null}
-                            >
-                                {mode === 'create' ? '登録' : '更新'}
-                            </Button>
-                        )}
-                    </Box>
-                </Box>
-            </DialogActions>
+                </DialogActions>
             </Dialog>
 
             {/* 価格履歴モーダル */}
