@@ -9,6 +9,8 @@ from api.manufacturing.models import (
     Material,
     MaterialDeliverySchedule,
     ManufacturingMaterial,
+    MaterialPriceHistory,
+    ManufacturingItemPriceHistory,
 )
 
 
@@ -768,5 +770,127 @@ class ManufacturingMaterialCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "この制作品と材料の組み合わせは既に登録されています"
             )
+
+        return data
+
+
+# ===== MaterialPriceHistory Serializers =====
+
+class MaterialPriceHistorySerializer(serializers.ModelSerializer):
+    """材料価格履歴シリアライザー"""
+    material_code = serializers.CharField(
+        source='material.material_code',
+        read_only=True
+    )
+    material_name = serializers.CharField(
+        source='material.material_name',
+        read_only=True
+    )
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+    is_current = serializers.BooleanField(read_only=True)
+    is_future = serializers.BooleanField(read_only=True)
+    is_expired = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = MaterialPriceHistory
+        fields = [
+            'id', 'material', 'material_code', 'material_name',
+            'price', 'start_date', 'end_date',
+            'is_active', 'is_current', 'is_future', 'is_expired',
+            'change_reason', 'notes',
+            'created_at', 'updated_at', 'created_by', 'created_by_name'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
+
+
+class MaterialPriceHistoryCreateUpdateSerializer(serializers.ModelSerializer):
+    """材料価格履歴作成・更新用シリアライザー"""
+
+    class Meta:
+        model = MaterialPriceHistory
+        fields = [
+            'material', 'price', 'start_date', 'end_date',
+            'is_active', 'change_reason', 'notes'
+        ]
+        extra_kwargs = {
+            'material': {'required': True},
+            'price': {'required': True},
+            'start_date': {'required': True},
+        }
+
+    def validate(self, data):
+        """期間のバリデーション"""
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+
+        if end_date and start_date and end_date < start_date:
+            raise serializers.ValidationError({
+                'end_date': '終了日は開始日以降の日付を指定してください'
+            })
+
+        return data
+
+
+# ===== ManufacturingItemPriceHistory Serializers =====
+
+class ManufacturingItemPriceHistorySerializer(serializers.ModelSerializer):
+    """製造品価格履歴シリアライザー"""
+    manufacturing_item_number = serializers.CharField(
+        source='manufacturing_item.manufacturing_number',
+        read_only=True
+    )
+    manufacturing_item_name = serializers.CharField(
+        source='manufacturing_item.manufacturing_name',
+        read_only=True
+    )
+    created_by_name = serializers.CharField(
+        source='created_by.full_name',
+        read_only=True,
+        default=None
+    )
+    is_current = serializers.BooleanField(read_only=True)
+    is_future = serializers.BooleanField(read_only=True)
+    is_expired = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ManufacturingItemPriceHistory
+        fields = [
+            'id', 'manufacturing_item', 'manufacturing_item_number', 'manufacturing_item_name',
+            'price', 'start_date', 'end_date',
+            'is_active', 'is_current', 'is_future', 'is_expired',
+            'change_reason', 'notes',
+            'created_at', 'updated_at', 'created_by', 'created_by_name'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
+
+
+class ManufacturingItemPriceHistoryCreateUpdateSerializer(serializers.ModelSerializer):
+    """製造品価格履歴作成・更新用シリアライザー"""
+
+    class Meta:
+        model = ManufacturingItemPriceHistory
+        fields = [
+            'manufacturing_item', 'price', 'start_date', 'end_date',
+            'is_active', 'change_reason', 'notes'
+        ]
+        extra_kwargs = {
+            'manufacturing_item': {'required': True},
+            'price': {'required': True},
+            'start_date': {'required': True},
+        }
+
+    def validate(self, data):
+        """期間のバリデーション"""
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+
+        if end_date and start_date and end_date < start_date:
+            raise serializers.ValidationError({
+                'end_date': '終了日は開始日以降の日付を指定してください'
+            })
 
         return data

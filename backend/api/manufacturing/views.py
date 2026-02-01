@@ -13,6 +13,8 @@ from api.manufacturing.models import (
     Material,
     MaterialDeliverySchedule,
     ManufacturingMaterial,
+    MaterialPriceHistory,
+    ManufacturingItemPriceHistory,
 )
 from api.manufacturing.serializers import (
     ManufacturingItemListSerializer,
@@ -32,6 +34,10 @@ from api.manufacturing.serializers import (
     MaterialDeliveryScheduleCreateUpdateSerializer,
     ManufacturingMaterialSerializer,
     ManufacturingMaterialCreateUpdateSerializer,
+    MaterialPriceHistorySerializer,
+    MaterialPriceHistoryCreateUpdateSerializer,
+    ManufacturingItemPriceHistorySerializer,
+    ManufacturingItemPriceHistoryCreateUpdateSerializer,
 )
 
 
@@ -658,3 +664,67 @@ class FinishedGoodsInventoryViewSet(viewsets.ViewSet):
             'low_stock_items': [],
             'recent_adjustments': [],
         })
+
+
+class MaterialPriceHistoryViewSet(viewsets.ModelViewSet):
+    """材料価格履歴ViewSet"""
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['start_date', 'created_at']
+    ordering = ['-start_date', '-created_at']
+
+    def get_queryset(self):
+        queryset = MaterialPriceHistory.objects.all()
+        queryset = queryset.select_related('material', 'created_by')
+
+        # 材料IDでフィルタリング
+        material = self.request.query_params.get('material', None)
+        if material:
+            queryset = queryset.filter(material_id=material)
+
+        # 有効/無効でフィルタリング
+        is_active = self.request.query_params.get('is_active', None)
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return MaterialPriceHistoryCreateUpdateSerializer
+        return MaterialPriceHistorySerializer
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+class ManufacturingItemPriceHistoryViewSet(viewsets.ModelViewSet):
+    """製造品価格履歴ViewSet"""
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['start_date', 'created_at']
+    ordering = ['-start_date', '-created_at']
+
+    def get_queryset(self):
+        queryset = ManufacturingItemPriceHistory.objects.all()
+        queryset = queryset.select_related('manufacturing_item', 'created_by')
+
+        # 製造品IDでフィルタリング
+        manufacturing_item = self.request.query_params.get('manufacturing_item', None)
+        if manufacturing_item:
+            queryset = queryset.filter(manufacturing_item_id=manufacturing_item)
+
+        # 有効/無効でフィルタリング
+        is_active = self.request.query_params.get('is_active', None)
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return ManufacturingItemPriceHistoryCreateUpdateSerializer
+        return ManufacturingItemPriceHistorySerializer
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)

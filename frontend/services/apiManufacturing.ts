@@ -167,6 +167,72 @@ export interface MaterialCreate {
     notes?: string;
 }
 
+// Material Price History Types
+export interface MaterialPriceHistory {
+    id: number;
+    material: number;
+    material_code?: string;
+    material_name?: string;
+    price: number;
+    start_date: string;
+    end_date?: string;
+    is_active: boolean;
+    is_current?: boolean;
+    is_future?: boolean;
+    is_expired?: boolean;
+    change_reason?: string;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+    created_by?: number;
+    created_by_name?: string;
+}
+
+export interface MaterialPriceHistoryCreateData {
+    material: number;
+    price: number;
+    start_date: string;
+    end_date?: string;
+    is_active?: boolean;
+    change_reason?: string;
+    notes?: string;
+}
+
+export type MaterialPriceHistoryUpdateData = Partial<MaterialPriceHistoryCreateData>;
+
+// Manufacturing Item Price History Types
+export interface ManufacturingItemPriceHistory {
+    id: number;
+    manufacturing_item: number;
+    manufacturing_item_number?: string;
+    manufacturing_item_name?: string;
+    price: number;
+    start_date: string;
+    end_date?: string;
+    is_active: boolean;
+    is_current?: boolean;
+    is_future?: boolean;
+    is_expired?: boolean;
+    change_reason?: string;
+    notes?: string;
+    created_at: string;
+    updated_at: string;
+    created_by?: number;
+    created_by_name?: string;
+}
+
+export interface ManufacturingItemPriceHistoryCreateData {
+    manufacturing_item: number;
+    price: number;
+    start_date: string;
+    end_date?: string;
+    is_active?: boolean;
+    change_reason?: string;
+    notes?: string;
+}
+
+export type ManufacturingItemPriceHistoryUpdateData = Partial<ManufacturingItemPriceHistoryCreateData>;
+
 // Manufacturing Item API
 export const manufacturingItemApi = {
     getItems: async (params?: {
@@ -447,5 +513,65 @@ export const materialApi = {
             { adjustment, reason }
         );
         return response.data;
+    },
+};
+
+// Material Price History API
+export const materialPriceHistoryApi = {
+    getPriceHistories: async (params?: {
+        material?: number;
+        is_active?: boolean;
+    }): Promise<MaterialPriceHistory[]> => {
+        const response = await apiClient.get<PaginatedResponse<MaterialPriceHistory>>('/manufacturing/material-price-histories/', { params });
+        return response.data.results;
+    },
+
+    getPriceHistory: async (id: number): Promise<MaterialPriceHistory> => {
+        const response = await apiClient.get<MaterialPriceHistory>(`/manufacturing/material-price-histories/${id}/`);
+        return response.data;
+    },
+
+    createPriceHistory: async (data: MaterialPriceHistoryCreateData): Promise<MaterialPriceHistory> => {
+        const response = await apiClient.post<MaterialPriceHistory>('/manufacturing/material-price-histories/', data);
+        return response.data;
+    },
+
+    updatePriceHistory: async (id: number, data: MaterialPriceHistoryUpdateData): Promise<MaterialPriceHistory> => {
+        const response = await apiClient.patch<MaterialPriceHistory>(`/manufacturing/material-price-histories/${id}/`, data);
+        return response.data;
+    },
+
+    deletePriceHistory: async (id: number): Promise<void> => {
+        await apiClient.delete(`/manufacturing/material-price-histories/${id}/`);
+    },
+};
+
+// Manufacturing Item Price History API
+export const manufacturingItemPriceHistoryApi = {
+    getPriceHistories: async (params?: {
+        manufacturing_item?: number;
+        is_active?: boolean;
+    }): Promise<ManufacturingItemPriceHistory[]> => {
+        const response = await apiClient.get<PaginatedResponse<ManufacturingItemPriceHistory>>('/manufacturing/manufacturing-item-price-histories/', { params });
+        return response.data.results;
+    },
+
+    getPriceHistory: async (id: number): Promise<ManufacturingItemPriceHistory> => {
+        const response = await apiClient.get<ManufacturingItemPriceHistory>(`/manufacturing/manufacturing-item-price-histories/${id}/`);
+        return response.data;
+    },
+
+    createPriceHistory: async (data: ManufacturingItemPriceHistoryCreateData): Promise<ManufacturingItemPriceHistory> => {
+        const response = await apiClient.post<ManufacturingItemPriceHistory>('/manufacturing/manufacturing-item-price-histories/', data);
+        return response.data;
+    },
+
+    updatePriceHistory: async (id: number, data: ManufacturingItemPriceHistoryUpdateData): Promise<ManufacturingItemPriceHistory> => {
+        const response = await apiClient.patch<ManufacturingItemPriceHistory>(`/manufacturing/manufacturing-item-price-histories/${id}/`, data);
+        return response.data;
+    },
+
+    deletePriceHistory: async (id: number): Promise<void> => {
+        await apiClient.delete(`/manufacturing/manufacturing-item-price-histories/${id}/`);
     },
 };

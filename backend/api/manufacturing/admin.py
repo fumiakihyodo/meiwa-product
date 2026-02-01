@@ -8,6 +8,8 @@ from api.manufacturing.models import (
     Material,
     MaterialDeliverySchedule,
     ManufacturingMaterial,
+    MaterialPriceHistory,
+    ManufacturingItemPriceHistory,
 )
 
 
@@ -37,6 +39,22 @@ class MaterialDeliveryScheduleInline(admin.TabularInline):
     fields = ['quantity', 'scheduled_date', 'status', 'actual_date', 'actual_quantity']
 
 
+class MaterialPriceHistoryInline(admin.TabularInline):
+    """材料価格履歴インライン"""
+    model = MaterialPriceHistory
+    extra = 0
+    fields = ['price', 'start_date', 'end_date', 'is_active', 'change_reason']
+    readonly_fields = ['created_at', 'created_by']
+
+
+class ManufacturingItemPriceHistoryInline(admin.TabularInline):
+    """製造品価格履歴インライン"""
+    model = ManufacturingItemPriceHistory
+    extra = 0
+    fields = ['price', 'start_date', 'end_date', 'is_active', 'change_reason']
+    readonly_fields = ['created_at', 'created_by']
+
+
 @admin.register(ManufacturingItem)
 class ManufacturingItemAdmin(admin.ModelAdmin):
     """制作品管理"""
@@ -49,7 +67,7 @@ class ManufacturingItemAdmin(admin.ModelAdmin):
     ordering = ['manufacturing_number']
     readonly_fields = ['created_at', 'updated_at', 'created_by']
     autocomplete_fields = ['product']
-    inlines = [ManufacturingMaterialInline]
+    inlines = [ManufacturingMaterialInline, ManufacturingItemPriceHistoryInline]
 
     fieldsets = (
         ('基本情報', {
@@ -180,7 +198,7 @@ class MaterialAdmin(admin.ModelAdmin):
     ordering = ['material_code']
     readonly_fields = ['created_at', 'updated_at', 'created_by']
     autocomplete_fields = ['supplier_branch']
-    inlines = [MaterialDeliveryScheduleInline]
+    inlines = [MaterialDeliveryScheduleInline, MaterialPriceHistoryInline]
 
     fieldsets = (
         ('基本情報', {
@@ -280,3 +298,93 @@ class ManufacturingMaterialAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+
+@admin.register(MaterialPriceHistory)
+class MaterialPriceHistoryAdmin(admin.ModelAdmin):
+    """材料価格履歴管理"""
+    list_display = [
+        'material', 'price', 'start_date', 'end_date',
+        'is_active', 'is_current', 'created_at'
+    ]
+    list_filter = ['is_active', 'start_date', 'created_at']
+    search_fields = ['material__material_code', 'material__material_name', 'change_reason', 'notes']
+    ordering = ['-start_date', '-created_at']
+    readonly_fields = ['created_at', 'updated_at', 'created_by']
+    autocomplete_fields = ['material']
+
+    fieldsets = (
+        ('価格情報', {
+            'fields': (
+                'material', 'price'
+            )
+        }),
+        ('有効期間', {
+            'fields': (
+                'start_date', 'end_date', 'is_active'
+            )
+        }),
+        ('変更理由', {
+            'fields': ('change_reason', 'notes')
+        }),
+        ('システム情報', {
+            'fields': ('created_at', 'updated_at', 'created_by'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+    def is_current(self, obj):
+        """現在有効か"""
+        return obj.is_current
+    is_current.boolean = True
+    is_current.short_description = '現在有効'
+
+
+@admin.register(ManufacturingItemPriceHistory)
+class ManufacturingItemPriceHistoryAdmin(admin.ModelAdmin):
+    """製造品価格履歴管理"""
+    list_display = [
+        'manufacturing_item', 'price', 'start_date', 'end_date',
+        'is_active', 'is_current', 'created_at'
+    ]
+    list_filter = ['is_active', 'start_date', 'created_at']
+    search_fields = ['manufacturing_item__manufacturing_number', 'manufacturing_item__manufacturing_name', 'change_reason', 'notes']
+    ordering = ['-start_date', '-created_at']
+    readonly_fields = ['created_at', 'updated_at', 'created_by']
+    autocomplete_fields = ['manufacturing_item']
+
+    fieldsets = (
+        ('価格情報', {
+            'fields': (
+                'manufacturing_item', 'price'
+            )
+        }),
+        ('有効期間', {
+            'fields': (
+                'start_date', 'end_date', 'is_active'
+            )
+        }),
+        ('変更理由', {
+            'fields': ('change_reason', 'notes')
+        }),
+        ('システム情報', {
+            'fields': ('created_at', 'updated_at', 'created_by'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+    def is_current(self, obj):
+        """現在有効か"""
+        return obj.is_current
+    is_current.boolean = True
+    is_current.short_description = '現在有効'

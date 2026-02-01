@@ -829,3 +829,239 @@ class ManufacturingMaterial(models.Model):
 
     def __str__(self):
         return f"{self.manufacturing_item.manufacturing_number} -> {self.material.material_code} ({self.quantity_required})"
+
+
+class MaterialPriceHistory(models.Model):
+    """材料価格履歴モデル"""
+
+    # 関連
+    material = models.ForeignKey(
+        'Material',
+        on_delete=models.CASCADE,
+        related_name='material_price_histories',
+        verbose_name="材料"
+    )
+
+    # 価格情報
+    price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        verbose_name="単価",
+        help_text="税抜単価"
+    )
+
+    # 有効期間
+    start_date = models.DateField(
+        verbose_name="開始日",
+        help_text="この価格が有効になる日"
+    )
+    end_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="終了日",
+        help_text="この価格が無効になる日（空白の場合は無期限）"
+    )
+
+    # ステータス
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="有効",
+        help_text="この価格履歴が有効かどうか"
+    )
+
+    # 変更理由
+    change_reason = models.TextField(
+        blank=True,
+        verbose_name="変更理由",
+        help_text="価格変更の理由"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_material_price_histories',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "材料価格履歴"
+        verbose_name_plural = "材料価格履歴一覧"
+        ordering = ['-start_date', '-created_at']
+        db_table = "material_price_histories"
+        indexes = [
+            models.Index(fields=['material']),
+            models.Index(fields=['start_date']),
+            models.Index(fields=['end_date']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['material', 'is_active']),
+            models.Index(fields=['material', 'start_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.material.material_code} - ¥{self.price} ({self.start_date}〜)"
+
+    def clean(self):
+        """バリデーション"""
+        super().clean()
+        if self.end_date and self.start_date and self.end_date < self.start_date:
+            raise ValidationError({
+                'end_date': '終了日は開始日以降の日付を指定してください。'
+            })
+
+    @property
+    def is_current(self):
+        """現在有効な価格か"""
+        today = timezone.now().date()
+        is_started = self.start_date <= today
+        is_not_ended = not self.end_date or self.end_date >= today
+        return self.is_active and is_started and is_not_ended
+
+    @property
+    def is_future(self):
+        """未来の価格か"""
+        today = timezone.now().date()
+        return self.is_active and self.start_date > today
+
+    @property
+    def is_expired(self):
+        """期限切れの価格か"""
+        if not self.end_date:
+            return False
+        today = timezone.now().date()
+        return self.end_date < today
+
+
+class ManufacturingItemPriceHistory(models.Model):
+    """製造品価格履歴モデル"""
+
+    # 関連
+    manufacturing_item = models.ForeignKey(
+        'ManufacturingItem',
+        on_delete=models.CASCADE,
+        related_name='manufacturing_item_price_histories',
+        verbose_name="製造品"
+    )
+
+    # 価格情報
+    price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        verbose_name="単価",
+        help_text="税抜単価"
+    )
+
+    # 有効期間
+    start_date = models.DateField(
+        verbose_name="開始日",
+        help_text="この価格が有効になる日"
+    )
+    end_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="終了日",
+        help_text="この価格が無効になる日（空白の場合は無期限）"
+    )
+
+    # ステータス
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="有効",
+        help_text="この価格履歴が有効かどうか"
+    )
+
+    # 変更理由
+    change_reason = models.TextField(
+        blank=True,
+        verbose_name="変更理由",
+        help_text="価格変更の理由"
+    )
+
+    # 備考
+    notes = models.TextField(
+        blank=True,
+        verbose_name="備考"
+    )
+
+    # タイムスタンプ
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="作成日時"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="更新日時"
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_manufacturing_item_price_histories',
+        verbose_name="作成者"
+    )
+
+    class Meta:
+        verbose_name = "製造品価格履歴"
+        verbose_name_plural = "製造品価格履歴一覧"
+        ordering = ['-start_date', '-created_at']
+        db_table = "manufacturing_item_price_histories"
+        indexes = [
+            models.Index(fields=['manufacturing_item']),
+            models.Index(fields=['start_date']),
+            models.Index(fields=['end_date']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['manufacturing_item', 'is_active']),
+            models.Index(fields=['manufacturing_item', 'start_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.manufacturing_item.manufacturing_number} - ¥{self.price} ({self.start_date}〜)"
+
+    def clean(self):
+        """バリデーション"""
+        super().clean()
+        if self.end_date and self.start_date and self.end_date < self.start_date:
+            raise ValidationError({
+                'end_date': '終了日は開始日以降の日付を指定してください。'
+            })
+
+    @property
+    def is_current(self):
+        """現在有効な価格か"""
+        today = timezone.now().date()
+        is_started = self.start_date <= today
+        is_not_ended = not self.end_date or self.end_date >= today
+        return self.is_active and is_started and is_not_ended
+
+    @property
+    def is_future(self):
+        """未来の価格か"""
+        today = timezone.now().date()
+        return self.is_active and self.start_date > today
+
+    @property
+    def is_expired(self):
+        """期限切れの価格か"""
+        if not self.end_date:
+            return False
+        today = timezone.now().date()
+        return self.end_date < today
