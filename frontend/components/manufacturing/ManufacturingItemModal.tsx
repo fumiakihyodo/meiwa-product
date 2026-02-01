@@ -493,6 +493,24 @@ export default function ManufacturingItemModal({
                         </Grid>
                     )}
 
+                                        {/* 仕入れ単価（海外生産または両方の場合のみ表示） */}
+                    {(formData.production_type === 'overseas' || formData.production_type === 'both') && (
+                        <Grid item xs={12} sm={6}>
+                            <TextField
+                                label={`仕入れ単価${selectedOverseasSupplier?.supplier_currency ? ` (${CurrencyLabels[selectedOverseasSupplier.supplier_currency]})` : ''}`}
+                                type="number"
+                                value={formData.purchase_price ?? ''}
+                                onChange={(e) => handleChange('purchase_price', e.target.value ? Number(e.target.value) : undefined)}
+                                onKeyDown={(e) => handleKeyDown(e, 6)}
+                                inputRef={setInputRef(6)}
+                                fullWidth
+                                disabled={isViewMode}
+                                inputProps={{ min: 0, step: 0.01 }}
+                                helperText={selectedOverseasSupplier ? `海外サプライヤー: ${selectedOverseasSupplier.supplier_name}` : '海外サプライヤーを選択してください'}
+                            />
+                        </Grid>
+                    )}
+
                     {/* 拠点別在庫情報 */}
                     <Grid item xs={12}>
                         <Divider sx={{ my: 1 }} />
@@ -600,23 +618,7 @@ export default function ManufacturingItemModal({
                     </Grid>
 
 
-                    {/* 仕入れ単価（海外生産または両方の場合のみ表示） */}
-                    {(formData.production_type === 'overseas' || formData.production_type === 'both') && (
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                label={`仕入れ単価${selectedOverseasSupplier?.supplier_currency ? ` (${CurrencyLabels[selectedOverseasSupplier.supplier_currency]})` : ''}`}
-                                type="number"
-                                value={formData.purchase_price ?? ''}
-                                onChange={(e) => handleChange('purchase_price', e.target.value ? Number(e.target.value) : undefined)}
-                                onKeyDown={(e) => handleKeyDown(e, 6)}
-                                inputRef={setInputRef(6)}
-                                fullWidth
-                                disabled={isViewMode}
-                                inputProps={{ min: 0, step: 0.01 }}
-                                helperText={selectedOverseasSupplier ? `海外サプライヤー: ${selectedOverseasSupplier.supplier_name}` : '海外サプライヤーを選択してください'}
-                            />
-                        </Grid>
-                    )}
+
                     <Grid item xs={12} sm={6}>
                         <FormControlLabel
                             control={
