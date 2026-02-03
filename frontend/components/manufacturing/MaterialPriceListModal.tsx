@@ -156,10 +156,17 @@ export const MaterialPriceListModal: React.FC<MaterialPriceListModalProps> = ({
                 maxWidth="lg"
                 fullWidth
                 PaperProps={{
-                    sx: { minHeight: '600px' }
+                    sx: {
+                        borderRadius: 1,
+                        maxHeight: '90vh',
+                    }
                 }}
             >
-                <DialogTitle>
+                <DialogTitle sx={{
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    pb: 2,
+                }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             {onSwitchToDetail && (
@@ -174,7 +181,7 @@ export const MaterialPriceListModal: React.FC<MaterialPriceListModalProps> = ({
                                 </Tooltip>
                             )}
                             <Box>
-                                <Typography variant="h6" component="div">
+                                <Typography variant="h6" component="div" fontWeight="bold">
                                     価格履歴
                                 </Typography>
                                 {material && (
@@ -189,6 +196,7 @@ export const MaterialPriceListModal: React.FC<MaterialPriceListModalProps> = ({
                             startIcon={<AddIcon />}
                             onClick={handleAddPrice}
                             disabled={!material}
+                            size="small"
                         >
                             新規価格
                         </Button>
@@ -303,8 +311,13 @@ export const MaterialPriceListModal: React.FC<MaterialPriceListModalProps> = ({
                     )}
                 </DialogContent>
 
-                <DialogActions>
-                    <Button onClick={onClose} startIcon={<CloseIcon />}>
+                <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+                    <Button
+                        onClick={onClose}
+                        startIcon={<CloseIcon />}
+                        size="large"
+                        sx={{ borderRadius: 1.5, px: 3 }}
+                    >
                         閉じる
                     </Button>
                 </DialogActions>

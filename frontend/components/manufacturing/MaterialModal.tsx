@@ -26,8 +26,12 @@ import {
 import {
     History as HistoryIcon,
     Edit as EditIcon,
+    Save as SaveIcon,
+    Cancel as CancelIcon,
+    Close as CloseIcon,
     Inventory as InventoryIcon,
     Info as InfoIcon,
+    Widgets as WidgetsIcon,
 } from '@mui/icons-material';
 import {
     materialApi,
@@ -84,6 +88,7 @@ export default function MaterialModal({
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [priceListOpen, setPriceListOpen] = useState(false);
+    const [isEditMode, setIsEditMode] = useState(false);
 
     // 仕入先支店を取得
     const fetchSupplierBranches = useCallback(async () => {
@@ -139,6 +144,7 @@ export default function MaterialModal({
             });
         }
         setErrors({});
+        setIsEditMode(mode === 'edit' || mode === 'create');
     }, [material, mode, open]);
 
     // 価格履歴モーダルを開く
@@ -150,6 +156,32 @@ export default function MaterialModal({
     const handleClosePriceList = () => {
         setPriceListOpen(false);
     };
+
+    // 編集モード切り替え
+    const handleEditToggle = useCallback(() => {
+        if (isEditMode) {
+            // キャンセル時：元のデータに戻す
+            if (material) {
+                setFormData({
+                    material_code: material.material_code,
+                    material_name: material.material_name,
+                    material_type: material.material_type || '',
+                    category: material.category,
+                    specification: material.specification || '',
+                    unit: material.unit,
+                    stock_quantity: material.stock_quantity,
+                    minimum_stock: material.minimum_stock,
+                    maximum_stock: material.maximum_stock,
+                    supplier_branch: material.supplier_branch,
+                    unit_price: material.unit_price,
+                    lead_time_days: material.lead_time_days,
+                    is_active: material.is_active,
+                    notes: material.notes || '',
+                });
+            }
+        }
+        setIsEditMode(!isEditMode);
+    }, [isEditMode, material]);
 
     const handleChange = (field: keyof MaterialCreate, value: unknown) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
@@ -188,9 +220,10 @@ export default function MaterialModal({
             if (mode === 'create') {
                 await materialApi.createMaterial(submitData);
                 toast.success('材料を登録しました');
-            } else if (mode === 'edit' && material) {
+            } else if ((mode === 'edit' || (mode === 'view' && isEditMode)) && material) {
                 await materialApi.updateMaterial(material.id, submitData);
                 toast.success('材料を更新しました');
+                setIsEditMode(false);
             }
             onSuccess();
         } catch (error: unknown) {
@@ -214,8 +247,8 @@ export default function MaterialModal({
         }
     };
 
-    const isViewMode = mode === 'view';
-    const title = mode === 'create' ? '新規材料登録' : mode === 'edit' ? '材料編集' : '材料詳細';
+    const isViewMode = mode === 'view' && !isEditMode;
+    const title = mode === 'create' ? '新規材料登録' : (mode === 'edit' || isEditMode) ? '材料編集' : '材料詳細';
 
     // カテゴリー表示名を取得
     const getCategoryLabel = (value: string) => {
@@ -232,7 +265,18 @@ export default function MaterialModal({
 
     return (
         <>
-            <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+            <Dialog
+                open={open}
+                onClose={onClose}
+                maxWidth="md"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: 1,
+                        maxHeight: '90vh',
+                    }
+                }}
+            >
                 <DialogTitle sx={{
                     borderBottom: '1px solid',
                     borderColor: 'divider',
@@ -241,8 +285,8 @@ export default function MaterialModal({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Typography variant="h6" fontWeight="bold">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <Typography variant="h5" fontWeight="bold">
                             {title}
                         </Typography>
                         {material && (
@@ -253,19 +297,25 @@ export default function MaterialModal({
                             />
                         )}
                     </Box>
-                    {isViewMode && (
-                        <Button
-                            variant="outlined"
-                            startIcon={<EditIcon />}
-                            onClick={() => {
-                                // 編集モードに切り替え（親コンポーネントで処理）
-                                onClose();
-                                // 注: 実際の編集モード切り替えは親コンポーネントで行う必要があります
-                            }}
-                            size="small"
-                        >
-                            編集
-                        </Button>
+                    {mode === 'view' && material && !isEditMode && (
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                                variant="outlined"
+                                startIcon={<HistoryIcon />}
+                                onClick={handleOpenPriceList}
+                                size="small"
+                            >
+                                価格履歴
+                            </Button>
+                            <Button
+                                variant="contained"
+                                startIcon={<EditIcon />}
+                                onClick={handleEditToggle}
+                                size="small"
+                            >
+                                編集
+                            </Button>
+                        </Box>
                     )}
                 </DialogTitle>
 
@@ -598,32 +648,51 @@ export default function MaterialModal({
                     )}
                 </DialogContent>
 
-                <DialogActions>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                        <Box>
-                            {material && (
-                                <Button
-                                    startIcon={<HistoryIcon />}
-                                    onClick={handleOpenPriceList}
-                                >
-                                    価格履歴
-                                </Button>
-                            )}
-                        </Box>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                            <Button onClick={onClose}>閉じる</Button>
-                            {!isViewMode && (
-                                <Button
-                                    onClick={handleSubmit}
-                                    variant="contained"
-                                    disabled={loading}
-                                    startIcon={loading ? <CircularProgress size={16} /> : null}
-                                >
-                                    {mode === 'create' ? '登録' : '更新'}
-                                </Button>
-                            )}
-                        </Box>
-                    </Box>
+                <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+                    {!isViewMode ? (
+                        <>
+                            <Box sx={{ marginRight: 'auto' }}>
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={formData.is_active}
+                                            onChange={(e) => handleChange('is_active', e.target.checked)}
+                                            disabled={loading}
+                                        />
+                                    }
+                                    label={formData.is_active ? '有効' : '無効'}
+                                />
+                            </Box>
+                            <Button
+                                onClick={mode === 'view' && isEditMode ? handleEditToggle : onClose}
+                                startIcon={<CancelIcon />}
+                                size="large"
+                                disabled={loading}
+                                sx={{ borderRadius: 1.5, px: 3 }}
+                            >
+                                キャンセル
+                            </Button>
+                            <Button
+                                onClick={handleSubmit}
+                                startIcon={loading ? <CircularProgress size={16} /> : <SaveIcon />}
+                                variant="contained"
+                                size="large"
+                                disabled={loading}
+                                sx={{ borderRadius: 1.5, px: 3 }}
+                            >
+                                {loading ? '保存中...' : (mode === 'create' ? '登録' : '更新')}
+                            </Button>
+                        </>
+                    ) : (
+                        <Button
+                            onClick={onClose}
+                            startIcon={<CloseIcon />}
+                            size="large"
+                            sx={{ borderRadius: 1.5, px: 3 }}
+                        >
+                            閉じる
+                        </Button>
+                    )}
                 </DialogActions>
             </Dialog>
 
