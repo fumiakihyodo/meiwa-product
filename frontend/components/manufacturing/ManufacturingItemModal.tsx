@@ -32,6 +32,7 @@ import {
     Checkbox,
     FormGroup,
     FormLabel,
+    Chip,
 } from '@mui/material';
 import {
     Add as AddIcon,
@@ -142,6 +143,7 @@ export default function ManufacturingItemModal({
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [priceListOpen, setPriceListOpen] = useState(false);
+    const [isEditMode, setIsEditMode] = useState(false);
 
     // 海外サプライヤー関連
     const [overseasSuppliers, setOverseasSuppliers] = useState<SupplierBranch[]>([]);
@@ -225,6 +227,7 @@ export default function ManufacturingItemModal({
             setSelectedOverseasSupplier(null);
         }
         setErrors({});
+        setIsEditMode(mode === 'edit' || mode === 'create');
     }, [item, mode, open, loadExistingBom, getInitialFormData, overseasSuppliers]);
 
     // フィールド変更ハンドラー
@@ -330,6 +333,38 @@ export default function ManufacturingItemModal({
         setPriceListOpen(false);
     };
 
+    // 編集モード切り替え
+    const handleEditToggle = useCallback(() => {
+        if (isEditMode) {
+            // キャンセル時：元のデータに戻す
+            if (item) {
+                setFormData({
+                    manufacturing_number: item.manufacturing_number,
+                    manufacturing_name: item.manufacturing_name,
+                    production_type: item.production_type || 'domestic',
+                    product: item.product,
+                    specification: item.specification || '',
+                    unit: item.unit,
+                    standard_production_time: item.standard_production_time,
+                    purchase_price: item.purchase_price,
+                    is_active: item.is_active,
+                    domestic_stock: item.domestic_stock || 0,
+                    overseas_stock: item.overseas_stock || 0,
+                    text_notes: item.text_notes || '',
+                    overseas_supplier_branch: item.overseas_supplier_branch,
+                });
+                if (item.overseas_supplier_branch) {
+                    const supplier = overseasSuppliers.find(s => s.id === item.overseas_supplier_branch);
+                    setSelectedOverseasSupplier(supplier || null);
+                } else {
+                    setSelectedOverseasSupplier(null);
+                }
+                loadExistingBom(item.id);
+            }
+        }
+        setIsEditMode(!isEditMode);
+    }, [isEditMode, item, overseasSuppliers, loadExistingBom]);
+
     // 送信ハンドラー
     const handleSubmit = async () => {
         if (!validate()) return;
@@ -358,10 +393,11 @@ export default function ManufacturingItemModal({
                 const createdItem = await manufacturingItemApi.createItem(submitData);
                 itemId = createdItem.id;
                 toast.success('製造品を登録しました');
-            } else if (mode === 'edit' && item) {
+            } else if ((mode === 'edit' || (mode === 'view' && isEditMode)) && item) {
                 await manufacturingItemApi.updateItem(item.id, submitData);
                 itemId = item.id;
                 toast.success('製造品を更新しました');
+                setIsEditMode(false);
             } else {
                 return;
             }
@@ -401,8 +437,8 @@ export default function ManufacturingItemModal({
         }
     };
 
-    const isViewMode = mode === 'view';
-    const title = mode === 'create' ? '新規製造品登録' : mode === 'edit' ? '製造品編集' : '製造品詳細';
+    const isViewMode = mode === 'view' && !isEditMode;
+    const title = mode === 'create' ? '新規製造品登録' : (mode === 'edit' || isEditMode) ? '製造品編集' : '製造品詳細';
 
     // 選択可能な材料のリスト
     const getAvailableMaterials = (currentIndex: number) => {
@@ -450,7 +486,7 @@ export default function ManufacturingItemModal({
                         />
                     )}
                 </Box>
-                {mode === 'view' && item && (
+                {mode === 'view' && item && !isEditMode && (
                     <Box sx={{ display: 'flex', gap: 1 }}>
                         <Button
                             variant='outlined'
@@ -459,6 +495,14 @@ export default function ManufacturingItemModal({
                             size='small'
                         >
                             価格履歴
+                        </Button>
+                        <Button
+                            variant='contained'
+                            startIcon={<EditIcon />}
+                            onClick={handleEditToggle}
+                            size='small'
+                        >
+                            編集
                         </Button>
                     </Box>
                 )}
@@ -1012,7 +1056,7 @@ export default function ManufacturingItemModal({
                             />
                         </Box>
                         <Button
-                            onClick={onClose}
+                            onClick={mode === 'view' && isEditMode ? handleEditToggle : onClose}
                             startIcon={<CancelIcon />}
                             size="large"
                             disabled={loading}
