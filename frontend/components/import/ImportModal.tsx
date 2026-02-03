@@ -32,6 +32,9 @@ import {
     FormControlLabel,
     Checkbox,
     Divider,
+    List,
+    ListItem,
+    ListItemText,
 } from '@mui/material';
 import {
     Close as CloseIcon,
@@ -50,6 +53,7 @@ import {
     ImportPO,
     ImportFileType,
     ImportFileTypeLabels,
+    ImportFile,
 } from '@/types/import';
 import { Material, materialApi } from '@/services/apiManufacturing';
 import { supplierApi } from '@/services/apiSupplier';
@@ -112,6 +116,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     const [selectedFileType, setSelectedFileType] = useState<ImportFileType>('invoice');
     const [uploadedFiles, setUploadedFiles] = useState<{ type: ImportFileType; file: File }[]>([]);
     const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+    const [deletingFileId, setDeletingFileId] = useState<number | null>(null);
+    const [existingFiles, setExistingFiles] = useState<ImportFile[]>([]);
 
     // フォームデータ
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
@@ -203,6 +209,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             setNotes(existingInvoice.notes || '');
             setLinkedPOIds(existingInvoice.linked_po_ids || []);
 
+            // 既存ファイルを設定
+            setExistingFiles(existingInvoice.files || []);
+
             // 明細情報を読み込み
             if (existingInvoice.items && existingInvoice.items.length > 0) {
                 setItems(
@@ -228,6 +237,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         } else if (!existingInvoice && open) {
             // 新規作成時は初期状態にリセット
             setItems([createEmptyRow()]);
+            setExistingFiles([]);
         }
     }, [existingInvoice, open, supplierBranches]);
 
@@ -279,6 +289,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             setActiveTab(0);
             setRegisterAsSemiFinished(true);
             setSupplierMaterials([]);
+            setExistingFiles([]);
         }
     }, [open, filePreviewUrl]);
 
@@ -303,6 +314,33 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             event.target.value = '';
         }
     }, [selectedFileType]);
+
+    // 既存ファイルの削除ハンドラー
+    const handleDeleteExistingFile = async (fileId: number) => {
+        if (!existingInvoice) return;
+
+        const confirmed = window.confirm('このファイルを削除してもよろしいですか？');
+        if (!confirmed) return;
+
+        setDeletingFileId(fileId);
+        try {
+            await importApi.invoice.deleteFile(existingInvoice.id, fileId);
+            toast.success('ファイルを削除しました');
+
+            // ローカル状態から削除されたファイルを除外
+            setExistingFiles((prev) => prev.filter((file) => file.id !== fileId));
+
+            // 親コンポーネントに通知（必要に応じて）
+            if (onRefresh) {
+                onRefresh();
+            }
+        } catch (error) {
+            console.error('Failed to delete file:', error);
+            toast.error('ファイルの削除に失敗しました');
+        } finally {
+            setDeletingFileId(null);
+        }
+    };
 
     // 行の追加
     const handleAddRow = useCallback(() => {
@@ -550,16 +588,51 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                             {/* ファイル選択 */}
                             <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
                                 {/* 編集モード時の既存ファイル情報 */}
-                                {existingInvoice && existingInvoice.files && existingInvoice.files.length > 0 && (
-                                    <Alert severity="info" sx={{ mb: 2 }}>
-                                        <Typography variant="body2" gutterBottom>
-                                            既存ファイル: {existingInvoice.files.length}件登録済み
+                                {existingInvoice && existingFiles.length > 0 && (
+                                    <Box sx={{ mb: 2 }}>
+                                        <Typography variant="subtitle2" gutterBottom>
+                                            既存ファイル ({existingFiles.length}件)
                                         </Typography>
-                                        <Typography variant="caption" color="text.secondary">
-                                            既存ファイルの表示・管理は保存後に詳細画面で行えます。
-                                            ここでは新しいファイルの追加のみ可能です。
-                                        </Typography>
-                                    </Alert>
+                                        <List dense sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                                            {existingFiles.map((file) => (
+                                                <ListItem
+                                                    key={file.id}
+                                                    secondaryAction={
+                                                        <IconButton
+                                                            edge="end"
+                                                            aria-label="delete"
+                                                            onClick={() => handleDeleteExistingFile(file.id)}
+                                                            disabled={deletingFileId === file.id}
+                                                            size="small"
+                                                        >
+                                                            {deletingFileId === file.id ? (
+                                                                <CircularProgress size={20} />
+                                                            ) : (
+                                                                <DeleteIcon />
+                                                            )}
+                                                        </IconButton>
+                                                    }
+                                                >
+                                                    <ListItemText
+                                                        primary={
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                <Chip
+                                                                    label={ImportFileTypeLabels[file.file_type]}
+                                                                    size="small"
+                                                                    variant="outlined"
+                                                                />
+                                                                <Typography variant="body2">
+                                                                    {file.file_name}
+                                                                </Typography>
+                                                            </Box>
+                                                        }
+                                                        secondary={file.file_size ? `${(file.file_size / 1024).toFixed(2)} KB` : ''}
+                                                    />
+                                                </ListItem>
+                                            ))}
+                                        </List>
+                                        <Divider sx={{ my: 2 }} />
+                                    </Box>
                                 )}
                                 <Grid container spacing={2} alignItems="center">
                                     <Grid item xs={12}>
