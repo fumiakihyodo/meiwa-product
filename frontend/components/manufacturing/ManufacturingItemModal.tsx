@@ -37,6 +37,15 @@ import {
     Add as AddIcon,
     Delete as DeleteIcon,
     History as HistoryIcon,
+    Close as CloseIcon,
+    Edit as EditIcon,
+    Save as SaveIcon,
+    Cancel as CancelIcon,
+    Widgets as WidgetsIcon,
+    BusinessCenter as BusinessIcon,
+    Info as InfoIcon,
+    Inventory as InventoryIcon,
+    Build as BuildIcon,
 } from '@mui/icons-material';
 import {
     manufacturingItemApi,
@@ -51,6 +60,8 @@ import { Product } from '@/types/product';
 import { SupplierBranch, CurrencyLabels } from '@/types/supplier';
 import { supplierApi } from '@/services/apiSupplier';
 import { ManufacturingItemPriceListModal } from './ManufacturingItemPriceListModal';
+import { InfoRow } from '@/components/common/display/InfoRow';
+import { SectionCard } from '@/components/common/display/SectionCard';
 import toast from 'react-hot-toast';
 
 // 材料紐付けの型定義
@@ -407,274 +418,415 @@ export default function ManufacturingItemModal({
 
     return (
         <>
-            <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-            <DialogTitle>{title}</DialogTitle>
-            <DialogContent dividers>
-                <Grid container spacing={2}>
+            <Dialog
+                open={open}
+                onClose={onClose}
+                maxWidth="lg"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: 1,
+                        maxHeight: '90vh',
+                    }
+                }}
+            >
+            <DialogTitle sx={{
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                pb: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+            }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <Typography variant='h5' fontWeight='bold'>
+                        {title}
+                    </Typography>
+                    {item && (
+                        <Chip
+                            label={item.is_active ? '有効' : '無効'}
+                            color={item.is_active ? 'success' : 'default'}
+                            size='small'
+                        />
+                    )}
+                </Box>
+                {mode === 'view' && item && (
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                            variant='outlined'
+                            startIcon={<HistoryIcon />}
+                            onClick={handleOpenPriceList}
+                            size='small'
+                        >
+                            価格履歴
+                        </Button>
+                    </Box>
+                )}
+            </DialogTitle>
+            <DialogContent sx={{ pt: 3, mt: 3 }}>
+                <Box>
                     {/* 基本情報 */}
-                    <Grid item xs={12}>
-                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                            基本情報
-                        </Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <TextField
-                            label="品番"
-                            value={formData.manufacturing_number}
-                            onChange={(e) => handleChange('manufacturing_number', e.target.value)}
-                            onKeyDown={(e) => handleKeyDown(e, 0)}
-                            inputRef={setInputRef(0)}
-                            fullWidth
-                            required
-                            disabled={isViewMode || mode === 'edit'}
-                            error={!!errors.manufacturing_number}
-                            helperText={errors.manufacturing_number}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <TextField
-                            label="製造品名"
-                            value={formData.manufacturing_name}
-                            onChange={(e) => handleChange('manufacturing_name', e.target.value)}
-                            onKeyDown={(e) => handleKeyDown(e, 1)}
-                            inputRef={setInputRef(1)}
-                            fullWidth
-                            required
-                            disabled={isViewMode}
-                            error={!!errors.manufacturing_name}
-                            helperText={errors.manufacturing_name}
-                        />
-                    </Grid>
+                    <SectionCard isEditMode={!isViewMode} icon={<WidgetsIcon />} title='基本情報'>
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} sm={6}>
+                                <InfoRow
+                                    isEditMode={!isViewMode && mode === 'create'}
+                                    label='品番'
+                                    value={formData.manufacturing_number}
+                                    editComponent={
+                                        <TextField
+                                            value={formData.manufacturing_number}
+                                            onChange={(e) => handleChange('manufacturing_number', e.target.value)}
+                                            onKeyDown={(e) => handleKeyDown(e, 0)}
+                                            inputRef={setInputRef(0)}
+                                            fullWidth
+                                            size='small'
+                                            required
+                                            error={!!errors.manufacturing_number}
+                                            helperText={errors.manufacturing_number}
+                                        />
+                                    }
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                                <InfoRow
+                                    isEditMode={!isViewMode}
+                                    label='製造品名'
+                                    value={formData.manufacturing_name}
+                                    editComponent={
+                                        <TextField
+                                            value={formData.manufacturing_name}
+                                            onChange={(e) => handleChange('manufacturing_name', e.target.value)}
+                                            onKeyDown={(e) => handleKeyDown(e, 1)}
+                                            inputRef={setInputRef(1)}
+                                            fullWidth
+                                            size='small'
+                                            required
+                                            error={!!errors.manufacturing_name}
+                                            helperText={errors.manufacturing_name}
+                                        />
+                                    }
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                                <InfoRow
+                                    isEditMode={!isViewMode}
+                                    label='単位'
+                                    value={formData.unit}
+                                    editComponent={
+                                        <TextField
+                                            value={formData.unit}
+                                            onChange={(e) => handleChange('unit', e.target.value)}
+                                            onKeyDown={(e) => handleKeyDown(e, 4)}
+                                            inputRef={setInputRef(4)}
+                                            fullWidth
+                                            size='small'
+                                        />
+                                    }
+                                />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                                <InfoRow
+                                    isEditMode={!isViewMode}
+                                    label='標準製造時間'
+                                    value={formData.standard_production_time ? `${formData.standard_production_time}時間` : '-'}
+                                    editComponent={
+                                        <TextField
+                                            type='number'
+                                            value={formData.standard_production_time ?? ''}
+                                            onChange={(e) => handleChange('standard_production_time', e.target.value ? Number(e.target.value) : undefined)}
+                                            onKeyDown={(e) => handleKeyDown(e, 5)}
+                                            inputRef={setInputRef(5)}
+                                            fullWidth
+                                            size='small'
+                                            inputProps={{ min: 0, step: 0.5 }}
+                                            InputProps={{
+                                                endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>時間</Typography>
+                                            }}
+                                        />
+                                    }
+                                />
+                            </Grid>
+                            <Grid item xs={12}>
+                                <InfoRow
+                                    isEditMode={!isViewMode}
+                                    label='仕様'
+                                    value={formData.specification || '-'}
+                                    editComponent={
+                                        <TextField
+                                            value={formData.specification}
+                                            onChange={(e) => handleChange('specification', e.target.value)}
+                                            fullWidth
+                                            multiline
+                                            rows={2}
+                                        />
+                                    }
+                                />
+                            </Grid>
+                        </Grid>
+                    </SectionCard>
 
                     {/* 製造拠点選択 */}
-                    <Grid item xs={12}>
-                        <Divider sx={{ my: 1 }} />
-                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                            製造拠点
-                        </Typography>
-                    </Grid>
-                    <Grid item xs={12}>
-                        <FormControl component="fieldset" disabled={isViewMode}>
-                            <FormLabel component="legend">製造拠点を選択してください</FormLabel>
-                            <FormGroup row>
-                                {PRODUCTION_TYPE_OPTIONS.map((option) => (
-                                    <FormControlLabel
-                                        key={option.value}
-                                        control={
-                                            <Checkbox
-                                                checked={formData.production_type === option.value}
-                                                onChange={() => handleChange('production_type', option.value)}
-                                                disabled={isViewMode}
+                    <SectionCard isEditMode={!isViewMode} icon={<BuildIcon />} title='製造拠点'>
+                        <Grid container spacing={2}>
+                            <Grid item xs={12}>
+                                {isViewMode ? (
+                                    <InfoRow
+                                        isEditMode={false}
+                                        label='製造拠点'
+                                        value={PRODUCTION_TYPE_OPTIONS.find(opt => opt.value === formData.production_type)?.label || '-'}
+                                    />
+                                ) : (
+                                    <FormControl component="fieldset">
+                                        <FormLabel component="legend">製造拠点を選択してください</FormLabel>
+                                        <FormGroup row>
+                                            {PRODUCTION_TYPE_OPTIONS.map((option) => (
+                                                <FormControlLabel
+                                                    key={option.value}
+                                                    control={
+                                                        <Checkbox
+                                                            checked={formData.production_type === option.value}
+                                                            onChange={() => handleChange('production_type', option.value)}
+                                                        />
+                                                    }
+                                                    label={option.label}
+                                                />
+                                            ))}
+                                        </FormGroup>
+                                    </FormControl>
+                                )}
+                            </Grid>
+
+                            {/* 海外サプライヤー選択（海外生産または両方の場合のみ表示） */}
+                            {(formData.production_type === 'overseas' || formData.production_type === 'both') && (
+                                <Grid item xs={12}>
+                                    <InfoRow
+                                        isEditMode={!isViewMode}
+                                        label='海外サプライヤー'
+                                        value={selectedOverseasSupplier ? `${selectedOverseasSupplier.supplier_name} - ${selectedOverseasSupplier.branch_name}` : '-'}
+                                        editComponent={
+                                            <Autocomplete
+                                                options={overseasSuppliers}
+                                                getOptionLabel={(option) =>
+                                                    `${option.supplier_name || ''} - ${option.branch_name}`
+                                                }
+                                                value={selectedOverseasSupplier}
+                                                onChange={(_, newValue) => {
+                                                    setSelectedOverseasSupplier(newValue);
+                                                    handleChange('overseas_supplier_branch', newValue?.id || undefined);
+                                                }}
+                                                renderInput={(params) => (
+                                                    <TextField
+                                                        {...params}
+                                                        size='small'
+                                                        placeholder="サプライヤーを検索または選択"
+                                                        helperText={
+                                                            loadingSuppliers
+                                                                ? 'サプライヤーを読み込み中...'
+                                                                : '海外生産の場合、サプライヤーを選択できます'
+                                                        }
+                                                    />
+                                                )}
+                                                isOptionEqualToValue={(option, value) => option.id === value.id}
+                                                disabled={loadingSuppliers}
+                                                loading={loadingSuppliers}
+                                                noOptionsText="海外サプライヤーが登録されていません"
                                             />
                                         }
-                                        label={option.label}
                                     />
-                                ))}
-                            </FormGroup>
-                        </FormControl>
-                    </Grid>
+                                </Grid>
+                            )}
 
-                    {/* 海外サプライヤー選択（海外生産または両方の場合のみ表示） */}
-                    {(formData.production_type === 'overseas' || formData.production_type === 'both') && (
-                        <Grid item xs={12}>
-                            <Autocomplete
-                                options={overseasSuppliers}
-                                getOptionLabel={(option) =>
-                                    `${option.supplier_name || ''} - ${option.branch_name}`
-                                }
-                                value={selectedOverseasSupplier}
-                                onChange={(_, newValue) => {
-                                    setSelectedOverseasSupplier(newValue);
-                                    handleChange('overseas_supplier_branch', newValue?.id || undefined);
-                                }}
-                                renderInput={(params) => (
-                                    <TextField
-                                        {...params}
-                                        label="海外サプライヤー"
-                                        placeholder="サプライヤーを検索または選択"
-                                        helperText={
-                                            loadingSuppliers
-                                                ? 'サプライヤーを読み込み中...'
-                                                : '海外生産の場合、サプライヤーを選択できます'
+                            {/* 仕入れ単価（海外生産または両方の場合のみ表示） */}
+                            {(formData.production_type === 'overseas' || formData.production_type === 'both') && (
+                                <Grid item xs={12} sm={6}>
+                                    <InfoRow
+                                        isEditMode={!isViewMode}
+                                        label={`仕入れ単価${selectedOverseasSupplier?.supplier_currency ? ` (${CurrencyLabels[selectedOverseasSupplier.supplier_currency]})` : ''}`}
+                                        value={formData.purchase_price ? `¥${Number(formData.purchase_price).toLocaleString()}` : '-'}
+                                        editComponent={
+                                            <TextField
+                                                type='number'
+                                                value={formData.purchase_price ?? ''}
+                                                onChange={(e) => handleChange('purchase_price', e.target.value ? Number(e.target.value) : undefined)}
+                                                onKeyDown={(e) => handleKeyDown(e, 6)}
+                                                inputRef={setInputRef(6)}
+                                                fullWidth
+                                                size='small'
+                                                inputProps={{ min: 0, step: 0.01 }}
+                                                helperText={selectedOverseasSupplier ? `海外サプライヤー: ${selectedOverseasSupplier.supplier_name}` : '海外サプライヤーを選択してください'}
+                                            />
                                         }
                                     />
-                                )}
-                                isOptionEqualToValue={(option, value) => option.id === value.id}
-                                disabled={isViewMode || loadingSuppliers}
-                                loading={loadingSuppliers}
-                                noOptionsText="海外サプライヤーが登録されていません"
-                            />
+                                </Grid>
+                            )}
                         </Grid>
-                    )}
-
-                                        {/* 仕入れ単価（海外生産または両方の場合のみ表示） */}
-                    {(formData.production_type === 'overseas' || formData.production_type === 'both') && (
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                label={`仕入れ単価${selectedOverseasSupplier?.supplier_currency ? ` (${CurrencyLabels[selectedOverseasSupplier.supplier_currency]})` : ''}`}
-                                type="number"
-                                value={formData.purchase_price ?? ''}
-                                onChange={(e) => handleChange('purchase_price', e.target.value ? Number(e.target.value) : undefined)}
-                                onKeyDown={(e) => handleKeyDown(e, 6)}
-                                inputRef={setInputRef(6)}
-                                fullWidth
-                                disabled={isViewMode}
-                                inputProps={{ min: 0, step: 0.01 }}
-                                helperText={selectedOverseasSupplier ? `海外サプライヤー: ${selectedOverseasSupplier.supplier_name}` : '海外サプライヤーを選択してください'}
-                            />
-                        </Grid>
-                    )}
+                    </SectionCard>
 
                     {/* 拠点別在庫情報 */}
-                    <Grid item xs={12}>
-                        <Divider sx={{ my: 1 }} />
-                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                            在庫情報
-                        </Typography>
-                    </Grid>
-                    {showDomesticStock && (
-                        <Grid item xs={12} sm={4}>
-                            <TextField
-                                label="国内在庫"
-                                type="number"
-                                value={formData.domestic_stock}
-                                onChange={(e) => handleChange('domestic_stock', parseInt(e.target.value) || 0)}
-                                onKeyDown={(e) => handleKeyDown(e, 2)}
-                                inputRef={setInputRef(2)}
-                                fullWidth
-                                disabled={isViewMode}
-                                inputProps={{ min: 0 }}
-                                InputProps={{
-                                    endAdornment: <Typography variant="body2" color="text.secondary">{formData.unit}</Typography>
-                                }}
-                            />
+                    <SectionCard isEditMode={!isViewMode} icon={<InventoryIcon />} title='在庫情報'>
+                        <Grid container spacing={2}>
+                            {showDomesticStock && (
+                                <Grid item xs={12} sm={4}>
+                                    <InfoRow
+                                        isEditMode={!isViewMode}
+                                        label='国内在庫'
+                                        value={`${Number(formData.domestic_stock).toLocaleString()} ${formData.unit}`}
+                                        editComponent={
+                                            <TextField
+                                                type='number'
+                                                value={formData.domestic_stock}
+                                                onChange={(e) => handleChange('domestic_stock', parseInt(e.target.value) || 0)}
+                                                onKeyDown={(e) => handleKeyDown(e, 2)}
+                                                inputRef={setInputRef(2)}
+                                                fullWidth
+                                                size='small'
+                                                inputProps={{ min: 0 }}
+                                                InputProps={{
+                                                    endAdornment: <Typography variant="body2" color="text.secondary">{formData.unit}</Typography>
+                                                }}
+                                            />
+                                        }
+                                    />
+                                </Grid>
+                            )}
+                            {showOverseasStock && (
+                                <Grid item xs={12} sm={4}>
+                                    <InfoRow
+                                        isEditMode={!isViewMode}
+                                        label='海外在庫'
+                                        value={`${Number(formData.overseas_stock).toLocaleString()} ${formData.unit}`}
+                                        editComponent={
+                                            <TextField
+                                                type='number'
+                                                value={formData.overseas_stock}
+                                                onChange={(e) => handleChange('overseas_stock', parseInt(e.target.value) || 0)}
+                                                onKeyDown={(e) => handleKeyDown(e, 3)}
+                                                inputRef={setInputRef(3)}
+                                                fullWidth
+                                                size='small'
+                                                inputProps={{ min: 0 }}
+                                                InputProps={{
+                                                    endAdornment: <Typography variant="body2" color="text.secondary">{formData.unit}</Typography>
+                                                }}
+                                            />
+                                        }
+                                    />
+                                </Grid>
+                            )}
+                            <Grid item xs={12} sm={4}>
+                                <InfoRow
+                                    isEditMode={false}
+                                    label='合計在庫'
+                                    value={`${Number(formData.domestic_stock + formData.overseas_stock).toLocaleString()} ${formData.unit}`}
+                                />
+                            </Grid>
                         </Grid>
-                    )}
-                    {showOverseasStock && (
-                        <Grid item xs={12} sm={4}>
-                            <TextField
-                                label="海外在庫"
-                                type="number"
-                                value={formData.overseas_stock}
-                                onChange={(e) => handleChange('overseas_stock', parseInt(e.target.value) || 0)}
-                                onKeyDown={(e) => handleKeyDown(e, 3)}
-                                inputRef={setInputRef(3)}
-                                fullWidth
-                                disabled={isViewMode}
-                                inputProps={{ min: 0 }}
-                                InputProps={{
-                                    endAdornment: <Typography variant="body2" color="text.secondary">{formData.unit}</Typography>
-                                }}
-                            />
+                    </SectionCard>
+
+                    {/* 製品紐付け情報 */}
+                    <SectionCard isEditMode={!isViewMode} icon={<BusinessIcon />} title='紐付き製品情報'>
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} sm={6}>
+                                <InfoRow
+                                    isEditMode={!isViewMode}
+                                    label='製品'
+                                    value={products.find(p => p.id === formData.product)?.product_name || '-'}
+                                    editComponent={
+                                        <FormControl fullWidth size='small'>
+                                            <InputLabel>製品</InputLabel>
+                                            <Select
+                                                value={formData.product || ''}
+                                                onChange={(e) => handleChange('product', e.target.value || undefined)}
+                                                label="製品"
+                                            >
+                                                <MenuItem value="">選択なし</MenuItem>
+                                                {products.map((product) => (
+                                                    <MenuItem key={product.id} value={product.id}>
+                                                        {product.product_name}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    }
+                                />
+                            </Grid>
                         </Grid>
-                    )}
-                    <Grid item xs={12} sm={4}>
-                        <TextField
-                            label="合計在庫"
-                            type="number"
-                            value={formData.domestic_stock + formData.overseas_stock}
-                            fullWidth
-                            disabled
-                            InputProps={{
-                                readOnly: true,
-                                endAdornment: <Typography variant="body2" color="text.secondary">{formData.unit}</Typography>
-                            }}
-                        />
-                    </Grid>
+                    </SectionCard>
 
-                    {/* その他の基本情報 */}
-                    <Grid item xs={12}>
-                        <Divider sx={{ my: 1 }} />
-                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                            製造情報
-                        </Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <FormControl fullWidth disabled={isViewMode}>
-                            <InputLabel>製品</InputLabel>
-                            <Select
-                                value={formData.product || ''}
-                                onChange={(e) => handleChange('product', e.target.value || undefined)}
-                                label="製品"
-                            >
-                                <MenuItem value="">選択なし</MenuItem>
-                                {products.map((product) => (
-                                    <MenuItem key={product.id} value={product.id}>
-                                        {product.product_name}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <TextField
-                            label="単位"
-                            value={formData.unit}
-                            onChange={(e) => handleChange('unit', e.target.value)}
-                            onKeyDown={(e) => handleKeyDown(e, 4)}
-                            inputRef={setInputRef(4)}
-                            fullWidth
-                            disabled={isViewMode}
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <TextField
-                            label="標準製造時間（時間）"
-                            type="number"
-                            value={formData.standard_production_time ?? ''}
-                            onChange={(e) => handleChange('standard_production_time', e.target.value ? Number(e.target.value) : undefined)}
-                            onKeyDown={(e) => handleKeyDown(e, 5)}
-                            inputRef={setInputRef(5)}
-                            fullWidth
-                            disabled={isViewMode}
-                            inputProps={{ min: 0, step: 0.5 }}
-                        />
-                    </Grid>
-
-
-
-                    <Grid item xs={12} sm={6}>
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={formData.is_active}
-                                    onChange={(e) => handleChange('is_active', e.target.checked)}
-                                    disabled={isViewMode}
+                    {/* 備考 */}
+                    <SectionCard isEditMode={!isViewMode} icon={<InfoIcon />} title='備考'>
+                        <InfoRow
+                            isEditMode={!isViewMode}
+                            label='備考詳細'
+                            value={
+                                <Paper
+                                    variant="outlined"
+                                    sx={{
+                                        p: 2,
+                                        bgcolor: 'warning.50',
+                                        borderRadius: 1.5,
+                                        borderColor: 'warning.200',
+                                    }}
+                                >
+                                    <Typography
+                                        variant="body2"
+                                        sx={{
+                                            whiteSpace: 'pre-wrap',
+                                            lineHeight: 1.8,
+                                        }}
+                                    >
+                                        {formData.text_notes || '未設定'}
+                                    </Typography>
+                                </Paper>
+                            }
+                            editComponent={
+                                <TextField
+                                    value={formData.text_notes}
+                                    onChange={(e) => handleChange('text_notes', e.target.value)}
+                                    fullWidth
+                                    multiline
+                                    rows={2}
+                                    placeholder="備考を入力してください"
                                 />
                             }
-                            label="有効"
                         />
-                    </Grid>
-                    <Grid item xs={12}>
-                        <TextField
-                            label="仕様"
-                            value={formData.specification}
-                            onChange={(e) => handleChange('specification', e.target.value)}
-                            fullWidth
-                            multiline
-                            rows={2}
-                            disabled={isViewMode}
-                        />
-                    </Grid>
-                    <Grid item xs={12}>
-                        <TextField
-                            label="備考"
-                            value={formData.text_notes}
-                            onChange={(e) => handleChange('text_notes', e.target.value)}
-                            fullWidth
-                            multiline
-                            rows={2}
-                            disabled={isViewMode}
-                        />
-                    </Grid>
+                    </SectionCard>
 
                     {/* 材料構成セクション */}
-                    <Grid item xs={12}>
-                        <Divider sx={{ my: 2 }} />
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            p: 3,
+                            mb: 3,
+                            borderRadius: 1,
+                            border: '1px solid',
+                            borderColor: !isViewMode ? 'primary.main' : 'divider',
+                            transition: 'all 0.2s',
+                            bgcolor: !isViewMode ? 'primary.50' : 'background.paper',
+                            '&:hover': {
+                                boxShadow: 1,
+                            }
+                        }}
+                    >
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                            <Typography variant="subtitle1" fontWeight="bold">
-                                使用材料（BOM）
-                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Box sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: '50%',
+                                    bgcolor: !isViewMode ? 'primary.100' : 'primary.50',
+                                    color: 'primary.main'
+                                }}>
+                                    <WidgetsIcon />
+                                </Box>
+                                <Typography variant='h6' component='div' color='primary.main'>
+                                    使用材料（BOM）
+                                </Typography>
+                            </Box>
                             {!isViewMode && (
                                 <Button
                                     startIcon={<AddIcon />}
@@ -796,65 +948,99 @@ export default function ManufacturingItemModal({
                                 </Typography>
                             </Box>
                         )}
-                    </Grid>
+                    </Paper>
 
                     {/* システム情報表示（表示モード時のみ） */}
                     {isViewMode && item && (
-                        <>
-                            <Grid item xs={12}>
-                                <Divider sx={{ my: 1 }} />
-                                <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>
-                                    システム情報
-                                </Typography>
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                                <Typography variant="body2" color="text.secondary">作成日時</Typography>
-                                <Typography variant="body1">
-                                    {new Date(item.created_at).toLocaleString('ja-JP')}
-                                </Typography>
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                                <Typography variant="body2" color="text.secondary">更新日時</Typography>
-                                <Typography variant="body1">
-                                    {new Date(item.updated_at).toLocaleString('ja-JP')}
-                                </Typography>
-                            </Grid>
-                            {item.created_by_name && (
-                                <Grid item xs={12} sm={6}>
-                                    <Typography variant="body2" color="text.secondary">作成者</Typography>
-                                    <Typography variant="body1">{item.created_by_name}</Typography>
+                        <Paper
+                            elevation={0}
+                            sx={{
+                                p: 2,
+                                borderRadius: 2,
+                                bgcolor: 'grey.100',
+                                border: '1px solid',
+                                borderColor: 'grey.300',
+                            }}
+                        >
+                            <Grid container spacing={2}>
+                                <Grid item xs={12} sm={4}>
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                        作成日時
+                                    </Typography>
+                                    <Typography variant="body2" fontWeight="medium">
+                                        {new Date(item.created_at).toLocaleString('ja-JP')}
+                                    </Typography>
                                 </Grid>
-                            )}
-                        </>
+
+                                <Grid item xs={12} sm={4}>
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                        更新日時
+                                    </Typography>
+                                    <Typography variant="body2" fontWeight="medium">
+                                        {new Date(item.updated_at).toLocaleString('ja-JP')}
+                                    </Typography>
+                                </Grid>
+
+                                {item.created_by_name && (
+                                    <Grid item xs={12} sm={4}>
+                                        <Typography variant="caption" color="text.secondary" display="block">
+                                            作成者
+                                        </Typography>
+                                        <Typography variant="body2" fontWeight="medium">
+                                            {item.created_by_name}
+                                        </Typography>
+                                    </Grid>
+                                )}
+                            </Grid>
+                        </Paper>
                     )}
-                </Grid>
-            </DialogContent>
-            <DialogActions>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                    <Box>
-                        {item && (
-                            <Button
-                                startIcon={<HistoryIcon />}
-                                onClick={handleOpenPriceList}
-                            >
-                                価格履歴
-                            </Button>
-                        )}
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button onClick={onClose}>閉じる</Button>
-                        {!isViewMode && (
-                            <Button
-                                onClick={handleSubmit}
-                                variant="contained"
-                                disabled={loading}
-                                startIcon={loading ? <CircularProgress size={16} /> : null}
-                            >
-                                {mode === 'create' ? '登録' : '更新'}
-                            </Button>
-                        )}
-                    </Box>
                 </Box>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+                {!isViewMode ? (
+                    <>
+                        <Box sx={{ marginRight: 'auto' }}>
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={formData.is_active}
+                                        onChange={(e) => handleChange('is_active', e.target.checked)}
+                                        disabled={loading}
+                                    />
+                                }
+                                label={formData.is_active ? '有効' : '無効'}
+                            />
+                        </Box>
+                        <Button
+                            onClick={onClose}
+                            startIcon={<CancelIcon />}
+                            size="large"
+                            disabled={loading}
+                            sx={{ borderRadius: 1.5, px: 3 }}
+                        >
+                            キャンセル
+                        </Button>
+                        <Button
+                            onClick={handleSubmit}
+                            startIcon={loading ? <CircularProgress size={16} /> : <SaveIcon />}
+                            variant="contained"
+                            size="large"
+                            disabled={loading}
+                            sx={{ borderRadius: 1.5, px: 3 }}
+                        >
+                            {loading ? '保存中...' : (mode === 'create' ? '登録' : '更新')}
+                        </Button>
+                    </>
+                ) : (
+                    <Button
+                        onClick={onClose}
+                        startIcon={<CloseIcon />}
+                        size="large"
+                        sx={{ borderRadius: 1.5, px: 3 }}
+                    >
+                        閉じる
+                    </Button>
+                )}
             </DialogActions>
             </Dialog>
 

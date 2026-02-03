@@ -212,23 +212,31 @@ export const ManufacturingItemPriceHistoryFormModal: React.FC<ManufacturingItemP
             maxWidth="md"
             fullWidth
             PaperProps={{
-                sx: { maxHeight: '90vh' }
+                sx: {
+                    borderRadius: 1,
+                    maxHeight: '90vh',
+                }
             }}
         >
-            <DialogTitle>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Box>
-                        <Typography variant="h6">
-                            {isEdit ? '価格履歴編集' : '価格履歴新規登録'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            {manufacturingItem.manufacturing_name} ({manufacturingItem.manufacturing_number})
-                        </Typography>
-                    </Box>
-                    <IconButton onClick={handleClose} disabled={isSubmitting}>
-                        <CloseIcon />
-                    </IconButton>
+            <DialogTitle sx={{
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                pb: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+            }}>
+                <Box>
+                    <Typography variant="h5" fontWeight="bold">
+                        {isEdit ? '価格履歴編集' : '価格履歴新規登録'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        {manufacturingItem.manufacturing_name} ({manufacturingItem.manufacturing_number})
+                    </Typography>
                 </Box>
+                <IconButton onClick={handleClose} disabled={isSubmitting} edge="end">
+                    <CloseIcon />
+                </IconButton>
             </DialogTitle>
 
             <form onSubmit={handleSubmit(onSubmit)}>
@@ -381,10 +389,12 @@ export const ManufacturingItemPriceHistoryFormModal: React.FC<ManufacturingItemP
                     </Grid>
                 </DialogContent>
 
-                <DialogActions sx={{ px: 3, py: 2 }}>
+                <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
                     <Button
                         onClick={handleClose}
                         disabled={isSubmitting}
+                        size="large"
+                        sx={{ borderRadius: 1.5, px: 3 }}
                     >
                         キャンセル
                     </Button>
@@ -393,6 +403,8 @@ export const ManufacturingItemPriceHistoryFormModal: React.FC<ManufacturingItemP
                         variant="contained"
                         startIcon={isSubmitting ? <CircularProgress size={16} /> : <SaveIcon />}
                         disabled={isSubmitting}
+                        size="large"
+                        sx={{ borderRadius: 1.5, px: 3 }}
                     >
                         {isSubmitting ? '保存中...' : '保存'}
                     </Button>
