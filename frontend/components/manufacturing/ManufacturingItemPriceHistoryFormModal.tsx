@@ -222,21 +222,13 @@ export const ManufacturingItemPriceHistoryFormModal: React.FC<ManufacturingItemP
                 borderBottom: '1px solid',
                 borderColor: 'divider',
                 pb: 2,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
             }}>
-                <Box>
-                    <Typography variant="h5" fontWeight="bold">
-                        {isEdit ? '価格履歴編集' : '価格履歴新規登録'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        {manufacturingItem.manufacturing_name} ({manufacturingItem.manufacturing_number})
-                    </Typography>
-                </Box>
-                <IconButton onClick={handleClose} disabled={isSubmitting} edge="end">
-                    <CloseIcon />
-                </IconButton>
+                <Typography variant="h5" fontWeight="bold">
+                    {isEdit ? '価格履歴編集' : '価格履歴新規登録'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                    {manufacturingItem.manufacturing_name} ({manufacturingItem.manufacturing_number})
+                </Typography>
             </DialogTitle>
 
             <form onSubmit={handleSubmit(onSubmit)}>
