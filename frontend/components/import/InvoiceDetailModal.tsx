@@ -188,9 +188,14 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
     // ファイルプレビュー
     const renderFilePreview = (file: ImportFile) => {
-        const fileUrl = file.file;
+        // ファイルURLの構築（バックエンドのAPIベースURL + ファイルパス）
+        const fileUrl = file.file.startsWith('http')
+            ? file.file
+            : `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}${file.file}`;
 
-        if (file.file.endsWith('.pdf')) {
+        const fileName = file.file_name || file.file;
+
+        if (fileName.toLowerCase().endsWith('.pdf')) {
             return (
                 <Box sx={{ height: '70vh', width: '100%', overflow: 'auto' }}>
                     <iframe
@@ -206,12 +211,12 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
             );
         }
 
-        if (file.file.match(/\.(jpg|jpeg|png|gif|bmp)$/i)) {
+        if (fileName.match(/\.(jpg|jpeg|png|gif|bmp)$/i)) {
             return (
                 <Box sx={{ textAlign: 'center', p: 2 }}>
                     <img
                         src={fileUrl}
-                        alt={file.file_name}
+                        alt={fileName}
                         style={{
                             maxWidth: '100%',
                             maxHeight: '70vh',
@@ -422,7 +427,14 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                         value={activeTab}
                                         onChange={(_, newValue) => setActiveTab(newValue)}
                                         sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
+                                        variant="scrollable"
+                                        scrollButtons="auto"
                                     >
+                                        <Tab
+                                            label={`明細情報 (${invoice?.items?.length || 0}件)`}
+                                            icon={<FileIcon />}
+                                            iconPosition="start"
+                                        />
                                         <Tab
                                             label={`Invoice (${getFilesByType('invoice').length})`}
                                             icon={<FileIcon />}
@@ -440,8 +452,85 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                         />
                                     </Tabs>
 
-                                    {/* Invoiceタブ */}
+                                    {/* 明細情報タブ */}
                                     <TabPanel value={activeTab} index={0}>
+                                        <Box sx={{ height: '100%', overflow: 'auto' }}>
+                                            {invoice?.items && invoice.items.length > 0 ? (
+                                                <>
+                                                    <TableContainer>
+                                                        <Table size="small">
+                                                            <TableHead>
+                                                                <TableRow>
+                                                                    <TableCell>品番</TableCell>
+                                                                    <TableCell>品名・説明</TableCell>
+                                                                    <TableCell align="right">数量</TableCell>
+                                                                    <TableCell align="right">単価</TableCell>
+                                                                    <TableCell>単位</TableCell>
+                                                                    <TableCell align="right">金額</TableCell>
+                                                                </TableRow>
+                                                            </TableHead>
+                                                            <TableBody>
+                                                                {invoice.items.map((item) => (
+                                                                    <TableRow key={item.id}>
+                                                                        <TableCell>
+                                                                            <Typography variant="body2" fontWeight="medium">
+                                                                                {item.part_number}
+                                                                            </Typography>
+                                                                            {item.material_code && (
+                                                                                <Typography variant="caption" color="text.secondary" display="block">
+                                                                                    マスター: {item.material_code}
+                                                                                </Typography>
+                                                                            )}
+                                                                        </TableCell>
+                                                                        <TableCell>
+                                                                            <Typography variant="body2">
+                                                                                {item.description}
+                                                                            </Typography>
+                                                                            {item.material_name && (
+                                                                                <Typography variant="caption" color="text.secondary" display="block">
+                                                                                    {item.material_name}
+                                                                                </Typography>
+                                                                            )}
+                                                                        </TableCell>
+                                                                        <TableCell align="right">
+                                                                            {item.quantity.toLocaleString()}
+                                                                        </TableCell>
+                                                                        <TableCell align="right">
+                                                                            {item.unit_price
+                                                                                ? `${invoice.currency || ''} ${item.unit_price.toLocaleString()}`
+                                                                                : '-'}
+                                                                        </TableCell>
+                                                                        <TableCell>{item.unit}</TableCell>
+                                                                        <TableCell align="right">
+                                                                            {item.amount
+                                                                                ? `${invoice.currency || ''} ${item.amount.toLocaleString()}`
+                                                                                : '-'}
+                                                                        </TableCell>
+                                                                    </TableRow>
+                                                                ))}
+                                                            </TableBody>
+                                                        </Table>
+                                                    </TableContainer>
+                                                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            合計品目数: {invoice.items.length}件
+                                                        </Typography>
+                                                        <Typography variant="body2" fontWeight="medium">
+                                                            合計金額: {invoice.currency || ''}{' '}
+                                                            {(invoice.total_amount || 0).toLocaleString()}
+                                                        </Typography>
+                                                    </Box>
+                                                </>
+                                            ) : (
+                                                <Alert severity="info">
+                                                    明細情報が登録されていません
+                                                </Alert>
+                                            )}
+                                        </Box>
+                                    </TabPanel>
+
+                                    {/* Invoiceタブ */}
+                                    <TabPanel value={activeTab} index={1}>
                                         <Box onKeyDown={handleKeyDown}>
                                             <Box sx={{ mb: 2 }}>
                                                 <input
@@ -470,8 +559,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                                         {getFilesByType('invoice').map((file) => (
                                                             <ListItem key={file.id}>
                                                                 <ListItemText
-                                                                    primary={file.original_filename || file.file_name}
-                                                                    secondary={`${(file.file_size || 0) / 1024} KB`}
+                                                                    primary={file.file_name}
+                                                                    secondary={`${((file.file_size || 0) / 1024).toFixed(2)} KB`}
                                                                 />
                                                                 <ListItemSecondaryAction>
                                                                     <IconButton
@@ -479,7 +568,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                                                         onClick={() =>
                                                                             handleFileDownload(
                                                                                 file.id,
-                                                                                file.original_filename || file.file_name
+                                                                                file.file_name
                                                                             )
                                                                         }
                                                                     >
@@ -507,7 +596,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                     </TabPanel>
 
                                     {/* Waybillタブ */}
-                                    <TabPanel value={activeTab} index={1}>
+                                    <TabPanel value={activeTab} index={2}>
                                         <Box onKeyDown={handleKeyDown}>
                                             <Box sx={{ mb: 2 }}>
                                                 <input
@@ -573,7 +662,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                                     </TabPanel>
 
                                     {/* 請求書タブ */}
-                                    <TabPanel value={activeTab} index={2}>
+                                    <TabPanel value={activeTab} index={3}>
                                         <Box onKeyDown={handleKeyDown}>
                                             <Box sx={{ mb: 2 }}>
                                                 <input

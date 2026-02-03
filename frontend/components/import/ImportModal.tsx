@@ -203,6 +203,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             setNotes(existingInvoice.notes || '');
             setLinkedPOIds(existingInvoice.linked_po_ids || []);
 
+            // 明細情報を読み込み
             if (existingInvoice.items && existingInvoice.items.length > 0) {
                 setItems(
                     existingInvoice.items.map((item) => ({
@@ -215,12 +216,18 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         matched_material_id: item.material,
                     }))
                 );
+            } else {
+                // 明細がない場合は空の行を1つ作成
+                setItems([createEmptyRow()]);
             }
 
             const branch = supplierBranches.find(b => b.id === existingInvoice.supplier_branch);
             if (branch) {
                 setSelectedBranch(branch);
             }
+        } else if (!existingInvoice && open) {
+            // 新規作成時は初期状態にリセット
+            setItems([createEmptyRow()]);
         }
     }, [existingInvoice, open, supplierBranches]);
 
@@ -542,6 +549,18 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         >
                             {/* ファイル選択 */}
                             <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+                                {/* 編集モード時の既存ファイル情報 */}
+                                {existingInvoice && existingInvoice.files && existingInvoice.files.length > 0 && (
+                                    <Alert severity="info" sx={{ mb: 2 }}>
+                                        <Typography variant="body2" gutterBottom>
+                                            既存ファイル: {existingInvoice.files.length}件登録済み
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            既存ファイルの表示・管理は保存後に詳細画面で行えます。
+                                            ここでは新しいファイルの追加のみ可能です。
+                                        </Typography>
+                                    </Alert>
+                                )}
                                 <Grid container spacing={2} alignItems="center">
                                     <Grid item xs={12}>
                                         <TextField
@@ -576,30 +595,35 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                             onClick={() => fileInputRef.current?.click()}
                                             fullWidth
                                         >
-                                            ファイルを選択
+                                            {existingInvoice ? '新しいファイルを追加' : 'ファイルを選択'}
                                         </Button>
                                     </Grid>
                                 </Grid>
-                                {/* アップロード済みファイル一覧 */}
+                                {/* アップロード済みファイル一覧（今回追加する新しいファイル） */}
                                 {uploadedFiles.length > 0 && (
-                                    <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                                        {uploadedFiles.map((f, index) => (
-                                            <Chip
-                                                key={index}
-                                                label={`${ImportFileTypeLabels[f.type]}: ${f.file.name}`}
-                                                size="small"
-                                                onDelete={() => {
-                                                    setUploadedFiles((prev) =>
-                                                        prev.filter((_, i) => i !== index)
-                                                    );
-                                                    if (selectedFile === f.file) {
-                                                        setSelectedFile(null);
-                                                    }
-                                                }}
-                                                onClick={() => setSelectedFile(f.file)}
-                                                color={selectedFile === f.file ? 'primary' : 'default'}
-                                            />
-                                        ))}
+                                    <Box sx={{ mt: 2 }}>
+                                        <Typography variant="caption" color="text.secondary" gutterBottom>
+                                            今回追加するファイル:
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                                            {uploadedFiles.map((f, index) => (
+                                                <Chip
+                                                    key={index}
+                                                    label={`${ImportFileTypeLabels[f.type]}: ${f.file.name}`}
+                                                    size="small"
+                                                    onDelete={() => {
+                                                        setUploadedFiles((prev) =>
+                                                            prev.filter((_, i) => i !== index)
+                                                        );
+                                                        if (selectedFile === f.file) {
+                                                            setSelectedFile(null);
+                                                        }
+                                                    }}
+                                                    onClick={() => setSelectedFile(f.file)}
+                                                    color={selectedFile === f.file ? 'primary' : 'default'}
+                                                />
+                                            ))}
+                                        </Box>
                                     </Box>
                                 )}
                             </Box>

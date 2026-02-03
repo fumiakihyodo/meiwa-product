@@ -255,13 +255,21 @@ export default function ImportPage() {
         setMenuTarget(null);
     };
 
-    const handleEdit = () => {
+    const handleEdit = async () => {
         if (menuTarget?.type === 'po') {
             setSelectedPO(menuTarget.data as ImportPO);
             setPoModalOpen(true);
         } else if (menuTarget?.type === 'invoice') {
-            setSelectedInvoice(menuTarget.data as ImportInvoice);
-            setInvoiceModalOpen(true);
+            // 編集時は完全なインボイスデータ（明細とファイルを含む）をAPIから取得
+            try {
+                const invoice = menuTarget.data as ImportInvoice;
+                const fullInvoiceData = await importApi.invoice.getImportInvoice(invoice.id);
+                setSelectedInvoice(fullInvoiceData);
+                setInvoiceModalOpen(true);
+            } catch (error) {
+                console.error('Failed to load invoice details:', error);
+                toast.error('インボイスデータの読み込みに失敗しました');
+            }
         }
         handleMenuClose();
     };
