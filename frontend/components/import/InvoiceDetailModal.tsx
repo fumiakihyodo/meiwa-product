@@ -82,6 +82,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
     const [invoice, setInvoice] = useState<ImportInvoice | null>(null);
     const [uploadingFile, setUploadingFile] = useState(false);
     const [selectedFileType, setSelectedFileType] = useState<ImportFileType>('invoice');
+    const [filePreviewUrls, setFilePreviewUrls] = useState<Map<number, string>>(new Map());
+    const [loadingPreview, setLoadingPreview] = useState<number | null>(null);
 
     // フォーカス管理用ref
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -192,14 +194,68 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
         }
     };
 
+    // ファイルをタイプ別に分類
+    const getFilesByType = useCallback((fileType: ImportFileType): ImportFile[] => {
+        return invoice?.files?.filter((f) => f.file_type === fileType) || [];
+    }, [invoice]);
+
+    // ファイルプレビューURLを取得
+    const loadFilePreview = useCallback(async (file: ImportFile) => {
+        if (!invoice) return;
+
+        // 既にプレビューURLがある場合はスキップ
+        if (filePreviewUrls.has(file.id)) return;
+
+        setLoadingPreview(file.id);
+        try {
+            const blob = await importApi.invoice.downloadFile(invoice.id, file.id);
+            const url = window.URL.createObjectURL(blob);
+            setFilePreviewUrls((prev) => new Map(prev).set(file.id, url));
+        } catch (error) {
+            console.error('Failed to load file preview:', error);
+            toast.error('ファイルのプレビュー読み込みに失敗しました');
+        } finally {
+            setLoadingPreview(null);
+        }
+    }, [invoice, filePreviewUrls]);
+
+    // タブが切り替わったときに、そのタブのファイルをプレビューロード
+    useEffect(() => {
+        if (!invoice) return;
+
+        const fileTypes: ImportFileType[] = ['invoice', 'waybill', 'bill'];
+        // activeTab 0 = 明細, 1 = invoice, 2 = waybill, 3 = bill
+        if (activeTab === 0) return; // 明細タブはファイル不要
+
+        const fileTypeIndex = activeTab - 1;
+        const fileType = fileTypes[fileTypeIndex];
+        const files = getFilesByType(fileType);
+
+        // 最初のファイルをプレビューロード
+        if (files.length > 0 && !filePreviewUrls.has(files[0].id)) {
+            loadFilePreview(files[0]);
+        }
+    }, [activeTab, invoice, filePreviewUrls, loadFilePreview]);
+
     // ファイルプレビュー
     const renderFilePreview = (file: ImportFile) => {
-        // ファイルURLの構築（バックエンドのAPIベースURL + ファイルパス）
-        const fileUrl = file.file.startsWith('http')
-            ? file.file
-            : `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}${file.file}`;
-
         const fileName = file.file_name || file.file;
+        const fileUrl = filePreviewUrls.get(file.id);
+
+        // プレビューURLがまだロードされていない場合
+        if (!fileUrl) {
+            // ロード開始（まだ開始していない場合）
+            if (loadingPreview !== file.id) {
+                loadFilePreview(file);
+            }
+
+            // ロード中の表示
+            return (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
+                    <CircularProgress />
+                </Box>
+            );
+        }
 
         if (fileName.toLowerCase().endsWith('.pdf')) {
             return (
@@ -240,11 +296,6 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
         );
     };
 
-    // ファイルをタイプ別に分類
-    const getFilesByType = (fileType: ImportFileType): ImportFile[] => {
-        return invoice?.files?.filter((f) => f.file_type === fileType) || [];
-    };
-
     // 完了状態チェック
     const completionStatus = invoice
         ? checkInvoiceCompletion(invoice, invoice.linked_pos)
@@ -255,6 +306,11 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
     // モーダルを閉じる
     const handleClose = () => {
+        // Blob URLをクリーンアップ
+        filePreviewUrls.forEach((url) => {
+            window.URL.revokeObjectURL(url);
+        });
+        setFilePreviewUrls(new Map());
         setActiveTab(0);
         setInvoice(null);
         onClose();

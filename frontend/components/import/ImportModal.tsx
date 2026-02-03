@@ -118,6 +118,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
     const [deletingFileId, setDeletingFileId] = useState<number | null>(null);
     const [existingFiles, setExistingFiles] = useState<ImportFile[]>([]);
+    const [selectedExistingFile, setSelectedExistingFile] = useState<ImportFile | null>(null);
+    const [existingFilePreviewUrl, setExistingFilePreviewUrl] = useState<string | null>(null);
+    const [loadingExistingFilePreview, setLoadingExistingFilePreview] = useState(false);
 
     // フォームデータ
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
@@ -271,6 +274,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             if (filePreviewUrl) {
                 URL.revokeObjectURL(filePreviewUrl);
             }
+            if (existingFilePreviewUrl) {
+                URL.revokeObjectURL(existingFilePreviewUrl);
+            }
 
             setSelectedFile(null);
             setSelectedFileType('invoice');
@@ -290,8 +296,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             setRegisterAsSemiFinished(true);
             setSupplierMaterials([]);
             setExistingFiles([]);
+            setSelectedExistingFile(null);
+            setExistingFilePreviewUrl(null);
         }
-    }, [open, filePreviewUrl]);
+    }, [open, filePreviewUrl, existingFilePreviewUrl]);
 
     // ファイル選択ハンドラー
     const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -330,6 +338,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             // ローカル状態から削除されたファイルを除外
             setExistingFiles((prev) => prev.filter((file) => file.id !== fileId));
 
+            // 選択中のファイルが削除された場合はクリア
+            if (selectedExistingFile?.id === fileId) {
+                setSelectedExistingFile(null);
+                if (existingFilePreviewUrl) {
+                    window.URL.revokeObjectURL(existingFilePreviewUrl);
+                    setExistingFilePreviewUrl(null);
+                }
+            }
+
             // 親コンポーネントに通知（必要に応じて）
             if (onRefresh) {
                 onRefresh();
@@ -339,6 +356,34 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             toast.error('ファイルの削除に失敗しました');
         } finally {
             setDeletingFileId(null);
+        }
+    };
+
+    // 既存ファイルをクリックしてプレビュー
+    const handleExistingFileClick = async (file: ImportFile) => {
+        if (!existingInvoice) return;
+
+        // 既に選択されているファイルの場合はスキップ
+        if (selectedExistingFile?.id === file.id) return;
+
+        // 以前のプレビューURLをクリーンアップ
+        if (existingFilePreviewUrl) {
+            window.URL.revokeObjectURL(existingFilePreviewUrl);
+            setExistingFilePreviewUrl(null);
+        }
+
+        setSelectedExistingFile(file);
+        setLoadingExistingFilePreview(true);
+
+        try {
+            const blob = await importApi.invoice.downloadFile(existingInvoice.id, file.id);
+            const url = window.URL.createObjectURL(blob);
+            setExistingFilePreviewUrl(url);
+        } catch (error) {
+            console.error('Failed to load file preview:', error);
+            toast.error('ファイルのプレビュー読み込みに失敗しました');
+        } finally {
+            setLoadingExistingFilePreview(false);
         }
     };
 
@@ -597,11 +642,17 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                             {existingFiles.map((file) => (
                                                 <ListItem
                                                     key={file.id}
+                                                    selected={selectedExistingFile?.id === file.id}
+                                                    onClick={() => handleExistingFileClick(file)}
+                                                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
                                                     secondaryAction={
                                                         <IconButton
                                                             edge="end"
                                                             aria-label="delete"
-                                                            onClick={() => handleDeleteExistingFile(file.id)}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteExistingFile(file.id);
+                                                            }}
                                                             disabled={deletingFileId === file.id}
                                                             size="small"
                                                         >
@@ -620,6 +671,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                                                     label={ImportFileTypeLabels[file.file_type]}
                                                                     size="small"
                                                                     variant="outlined"
+                                                                    color={selectedExistingFile?.id === file.id ? 'primary' : 'default'}
                                                                 />
                                                                 <Typography variant="body2">
                                                                     {file.file_name}
@@ -703,7 +755,67 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
                             {/* ファイルプレビュー */}
                             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                                {selectedFile && filePreviewUrl ? (
+                                {/* 既存ファイルのプレビュー */}
+                                {selectedExistingFile && existingFilePreviewUrl ? (
+                                    <>
+                                        {/* ファイル情報ヘッダー */}
+                                        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
+                                            <Typography variant="subtitle2" noWrap gutterBottom>
+                                                {selectedExistingFile.file_name}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                サイズ: {selectedExistingFile.file_size ? `${(selectedExistingFile.file_size / 1024).toFixed(2)} KB` : '不明'}
+                                            </Typography>
+                                        </Box>
+
+                                        {/* PDFプレビュー */}
+                                        <Box sx={{ flex: 1, position: 'relative', bgcolor: 'grey.100' }}>
+                                            {selectedExistingFile.file_name.toLowerCase().endsWith('.pdf') ? (
+                                                <iframe
+                                                    src={`${existingFilePreviewUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                                                    style={{
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        border: 'none',
+                                                    }}
+                                                    title="PDFプレビュー"
+                                                />
+                                            ) : selectedExistingFile.file_name.match(/\.(jpg|jpeg|png|gif|bmp)$/i) ? (
+                                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', p: 2 }}>
+                                                    <img
+                                                        src={existingFilePreviewUrl}
+                                                        alt={selectedExistingFile.file_name}
+                                                        style={{
+                                                            maxWidth: '100%',
+                                                            maxHeight: '100%',
+                                                            objectFit: 'contain',
+                                                        }}
+                                                    />
+                                                </Box>
+                                            ) : (
+                                                <Box
+                                                    sx={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        height: '100%',
+                                                        p: 3,
+                                                    }}
+                                                >
+                                                    <Alert severity="info" sx={{ maxWidth: '80%' }}>
+                                                        <Typography variant="body2" gutterBottom fontWeight="medium">
+                                                            このファイル形式はプレビューできません
+                                                        </Typography>
+                                                    </Alert>
+                                                </Box>
+                                            )}
+                                        </Box>
+                                    </>
+                                ) : loadingExistingFilePreview ? (
+                                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                                        <CircularProgress />
+                                    </Box>
+                                ) : selectedFile && filePreviewUrl ? (
                                     <>
                                         {/* ファイル情報ヘッダー */}
                                         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
@@ -762,10 +874,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                     >
                                         <Box sx={{ textAlign: 'center' }}>
                                             <Typography variant="body2" color="text.secondary" gutterBottom>
-                                                ファイルを選択してください
+                                                {existingInvoice && existingFiles.length > 0
+                                                    ? '既存ファイルまたは新規ファイルを選択してください'
+                                                    : 'ファイルを選択してください'}
                                             </Typography>
                                             <Typography variant="caption" color="text.secondary">
-                                                PDFファイルは選択後に自動的にプレビュー表示されます
+                                                PDFファイルと画像ファイルがプレビュー表示できます
                                             </Typography>
                                         </Box>
                                     </Box>
