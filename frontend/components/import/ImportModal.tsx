@@ -186,10 +186,21 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
             try {
                 setLoadingMaterials(true);
-                const materials = await materialApi.getMaterials({
-                    supplier_branch: supplierBranchId,
+                // 選択したサプライヤー支店が海外の場合、すべての海外製品を表示
+                // それ以外の場合は、特定のサプライヤー支店の製品のみ表示
+                const params: Parameters<typeof materialApi.getMaterials>[0] = {
                     is_active: true,
-                });
+                };
+
+                if (selectedBranch?.is_overseas) {
+                    // 海外サプライヤーの場合、すべての海外製品を表示
+                    params.is_overseas = true;
+                } else {
+                    // 国内サプライヤーの場合、特定の支店の製品のみ表示
+                    params.supplier_branch = supplierBranchId;
+                }
+
+                const materials = await materialApi.getMaterials(params);
                 setSupplierMaterials(materials);
             } catch (error) {
                 console.error('Failed to load supplier materials:', error);
@@ -200,7 +211,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         };
 
         loadSupplierMaterials();
-    }, [supplierBranchId]);
+    }, [supplierBranchId, selectedBranch]);
 
     // 既存インボイスの読み込み
     useEffect(() => {

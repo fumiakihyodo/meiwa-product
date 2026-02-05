@@ -473,6 +473,7 @@ export const materialApi = {
         supplier_branch?: number;
         is_active?: boolean;
         low_stock?: boolean;
+        is_overseas?: boolean;
     }): Promise<Material[]> => {
         const response = await apiClient.get<PaginatedResponse<Material>>('/manufacturing/materials/', { params });
         return response.data.results;

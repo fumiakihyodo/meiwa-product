@@ -281,6 +281,12 @@ class MaterialViewSet(viewsets.ModelViewSet):
         if supplier_branch:
             queryset = queryset.filter(supplier_branch_id=supplier_branch)
 
+        # 海外サプライヤーフィルター
+        is_overseas = self.request.query_params.get('is_overseas', None)
+        if is_overseas is not None:
+            is_overseas_bool = is_overseas.lower() == 'true'
+            queryset = queryset.filter(supplier_branch__is_overseas=is_overseas_bool)
+
         is_active = self.request.query_params.get('is_active', None)
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
