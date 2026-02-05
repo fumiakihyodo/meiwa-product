@@ -87,6 +87,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
     // フォーカス管理用ref
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // ロード試行済みファイルを追跡
+    const loadAttemptedRef = useRef<Set<number>>(new Set());
 
     // インボイスデータ読み込み
     const loadInvoiceDetail = useCallback(async () => {
@@ -106,6 +108,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 
     useEffect(() => {
         if (open && invoiceId) {
+            // 新しいinvoiceをロードする時はキャッシュをクリア
+            loadAttemptedRef.current.clear();
             loadInvoiceDetail();
         }
     }, [open, invoiceId, loadInvoiceDetail]);
@@ -141,6 +145,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
         try {
             await importApi.invoice.uploadFile(invoice.id, selectedFileType, file);
             toast.success('ファイルをアップロードしました');
+            // キャッシュをクリアして再読み込み
+            loadAttemptedRef.current.clear();
             await loadInvoiceDetail();
             if (onUpdate) onUpdate();
 
@@ -166,6 +172,18 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
         try {
             await importApi.invoice.deleteFile(invoice.id, fileId);
             toast.success('ファイルを削除しました');
+            // キャッシュをクリアして再読み込み
+            loadAttemptedRef.current.clear();
+            // 削除されたファイルのプレビューURLをクリーンアップ
+            setFilePreviewUrls((prev) => {
+                const newMap = new Map(prev);
+                const url = newMap.get(fileId);
+                if (url) {
+                    window.URL.revokeObjectURL(url);
+                    newMap.delete(fileId);
+                }
+                return newMap;
+            });
             await loadInvoiceDetail();
             if (onUpdate) onUpdate();
         } catch (error) {
@@ -203,21 +221,22 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
     const loadFilePreview = useCallback(async (file: ImportFile) => {
         if (!invoice) return;
 
-        // 既にプレビューURLがある場合はスキップ
-        if (filePreviewUrls.has(file.id)) return;
-
         setLoadingPreview(file.id);
         try {
             const blob = await importApi.invoice.downloadFile(invoice.id, file.id);
             const url = window.URL.createObjectURL(blob);
-            setFilePreviewUrls((prev) => new Map(prev).set(file.id, url));
+            setFilePreviewUrls((prev) => {
+                // 既にプレビューURLがある場合はスキップ
+                if (prev.has(file.id)) return prev;
+                return new Map(prev).set(file.id, url);
+            });
         } catch (error) {
             console.error('Failed to load file preview:', error);
             toast.error('ファイルのプレビュー読み込みに失敗しました');
         } finally {
             setLoadingPreview(null);
         }
-    }, [invoice, filePreviewUrls]);
+    }, [invoice]);
 
     // タブが切り替わったときに、そのタブのファイルをプレビューロード
     useEffect(() => {
@@ -231,25 +250,24 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
         const fileType = fileTypes[fileTypeIndex];
         const files = getFilesByType(fileType);
 
-        // 最初のファイルをプレビューロード
-        if (files.length > 0 && !filePreviewUrls.has(files[0].id)) {
-            loadFilePreview(files[0]);
+        // 最初のファイルをプレビューロード（まだロードされていない場合のみ）
+        if (files.length > 0) {
+            const fileId = files[0].id;
+            // 既にロード済み、またはロード試行済みの場合はスキップ
+            if (!filePreviewUrls.has(fileId) && !loadAttemptedRef.current.has(fileId)) {
+                loadAttemptedRef.current.add(fileId);
+                loadFilePreview(files[0]);
+            }
         }
-    }, [activeTab, invoice, filePreviewUrls, loadFilePreview]);
+    }, [activeTab, invoice, filePreviewUrls, getFilesByType, loadFilePreview]);
 
     // ファイルプレビュー
     const renderFilePreview = (file: ImportFile) => {
         const fileName = file.file_name || file.file;
         const fileUrl = filePreviewUrls.get(file.id);
 
-        // プレビューURLがまだロードされていない場合
+        // プレビューURLがまだロードされていない場合、ローディング表示
         if (!fileUrl) {
-            // ロード開始（まだ開始していない場合）
-            if (loadingPreview !== file.id) {
-                loadFilePreview(file);
-            }
-
-            // ロード中の表示
             return (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
                     <CircularProgress />
@@ -311,6 +329,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
             window.URL.revokeObjectURL(url);
         });
         setFilePreviewUrls(new Map());
+        loadAttemptedRef.current.clear();
         setActiveTab(0);
         setInvoice(null);
         onClose();
