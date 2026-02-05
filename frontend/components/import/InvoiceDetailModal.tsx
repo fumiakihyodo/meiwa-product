@@ -279,7 +279,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
             return (
                 <Box sx={{ height: '70vh', width: '100%', overflow: 'auto' }}>
                     <iframe
-                        src={fileUrl}
+                        src={`${fileUrl}#view=FitH&toolbar=0&navpanes=0`}
                         style={{
                             width: '100%',
                             height: '100%',

@@ -48,13 +48,19 @@ export function checkInvoiceCompletion(
     }
 
     // 2. Waybillファイルチェック
-    const hasWaybill = invoice.has_waybill || false;
+    const hasWaybill =
+        invoice.has_waybill ||
+        (invoice.files && invoice.files.some(f => f.file_type === 'waybill')) ||
+        false;
     if (!hasWaybill) {
         missingItems.push('Waybillファイル');
     }
 
     // 3. 請求書ファイルチェック
-    const hasBillFile = invoice.has_bill_file || false;
+    const hasBillFile =
+        invoice.has_bill_file ||
+        (invoice.files && invoice.files.some(f => f.file_type === 'bill')) ||
+        false;
     if (!hasBillFile) {
         missingItems.push('請求書ファイル');
     }

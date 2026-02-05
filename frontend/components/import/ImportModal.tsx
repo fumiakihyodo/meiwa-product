@@ -145,6 +145,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     const [supplierBranches, setSupplierBranches] = useState<SupplierBranch[]>([]);
     const [selectedBranch, setSelectedBranch] = useState<SupplierBranch | null>(null);
     const [activeTab, setActiveTab] = useState(0);
+    const [displayedFile, setDisplayedFile] = useState<{ type: 'new' | 'existing'; file: File | ImportFile } | null>(null);
 
     // サプライヤー連動：マスター製品リスト
     const [supplierMaterials, setSupplierMaterials] = useState<Material[]>([]);
@@ -215,6 +216,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
             // 既存ファイルを設定
             setExistingFiles(existingInvoice.files || []);
+
+            // デフォルトでinvoiceファイルを表示（選択のみ、プレビューは別のuseEffectでロード）
+            const invoiceFiles = (existingInvoice.files || []).filter(f => f.file_type === 'invoice');
+            if (invoiceFiles.length > 0) {
+                setSelectedExistingFile(invoiceFiles[0]);
+            }
 
             // 明細情報を読み込み
             if (existingInvoice.items && existingInvoice.items.length > 0) {
@@ -302,11 +309,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         }
     }, [open, filePreviewUrl, existingFilePreviewUrl]);
 
+    // selectedExistingFileが変更された時にプレビューをロード
+    useEffect(() => {
+        if (selectedExistingFile && existingInvoice && !existingFilePreviewUrl) {
+            handleExistingFileClick(selectedExistingFile);
+        }
+    }, [selectedExistingFile, existingInvoice, existingFilePreviewUrl]);
+
     // ファイル選択ハンドラー
     const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
             setSelectedFile(file);
+            setDisplayedFile({ type: 'new', file });
             // ファイルリストに追加
             setUploadedFiles((prev) => {
                 const existing = prev.find((f) => f.type === selectedFileType);
@@ -374,6 +389,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         }
 
         setSelectedExistingFile(file);
+        setDisplayedFile({ type: 'existing', file });
         setLoadingExistingFilePreview(true);
 
         try {
