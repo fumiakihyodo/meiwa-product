@@ -312,7 +312,21 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     // selectedExistingFileが変更された時にプレビューをロード
     useEffect(() => {
         if (selectedExistingFile && existingInvoice && !existingFilePreviewUrl) {
-            handleExistingFileClick(selectedExistingFile);
+            const loadPreview = async () => {
+                setLoadingExistingFilePreview(true);
+                try {
+                    const blob = await importApi.invoice.downloadFile(existingInvoice.id, selectedExistingFile.id);
+                    const url = window.URL.createObjectURL(blob);
+                    setExistingFilePreviewUrl(url);
+                    setDisplayedFile({ type: 'existing', file: selectedExistingFile });
+                } catch (error) {
+                    console.error('Failed to load file preview:', error);
+                    toast.error('ファイルのプレビュー読み込みに失敗しました');
+                } finally {
+                    setLoadingExistingFilePreview(false);
+                }
+            };
+            loadPreview();
         }
     }, [selectedExistingFile, existingInvoice, existingFilePreviewUrl]);
 
@@ -647,130 +661,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                 flexDirection: 'column',
                             }}
                         >
-                            {/* ファイル選択 */}
-                            <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                                {/* 編集モード時の既存ファイル情報 */}
-                                {existingInvoice && existingFiles.length > 0 && (
-                                    <Box sx={{ mb: 2 }}>
-                                        <Typography variant="subtitle2" gutterBottom>
-                                            既存ファイル ({existingFiles.length}件)
-                                        </Typography>
-                                        <List dense sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
-                                            {existingFiles.map((file) => (
-                                                <ListItem
-                                                    key={file.id}
-                                                    selected={selectedExistingFile?.id === file.id}
-                                                    onClick={() => handleExistingFileClick(file)}
-                                                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
-                                                    secondaryAction={
-                                                        <IconButton
-                                                            edge="end"
-                                                            aria-label="delete"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleDeleteExistingFile(file.id);
-                                                            }}
-                                                            disabled={deletingFileId === file.id}
-                                                            size="small"
-                                                        >
-                                                            {deletingFileId === file.id ? (
-                                                                <CircularProgress size={20} />
-                                                            ) : (
-                                                                <DeleteIcon />
-                                                            )}
-                                                        </IconButton>
-                                                    }
-                                                >
-                                                    <ListItemText
-                                                        primary={
-                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                                <Chip
-                                                                    label={ImportFileTypeLabels[file.file_type]}
-                                                                    size="small"
-                                                                    variant="outlined"
-                                                                    color={selectedExistingFile?.id === file.id ? 'primary' : 'default'}
-                                                                />
-                                                                <Typography variant="body2">
-                                                                    {file.file_name}
-                                                                </Typography>
-                                                            </Box>
-                                                        }
-                                                        secondary={file.file_size ? `${(file.file_size / 1024).toFixed(2)} KB` : ''}
-                                                    />
-                                                </ListItem>
-                                            ))}
-                                        </List>
-                                        <Divider sx={{ my: 2 }} />
-                                    </Box>
-                                )}
-                                <Grid container spacing={2} alignItems="center">
-                                    <Grid item xs={12}>
-                                        <TextField
-                                            select
-                                            fullWidth
-                                            size="small"
-                                            label="ファイル種別"
-                                            value={selectedFileType}
-                                            onChange={(e) =>
-                                                setSelectedFileType(e.target.value as ImportFileType)
-                                            }
-                                            SelectProps={{ native: true }}
-                                        >
-                                            {Object.entries(ImportFileTypeLabels).map(([key, label]) => (
-                                                <option key={key} value={key}>
-                                                    {label}
-                                                </option>
-                                            ))}
-                                        </TextField>
-                                    </Grid>
-                                    <Grid item xs={12}>
-                                        <input
-                                            type="file"
-                                            accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp"
-                                            ref={fileInputRef}
-                                            onChange={handleFileSelect}
-                                            style={{ display: 'none' }}
-                                        />
-                                        <Button
-                                            variant="outlined"
-                                            startIcon={<CloudUploadIcon />}
-                                            onClick={() => fileInputRef.current?.click()}
-                                            fullWidth
-                                        >
-                                            {existingInvoice ? '新しいファイルを追加' : 'ファイルを選択'}
-                                        </Button>
-                                    </Grid>
-                                </Grid>
-                                {/* アップロード済みファイル一覧（今回追加する新しいファイル） */}
-                                {uploadedFiles.length > 0 && (
-                                    <Box sx={{ mt: 2 }}>
-                                        <Typography variant="caption" color="text.secondary" gutterBottom>
-                                            今回追加するファイル:
-                                        </Typography>
-                                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
-                                            {uploadedFiles.map((f, index) => (
-                                                <Chip
-                                                    key={index}
-                                                    label={`${ImportFileTypeLabels[f.type]}: ${f.file.name}`}
-                                                    size="small"
-                                                    onDelete={() => {
-                                                        setUploadedFiles((prev) =>
-                                                            prev.filter((_, i) => i !== index)
-                                                        );
-                                                        if (selectedFile === f.file) {
-                                                            setSelectedFile(null);
-                                                        }
-                                                    }}
-                                                    onClick={() => setSelectedFile(f.file)}
-                                                    color={selectedFile === f.file ? 'primary' : 'default'}
-                                                />
-                                            ))}
-                                        </Box>
-                                    </Box>
-                                )}
-                            </Box>
-
-                            {/* ファイルプレビュー */}
+                            {/* PDFプレビュー専用エリア */}
                             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                                 {/* 既存ファイルのプレビュー */}
                                 {selectedExistingFile && existingFilePreviewUrl ? (
@@ -914,6 +805,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                 <Tab label="基本情報" />
                                 <Tab label={`明細入力 (${items.filter(i => i.part_number).length}件)`} />
                                 <Tab label={`PO紐付け (${linkedPOIds.length}件)`} />
+                                <Tab label={`ファイル (${existingFiles.length + uploadedFiles.length}件)`} />
                             </Tabs>
 
                             {/* 基本情報タブ */}
@@ -1362,6 +1254,142 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                             </Table>
                                         </TableContainer>
                                     )}
+                                </Box>
+                            </TabPanel>
+
+                            {/* ファイルタブ */}
+                            <TabPanel value={activeTab} index={3}>
+                                <Box sx={{ p: 2, height: '100%', overflow: 'auto' }}>
+                                    {/* 既存ファイル */}
+                                    {existingInvoice && existingFiles.length > 0 && (
+                                        <Box sx={{ mb: 3 }}>
+                                            <Typography variant="subtitle2" gutterBottom>
+                                                既存ファイル ({existingFiles.length}件)
+                                            </Typography>
+                                            <List dense sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1, mt: 1 }}>
+                                                {existingFiles.map((file) => (
+                                                    <ListItem
+                                                        key={file.id}
+                                                        selected={selectedExistingFile?.id === file.id}
+                                                        onClick={() => handleExistingFileClick(file)}
+                                                        sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
+                                                        secondaryAction={
+                                                            <IconButton
+                                                                edge="end"
+                                                                aria-label="delete"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDeleteExistingFile(file.id);
+                                                                }}
+                                                                disabled={deletingFileId === file.id}
+                                                                size="small"
+                                                            >
+                                                                {deletingFileId === file.id ? (
+                                                                    <CircularProgress size={20} />
+                                                                ) : (
+                                                                    <DeleteIcon />
+                                                                )}
+                                                            </IconButton>
+                                                        }
+                                                    >
+                                                        <ListItemText
+                                                            primary={
+                                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                    <Chip
+                                                                        label={ImportFileTypeLabels[file.file_type]}
+                                                                        size="small"
+                                                                        variant="outlined"
+                                                                        color={selectedExistingFile?.id === file.id ? 'primary' : 'default'}
+                                                                    />
+                                                                    <Typography variant="body2">
+                                                                        {file.file_name}
+                                                                    </Typography>
+                                                                </Box>
+                                                            }
+                                                            secondary={file.file_size ? `${(file.file_size / 1024).toFixed(2)} KB` : ''}
+                                                        />
+                                                    </ListItem>
+                                                ))}
+                                            </List>
+                                        </Box>
+                                    )}
+
+                                    {/* 新規ファイル追加 */}
+                                    <Box>
+                                        <Typography variant="subtitle2" gutterBottom>
+                                            新しいファイルを追加
+                                        </Typography>
+                                        <Grid container spacing={2} sx={{ mt: 0.5 }}>
+                                            <Grid item xs={12}>
+                                                <TextField
+                                                    select
+                                                    fullWidth
+                                                    size="small"
+                                                    label="ファイル種別"
+                                                    value={selectedFileType}
+                                                    onChange={(e) =>
+                                                        setSelectedFileType(e.target.value as ImportFileType)
+                                                    }
+                                                    SelectProps={{ native: true }}
+                                                >
+                                                    {Object.entries(ImportFileTypeLabels).map(([key, label]) => (
+                                                        <option key={key} value={key}>
+                                                            {label}
+                                                        </option>
+                                                    ))}
+                                                </TextField>
+                                            </Grid>
+                                            <Grid item xs={12}>
+                                                <input
+                                                    type="file"
+                                                    accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp"
+                                                    ref={fileInputRef}
+                                                    onChange={handleFileSelect}
+                                                    style={{ display: 'none' }}
+                                                />
+                                                <Button
+                                                    variant="outlined"
+                                                    startIcon={<CloudUploadIcon />}
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    fullWidth
+                                                >
+                                                    ファイルを選択
+                                                </Button>
+                                            </Grid>
+                                        </Grid>
+
+                                        {/* アップロード済みファイル一覧 */}
+                                        {uploadedFiles.length > 0 && (
+                                            <Box sx={{ mt: 2 }}>
+                                                <Typography variant="caption" color="text.secondary" gutterBottom>
+                                                    今回追加するファイル:
+                                                </Typography>
+                                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                                                    {uploadedFiles.map((f, index) => (
+                                                        <Chip
+                                                            key={index}
+                                                            label={`${ImportFileTypeLabels[f.type]}: ${f.file.name}`}
+                                                            size="small"
+                                                            onDelete={() => {
+                                                                setUploadedFiles((prev) =>
+                                                                    prev.filter((_, i) => i !== index)
+                                                                );
+                                                                if (selectedFile === f.file) {
+                                                                    setSelectedFile(null);
+                                                                    setDisplayedFile(null);
+                                                                }
+                                                            }}
+                                                            onClick={() => {
+                                                                setSelectedFile(f.file);
+                                                                setDisplayedFile({ type: 'new', file: f.file });
+                                                            }}
+                                                            color={selectedFile === f.file ? 'primary' : 'default'}
+                                                        />
+                                                    ))}
+                                                                </Box>
+                                            </Box>
+                                        )}
+                                    </Box>
                                 </Box>
                             </TabPanel>
                         </Box>
