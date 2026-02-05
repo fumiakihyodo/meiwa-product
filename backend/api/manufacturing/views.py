@@ -285,7 +285,10 @@ class MaterialViewSet(viewsets.ModelViewSet):
         is_overseas = self.request.query_params.get('is_overseas', None)
         if is_overseas is not None:
             is_overseas_bool = is_overseas.lower() == 'true'
-            queryset = queryset.filter(supplier_branch__is_overseas=is_overseas_bool)
+            if is_overseas_bool:
+                queryset = queryset.filter(supplier_branch__supplier__notes__icontains='[OVERSEAS]')
+            else:
+                queryset = queryset.exclude(supplier_branch__supplier__notes__icontains='[OVERSEAS]')
 
         is_active = self.request.query_params.get('is_active', None)
         if is_active is not None:

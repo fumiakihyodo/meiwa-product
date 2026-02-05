@@ -62,6 +62,7 @@ export interface SupplierBranch {
     email?: string;
     notes?: string;
     is_active: boolean;
+    is_overseas?: boolean;
     default_currency?: string;
     primary_contact?: {
         id: number;

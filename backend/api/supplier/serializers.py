@@ -76,14 +76,15 @@ class SupplierBranchListSerializer(serializers.ModelSerializer):
     supplier_currency = serializers.CharField(source='supplier.currency', read_only=True)
     display_name = serializers.CharField(read_only=True)
     primary_contact = serializers.SerializerMethodField()
- 
+    is_overseas = serializers.SerializerMethodField()
+
     class Meta:
         model = SupplierBranch
         fields = [
             'id', 'branch_code', 'branch_name', 'branch_type',
             'supplier', 'supplier_name', 'supplier_currency', 'display_name',
             'phone_number', 'email', 'address',
-            'is_active', 'primary_contact'
+            'is_active', 'primary_contact', 'is_overseas'
         ]
 
     def get_primary_contact(self, obj):
@@ -97,6 +98,10 @@ class SupplierBranchListSerializer(serializers.ModelSerializer):
                 'phone_number': primary.phone_number
             }
         return None
+
+    def get_is_overseas(self, obj):
+        """海外サプライヤーかどうかを判定"""
+        return obj.supplier.notes and '[OVERSEAS]' in obj.supplier.notes
 
 
 class SupplierBranchDetailSerializer(serializers.ModelSerializer):
