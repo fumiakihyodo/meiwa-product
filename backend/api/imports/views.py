@@ -109,7 +109,12 @@ class ImportInvoiceViewSet(viewsets.ModelViewSet):
             'supplier_branch',
             'supplier_branch__supplier',
             'created_by',
-        ).prefetch_related('items', 'files', 'linked_pos')
+        ).prefetch_related(
+            'items__material',
+            # 'items__manufacturing_item',  # マイグレーション後に有効化
+            'files',
+            'linked_pos'
+        )
 
         # 集計情報を付加
         queryset = queryset.annotate(

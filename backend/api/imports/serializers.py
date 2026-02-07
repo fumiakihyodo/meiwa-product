@@ -216,8 +216,9 @@ class ImportInvoiceItemSerializer(serializers.ModelSerializer):
     """インボイス明細シリアライザ"""
     material_code = serializers.CharField(source='material.material_code', read_only=True)
     material_name = serializers.CharField(source='material.material_name', read_only=True)
-    manufacturing_item_number = serializers.CharField(source='manufacturing_item.manufacturing_number', read_only=True)
-    manufacturing_item_name = serializers.CharField(source='manufacturing_item.manufacturing_name', read_only=True)
+    manufacturing_item = serializers.SerializerMethodField()
+    manufacturing_item_number = serializers.SerializerMethodField()
+    manufacturing_item_name = serializers.SerializerMethodField()
     po_item_part_number = serializers.CharField(
         source='import_po_item.part_number', read_only=True
     )
@@ -249,9 +250,35 @@ class ImportInvoiceItemSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'amount', 'created_at', 'updated_at']
 
+    def get_manufacturing_item(self, obj):
+        """製品IDを取得（マイグレーション前はNone）"""
+        try:
+            return obj.manufacturing_item_id if hasattr(obj, 'manufacturing_item_id') else None
+        except:
+            return None
+
+    def get_manufacturing_item_number(self, obj):
+        """製品番号を取得（マイグレーション前はNone）"""
+        try:
+            if hasattr(obj, 'manufacturing_item') and obj.manufacturing_item:
+                return obj.manufacturing_item.manufacturing_number
+        except:
+            pass
+        return None
+
+    def get_manufacturing_item_name(self, obj):
+        """製品名を取得（マイグレーション前はNone）"""
+        try:
+            if hasattr(obj, 'manufacturing_item') and obj.manufacturing_item:
+                return obj.manufacturing_item.manufacturing_name
+        except:
+            pass
+        return None
+
 
 class ImportInvoiceItemCreateSerializer(serializers.ModelSerializer):
     """インボイス明細作成シリアライザ"""
+    manufacturing_item = serializers.IntegerField(required=False, allow_null=True, write_only=True)
 
     class Meta:
         model = ImportInvoiceItem
@@ -267,6 +294,24 @@ class ImportInvoiceItemCreateSerializer(serializers.ModelSerializer):
             'ocr_confidence',
             'notes',
         ]
+
+    def create(self, validated_data):
+        """マイグレーション前後の両方に対応した保存処理"""
+        # manufacturing_itemをvalidated_dataから削除（マイグレーション前は保存できない）
+        manufacturing_item_id = validated_data.pop('manufacturing_item', None)
+
+        # インスタンス作成
+        instance = super().create(validated_data)
+
+        # マイグレーション後であればmanufacturing_itemを設定
+        if manufacturing_item_id and hasattr(instance, 'manufacturing_item_id'):
+            try:
+                instance.manufacturing_item_id = manufacturing_item_id
+                instance.save(update_fields=['manufacturing_item_id'])
+            except:
+                pass  # マイグレーション前なので無視
+
+        return instance
 
 
 # ===== インポートファイル =====
