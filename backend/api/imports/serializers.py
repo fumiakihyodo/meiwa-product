@@ -216,6 +216,8 @@ class ImportInvoiceItemSerializer(serializers.ModelSerializer):
     """インボイス明細シリアライザ"""
     material_code = serializers.CharField(source='material.material_code', read_only=True)
     material_name = serializers.CharField(source='material.material_name', read_only=True)
+    manufacturing_item_number = serializers.CharField(source='manufacturing_item.manufacturing_number', read_only=True)
+    manufacturing_item_name = serializers.CharField(source='manufacturing_item.manufacturing_name', read_only=True)
     po_item_part_number = serializers.CharField(
         source='import_po_item.part_number', read_only=True
     )
@@ -230,6 +232,9 @@ class ImportInvoiceItemSerializer(serializers.ModelSerializer):
             'material',
             'material_code',
             'material_name',
+            'manufacturing_item',
+            'manufacturing_item_number',
+            'manufacturing_item_name',
             'part_number',
             'description',
             'quantity',
@@ -253,6 +258,7 @@ class ImportInvoiceItemCreateSerializer(serializers.ModelSerializer):
         fields = [
             'import_po_item',
             'material',
+            'manufacturing_item',
             'part_number',
             'description',
             'quantity',

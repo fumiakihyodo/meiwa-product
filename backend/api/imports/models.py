@@ -494,6 +494,16 @@ class ImportInvoiceItem(models.Model):
         verbose_name="材料"
     )
 
+    # 製品（海外生産品）との紐付け（オプション）
+    manufacturing_item = models.ForeignKey(
+        'manufacturing.ManufacturingItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='import_invoice_items',
+        verbose_name="製品"
+    )
+
     # 品番・品名
     part_number = models.CharField(
         max_length=100,

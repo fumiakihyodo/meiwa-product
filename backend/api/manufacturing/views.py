@@ -85,6 +85,11 @@ class ManufacturingItemViewSet(viewsets.ModelViewSet):
                 # その他（exact match）
                 queryset = queryset.filter(production_type=production_type)
 
+        # 海外サプライヤー支店フィルター
+        overseas_supplier_branch = self.request.query_params.get('overseas_supplier_branch', None)
+        if overseas_supplier_branch:
+            queryset = queryset.filter(overseas_supplier_branch_id=overseas_supplier_branch)
+
         return queryset
 
     def get_serializer_class(self):

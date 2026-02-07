@@ -177,6 +177,9 @@ export interface ImportInvoiceItem {
     material?: number;
     material_code?: string;
     material_name?: string;
+    manufacturing_item?: number;
+    manufacturing_item_number?: string;
+    manufacturing_item_name?: string;
     part_number: string;
     description: string;
     quantity: number;
@@ -210,6 +213,7 @@ export type ImportInvoiceUpdateData = Partial<ImportInvoiceCreateData>;
 export interface ImportInvoiceItemCreateData {
     import_po_item?: number;
     material?: number;
+    manufacturing_item?: number;
     part_number: string;
     description: string;
     quantity: number;

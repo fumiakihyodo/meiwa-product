@@ -240,6 +240,7 @@ export const manufacturingItemApi = {
         product?: number;
         is_active?: boolean;
         production_type?: ProductionType;
+        overseas_supplier_branch?: number;
     }): Promise<ManufacturingItem[]> => {
         const response = await apiClient.get<PaginatedResponse<ManufacturingItem>>('/manufacturing/items/', { params });
         return response.data.results;

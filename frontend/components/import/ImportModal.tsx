@@ -55,7 +55,7 @@ import {
     ImportFileTypeLabels,
     ImportFile,
 } from '@/types/import';
-import { Material, materialApi } from '@/services/apiManufacturing';
+import { ManufacturingItem, manufacturingItemApi } from '@/services/apiManufacturing';
 import { supplierApi } from '@/services/apiSupplier';
 import { importApi } from '@/services/apiImport';
 import toast from 'react-hot-toast';
@@ -78,8 +78,8 @@ interface InvoiceItemFormRow {
     quantity: number | '';
     unit_price: number | '';
     unit: string;
-    matched_material_id?: number;
-    matched_material?: Material;
+    matched_manufacturing_item_id?: number;
+    matched_manufacturing_item?: ManufacturingItem;
 }
 
 // 空のフォーム行を生成
@@ -148,8 +148,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     const [displayedFile, setDisplayedFile] = useState<{ type: 'new' | 'existing'; file: File | ImportFile } | null>(null);
 
     // サプライヤー連動：マスター製品リスト
-    const [supplierMaterials, setSupplierMaterials] = useState<Material[]>([]);
-    const [loadingMaterials, setLoadingMaterials] = useState(false);
+    const [supplierManufacturingItems, setSupplierManufacturingItems] = useState<ManufacturingItem[]>([]);
+    const [loadingManufacturingItems, setLoadingManufacturingItems] = useState(false);
 
     // フォーカス管理用ref
     const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -178,39 +178,41 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
     // サプライヤー選択時に紐付いた材料を読み込み
     useEffect(() => {
-        const loadSupplierMaterials = async () => {
+        const loadSupplierManufacturingItems = async () => {
             if (!supplierBranchId) {
-                setSupplierMaterials([]);
+                setSupplierManufacturingItems([]);
                 return;
             }
 
             try {
-                setLoadingMaterials(true);
-                // 選択したサプライヤー支店が海外の場合、すべての海外製品を表示
-                // それ以外の場合は、特定のサプライヤー支店の製品のみ表示
-                const params: Parameters<typeof materialApi.getMaterials>[0] = {
+                setLoadingManufacturingItems(true);
+                // 選択したサプライヤー支店が海外の場合、その支店の海外製品を表示
+                const params: Parameters<typeof manufacturingItemApi.getItems>[0] = {
                     is_active: true,
                 };
 
                 if (selectedBranch?.is_overseas) {
-                    // 海外サプライヤーの場合、すべての海外製品を表示
-                    params.is_overseas = true;
+                    // 海外サプライヤーの場合、その支店に紐づく製品を表示
+                    params.overseas_supplier_branch = supplierBranchId;
+                    params.production_type = 'overseas';
                 } else {
-                    // 国内サプライヤーの場合、特定の支店の製品のみ表示
-                    params.supplier_branch = supplierBranchId;
+                    // 国内サプライヤーの場合は製品を表示しない（国内生産は別の管理）
+                    setSupplierManufacturingItems([]);
+                    setLoadingManufacturingItems(false);
+                    return;
                 }
 
-                const materials = await materialApi.getMaterials(params);
-                setSupplierMaterials(materials);
+                const items = await manufacturingItemApi.getItems(params);
+                setSupplierManufacturingItems(items);
             } catch (error) {
-                console.error('Failed to load supplier materials:', error);
+                console.error('Failed to load supplier manufacturing items:', error);
                 toast.error('製品マスターの読み込みに失敗しました');
             } finally {
-                setLoadingMaterials(false);
+                setLoadingManufacturingItems(false);
             }
         };
 
-        loadSupplierMaterials();
+        loadSupplierManufacturingItems();
     }, [supplierBranchId, selectedBranch]);
 
     // 既存インボイスの読み込み
@@ -245,6 +247,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         unit_price: item.unit_price || '',
                         unit: item.unit,
                         matched_material_id: item.material,
+                        matched_manufacturing_item_id: item.manufacturing_item,
                     }))
                 );
             } else {
@@ -313,7 +316,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             setSelectedBranch(null);
             setActiveTab(0);
             setRegisterAsSemiFinished(true);
-            setSupplierMaterials([]);
+            setSupplierManufacturingItems([]);
             setExistingFiles([]);
             setSelectedExistingFile(null);
             setExistingFilePreviewUrl(null);
@@ -457,10 +460,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     );
 
     // マスター製品選択時の自動補完
-    const handleMaterialSelect = useCallback(
-        (rowId: string, material: Material | null) => {
-            if (!material) {
-                handleUpdateRow(rowId, 'matched_material_id', '');
+    const handleManufacturingItemSelect = useCallback(
+        (rowId: string, manufacturingItem: ManufacturingItem | null) => {
+            if (!manufacturingItem) {
+                handleUpdateRow(rowId, 'matched_manufacturing_item_id', '');
                 return;
             }
 
@@ -469,12 +472,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                     if (item.id === rowId) {
                         return {
                             ...item,
-                            part_number: material.material_code,
-                            description: material.material_name,
-                            unit: material.unit,
-                            unit_price: material.unit_price || '',
-                            matched_material_id: material.id,
-                            matched_material: material,
+                            part_number: manufacturingItem.manufacturing_number,
+                            description: manufacturingItem.manufacturing_name,
+                            unit: manufacturingItem.unit,
+                            unit_price: manufacturingItem.purchase_price || '',
+                            matched_manufacturing_item_id: manufacturingItem.id,
+                            matched_manufacturing_item: manufacturingItem,
                         };
                     }
                     return item;
@@ -563,6 +566,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         : undefined,
                 unit: item.unit,
                 material: item.matched_material_id,
+                manufacturing_item: item.matched_manufacturing_item_id,
             }));
 
             const data: ImportInvoiceCreateData = {
@@ -958,7 +962,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                             行を追加
                                         </Button>
                                     </Box>
-                                    {loadingMaterials && (
+                                    {loadingManufacturingItems && (
                                         <Alert severity="info" sx={{ mb: 2 }}>
                                             製品マスターを読み込み中...
                                         </Alert>
@@ -985,16 +989,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                                         <TableCell>
                                                             <Autocomplete
                                                                 freeSolo
-                                                                options={supplierMaterials}
+                                                                options={supplierManufacturingItems}
                                                                 getOptionLabel={(option) =>
-                                                                    typeof option === 'string' ? option : option.material_code
+                                                                    typeof option === 'string' ? option : option.manufacturing_number
                                                                 }
-                                                                value={item.matched_material || item.part_number}
+                                                                value={item.matched_manufacturing_item || item.part_number}
                                                                 onChange={(_, newValue) => {
                                                                     if (typeof newValue === 'string') {
                                                                         handleUpdateRow(item.id, 'part_number', newValue);
                                                                     } else if (newValue) {
-                                                                        handleMaterialSelect(item.id, newValue);
+                                                                        handleManufacturingItemSelect(item.id, newValue);
                                                                     }
                                                                 }}
                                                                 onInputChange={(_, newInputValue) => {
@@ -1028,10 +1032,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                                                                     <li {...props} key={option.id}>
                                                                         <Box>
                                                                             <Typography variant="body2">
-                                                                                {option.material_code}
+                                                                                {option.manufacturing_number}
                                                                             </Typography>
                                                                             <Typography variant="caption" color="text.secondary">
-                                                                                {option.material_name}
+                                                                                {option.manufacturing_name}
                                                                             </Typography>
                                                                         </Box>
                                                                     </li>
